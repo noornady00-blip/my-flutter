@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>سياسة الخصوصية وحماية البيانات - تطبيق محاميك | Mahameek Privacy Policy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #0F1B3E;
+      --primary-light: #1A2E66;
+      --gold: #FFA000;
+      --gold-hover: #FFB300;
+      --bg: #0A1128;
+      --card-bg: #132247;
+      --card-border: rgba(255, 160, 0, 0.15);
+      --text: #F8FAFC;
+      --text-muted: #94A3B8;
+      --danger: #EF4444;
+      --success: #10B981;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Cairo', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.8;
+      direction: rtl;
+      padding: 0 16px 60px 16px;
+    }
+
+    .container {
+      max-width: 860px;
+      margin: 0 auto;
+    }
+
+    /* Header */
+    header {
+      text-align: center;
+      padding: 50px 20px 30px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255, 160, 0, 0.12);
+      border: 1px solid rgba(255, 160, 0, 0.3);
+      padding: 6px 18px;
+      border-radius: 999px;
+      color: var(--gold);
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 20px;
+    }
+
+    h1 {
+      font-size: 32px;
+      font-weight: 900;
+      color: #FFFFFF;
+      margin-bottom: 12px;
+      letter-spacing: -0.5px;
+    }
+
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 15px;
+      max-width: 600px;
+      margin: 0 auto 10px;
+    }
+
+    .last-updated {
+      font-size: 12.5px;
+      color: var(--gold);
+      font-weight: 600;
+    }
+
+    /* Cards */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      padding: 28px 24px;
+      margin-bottom: 22px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+    }
+
+    .card-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--gold);
+      margin-bottom: 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding-bottom: 12px;
+    }
+
+    .card-title .icon {
+      font-size: 22px;
+    }
+
+    p {
+      color: #CBD5E1;
+      font-size: 14.5px;
+      margin-bottom: 14px;
+    }
+
+    ul {
+      list-style: none;
+      padding: 0;
+      margin-bottom: 14px;
+    }
+
+    ul li {
+      position: relative;
+      padding-right: 24px;
+      color: #E2E8F0;
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+
+    ul li::before {
+      content: "✦";
+      position: absolute;
+      right: 0;
+      color: var(--gold);
+      font-size: 13px;
+    }
+
+    .highlight-box {
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      padding: 16px;
+      border-radius: 14px;
+      margin: 16px 0;
+      color: #E2E8F0;
+      font-size: 13.5px;
+    }
+
+    .danger-box {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      padding: 16px;
+      border-radius: 14px;
+      margin: 16px 0;
+      color: #FECACA;
+      font-size: 13.5px;
+    }
+
+    .btn-action {
+      display: inline-block;
+      background: var(--gold);
+      color: var(--primary);
+      text-decoration: none;
+      padding: 12px 24px;
+      border-radius: 12px;
+      font-weight: 800;
+      font-size: 14px;
+      margin-top: 10px;
+      transition: background 0.2s;
+    }
+
+    .btn-action:hover {
+      background: var(--gold-hover);
+    }
+
+    /* English Section Preview */
+    .en-section {
+      direction: ltr;
+      text-align: left;
+      font-family: 'Inter', sans-serif;
+      margin-top: 30px;
+      border-top: 2px dashed rgba(255, 160, 0, 0.25);
+      padding-top: 30px;
+    }
+
+    .en-section h2 {
+      font-size: 22px;
+      color: var(--gold);
+      margin-bottom: 14px;
+    }
+
+    .en-section p, .en-section li {
+      font-size: 13.5px;
+      color: #94A3B8;
+    }
+
+    .en-section ul li {
+      padding-left: 20px;
+      padding-right: 0;
+    }
+
+    .en-section ul li::before {
+      right: auto;
+      left: 0;
+    }
+
+    footer {
+      text-align: center;
+      margin-top: 40px;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <header>
+      <div class="badge">⚖️ وثيقة الحماية والخصوصية المعتمدة</div>
+      <h1>سياسة الخصوصية وحماية البيانات</h1>
+      <p class="subtitle">تطبيق محاميك (Mahameek) - المنصة القانونية الرقمية المعتمدة للربط بين العملاء والمحامين المرخصين</p>
+      <div class="last-updated">تاريخ السريان وآخر تحديث: سبتمبر 2026 | الإصدار 1.0.0</div>
+    </header>
+
+    <!-- 1. مقدمة -->
+    <div class="card">
+      <div class="card-title">
+        <span class="icon">📜</span>
+        <span>1. مقدمة ونطاق السياسة</span>
+      </div>
+      <p>
+        نرحب بكم في تطبيق <strong>محاميك (Mahameek)</strong>. تلتزم إدارة المنصة بأعلى معايير الشفافية وحماية الخصوصية الرقمية للمستخدمين، وتتوافق هذه السياسة بشكل صارم مع إرشادات وسياسات متاجر التطبيقات العالمية:
+      </p>
+      <ul>
+        <li>سياسة بيانات المستخدم في متجر جوجل (Google Play User Data Policy).</li>
+        <li>إرشادات متجر آبل للتطبيقات (Apple App Store Review Guidelines - Guideline 5.1).</li>
+        <li>قوانين المعاملات وحماية البيانات الرقمية السارية.</li>
+      </ul>
+      <p>
+        يسري مفعول هذه السياسة على كافة مستخدمي التطبيق سواء كانوا مراجعين وعملاء باحثين عن استشارات قانونية، أو محامين معتمدين ومقيدين في المنصة.
+      </p>
+    </div>
+
+    <!-- 2. البيانات التي نجمعها -->
+    <div class="card">
+      <div class="card-title">
+        <span class="icon">🔍</span>
+        <span>2. البيانات التي نجمعها</span>
+      </div>
+      <p>يقوم تطبيق محاميك بجمع الحد الأدنى والضروري فقط من البيانات لتقديم الخدمة:</p>
+      <ul>
+        <li><strong>بيانات العملاء والمراجعين:</strong> الاسم الكامل، رقم الهاتف للتواصل، والمدينة المختارة لتصفح المحامين المتاحين بها.</li>
+        <li><strong>بيانات المحامين المعتمدين:</strong> الاسم الكامل، رقم الهاتف، رقم الواتساب، المدينة، التخصصات القانونية، سنوات الخبرة، ورقم القيد / الترخيص المهني.</li>
+        <li><strong>الصور والوسائط (اختيارية):</strong> صورة الملف الشخصي التي يرفعها المستخدم بمحض إرادته لتخصيص حسابه.</li>
+        <li><strong>بيانات الحساب والتوثيق:</strong> البريد الإلكتروني وكلمة المرور المشفرة المُدارة عبر Firebase Authentication لضمان أمان الدخول.</li>
+      </ul>
+    </div>
+
+    <!-- 3. الأذونات المطلوبة -->
+    <div class="card">
+      <div class="card-title">
+        <span class="icon">📱</span>
+        <span>3. أذونات الجهاز واستخداماتها المحددة</span>
+      </div>
+      <p>يطلب التطبيق أذونات الجهاز عند الحاجة التشغيلية المباشرة فقط وبموافقة صريحة من المستخدم:</p>
+      <ul>
+        <li><strong>الكاميرا ومعرض الصور (Camera & Photo Gallery):</strong> تُستخدم حصراً لتمكين العميل أو المحامي من التقاط أو اختيار صورة لملفه الشخصي. لا يقوم التطبيق بفحص أو قراءة أو رفع أي صور أخرى من ألبومك.</li>
+        <li><strong>الهاتف والواتساب (Phone Call & WhatsApp):</strong> يُطلب إذن بدء الاتصال عند قيام العميل بالضغط المتعمد على زر الاتصال الهاتفي أو زر محادثة الواتساب للتواصل المباشر مع المحامي المختار.</li>
+        <li><strong>الإنترنت وحالة الشبكة (Internet & Network):</strong> لمزامنة بيانات البحث وحساب المستخدم مع خوادم المنصة السحابية.</li>
+      </ul>
+      <div class="highlight-box">
+        🔒 <strong>تأكيد الخصوصية:</strong> لا يطلب التطبيق ولا يستخدم أذونات الموقع الجغرافي بالـ GPS في الخلفية، ولا يطلب الوصول إلى جهات الاتصال الخاصة بك، ولا يسجل أي مكالمات صوتية.
+      </div>
+    </div>
+
+    <!-- 4. التخزين والأمان -->
+    <div class="card">
+      <div class="card-title">
+        <span class="icon">🛡️</span>
+        <span>4. تخزين البيانات والأمان السحابي</span>
+      </div>
+      <p>
+        تُحفظ كافة البيانات عبر البنية التحتية السحابية المتقدمة لشركة جوجل (Google Cloud & Firebase Services) المشفرة بالكامل بتقنيات TLS/SSL أثناء النقل والتشفير المتطور أثناء الاستقرار (Encryption at rest).
+      </p>
+      <p>
+        تخضع قاعدة البيانات لقواعد تحكم وصلاحيات وصول صارمة (Role-Based Access Control) تمنع أي وصول غير مصرح به، وتفصل بين صلاحيات المشرفين والمحامين والعملاء.
+      </p>
+    </div>
+
+    <!-- 5. عدم بيع أو مشاركة البيانات -->
+    <div class="card">
+      <div class="card-title">
+        <span class="icon">🚫</span>
+        <span>5. حظر بيع البيانات أو مشاركتها</span>
+      </div>
+      <div class="highlight-box">
+        ✅ <strong>التزام قطعي:</strong> منصة محاميك لا تقوم ببيع أو تأجير أو المتاجرة ببيانات أي مستخدم، ولا نقوم بمشاركة أي أرقام هواتف أو سجلات مع أي شركات إعلانية أو وسطاء بيانات خارجيين تحت أي ظرف.
+      </div>
+      <p>
+        الهدف الحصري من عرض بيانات المحامين (كالاسم والمدينة ورقم التواصل والواتساب) في دليل التطبيق هو تمكين المراجعين والباحثين عن خدمات قانونية من الوصول إليهم بشكل مباشر.
+      </p>
+    </div>
+
+    <!-- 6. حذف الحساب والبيانات نهائياً -->
+    <div class="card">
+      <div class="card-title">
+        <span class="icon">🗑️</span>
+        <span>6. حق المستخدم في حذف الحساب والبيانات نهائياً (Account Deletion)</span>
+      </div>
+      <p>
+        التزاماً بإرشادات Apple App Store (البند 5.1.1(v)) وسياسات Google Play، تتيح منصة محاميك لجميع المستخدمين (سواء عميل أو محامي) إمكانية حذف حساباتهم وبياناتهم فوراً وبشكل دائم ومباشر من داخل التطبيق:
+      </p>
+      <ul>
+        <li><strong>خطوات الحذف للعميل:</strong> الملف الشخصي &gt; النزول لأسفل الشاشة &gt; الضغط على «حذف الحساب نهائياً» &gt; إدخال كلمة المرور للتأكيد.</li>
+        <li><strong>خطوات الحذف للمحامي:</strong> إعدادات المحامي &gt; النزول لأسفل الشاشة &gt; الضغط على «حذف الحساب المهني والبيانات نهائياً» &gt; إدخال كلمة المرور للتأكيد.</li>
+      </ul>
+      <div class="danger-box">
+        ⚠️ <strong>أثر الحذف:</strong> عند تأكيد الحذف، يتم مسح الحساب وبيانات الاعتماد من نظام التوثيق (Firebase Auth)، وحذف كافة السجلات الخاصة بالمستخدم من قاعدة البيانات (Firestore)، وحذف الصورة الشخصية من التخزين السحابي (Cloud Storage) فوراً وبشكل لا يمكن استرجاعه.
+      </div>
+    </div>
+
+    <!-- 7. حقوق النشر والملكية الفكرية -->
+    <div class="card">
+      <div class="card-title">
+        <span class="icon">⚖️</span>
+        <span>7. حقوق الملكية الفكرية والعلامات التجارية</span>
+      </div>
+      <p>
+        كافة التصاميم والشعارات والأكواد البرمجية وهوية تطبيق «محاميك» هي ملكية فكرية حصرية للمنصة. الأيقونات والأسماء التجارية الخارجية (مثل WhatsApp أو علامات الأنظمة) تُستخدم حصراً للدلالة على وسائل الربط والتواصل التقني دون ادعاء أي ملكية أو شراكة رسمية مع تلك الشركات.
+      </p>
+    </div>
+
+    <!-- 8. التواصل والدعم الفني -->
+    <div class="card">
+      <div class="card-title">
+        <span class="icon">📞</span>
+        <span>8. الاستفسارات ومسؤول حماية البيانات</span>
+      </div>
+      <p>إذا كان لديك أي سؤال أو استفسار بخصوص سياسة الخصوصية أو إدارة بياناتك، يمكنك التواصل معنا مباشرة:</p>
+      <ul>
+        <li>عبر شاشة <strong>«معلومات الاتصال بالإدارة»</strong> المتاحة داخل التطبيق.</li>
+        <li>البريد الإلكتروني المخصص للدعم والخصوصية: <strong>support@mahameek.app</strong></li>
+      </ul>
+    </div>
+
+    <!-- ENGLISH VERSION (SUMMARY FOR STORE REVIEWERS) -->
+    <div class="card en-section">
+      <h2>Mahameek App - Privacy Policy (Store Compliance Summary)</h2>
+      <p>
+        <strong>Mahameek ("محاميك")</strong> is a legal directory application operating in Sudan, connecting clients seeking legal counsel with verified licensed lawyers.
+      </p>
+      <ul>
+        <li><strong>Data Collection:</strong> We collect user names, phone numbers, and cities to facilitate direct contact between clients and legal practitioners. Profile pictures are optional and uploaded strictly with user consent.</li>
+        <li><strong>Storage & Security:</strong> All data is securely hosted on Google Cloud Firebase with strict Role-Based Access Controls (RBAC) and TLS encryption.</li>
+        <li><strong>No Third-Party Sharing:</strong> We do not sell, rent, or trade personal data or phone numbers with any third-party advertisers or data brokers.</li>
+        <li><strong>Device Permissions:</strong> Camera & Photo Gallery permissions are used solely for user profile photo selection. Phone & WhatsApp launcher intents are used solely when the user taps to contact a lawyer.</li>
+        <li><strong>Account Deletion (App Store 5.1.1(v) & Play Store):</strong> Both clients and lawyers can permanently delete their accounts, Firestore records, and cloud storage images directly within the app under Profile / Settings by entering their password.</li>
+        <li><strong>Support & Inquiries:</strong> Contact support@mahameek.app.</li>
+      </ul>
+    </div>
+
+    <footer>
+      <p>© 2026 تطبيق محاميك (Mahameek). جميع الحقوق محفوظة.</p>
+    </footer>
+  </div>
+
+</body>
+</html>

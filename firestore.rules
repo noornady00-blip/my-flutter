@@ -1,0 +1,110 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.admin == true ||
+        (request.auth.token.email != null && request.auth.token.email.matches('.*@mahameek\\.admin\\.com$')) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
+    }
+
+    // ==================== USERS COLLECTION ====================
+    match /users/{uid} {
+      // User can read their own profile, or an authenticated admin can read any profile
+      allow read: if isOwner(uid) || isAdmin();
+
+      // Users can create their own document (or admin creating accounts)
+      allow create: if isOwner(uid) || isAdmin();
+
+      // Users can update their own data, or admin can update
+      allow update: if isOwner(uid) || isAdmin();
+
+      // Users can delete their own document, or admins can delete
+      allow delete: if isOwner(uid) || isAdmin();
+    }
+
+    // ==================== LAWYERS COLLECTION ====================
+    match /lawyers/{uid} {
+      // Anyone can read approved lawyers, or owner/admin can read any
+      allow read: if (resource.data.status == 'approved') || isOwner(uid) || isAdmin();
+
+      // Lawyer can register with initial status 'pending', or admin can create
+      allow create: if isOwner(uid) || isAdmin();
+
+      // Lawyer can update their profile information, but only admin can approve/reject
+      allow update: if isAdmin() || (
+        isOwner(uid) &&
+        request.resource.data.status == resource.data.status
+      );
+
+      // Lawyer can delete their own document or admins can delete
+      allow delete: if isOwner(uid) || isAdmin();
+    }
+
+    // ==================== ADMINS COLLECTION ====================
+    match /admins/{docId} {
+      allow read, write: if isAdmin() || isOwner(docId);
+    }
+
+    match /admin_tokens/{tokenId} {
+      allow read, write: if isAuthenticated() || isAdmin();
+    }
+
+    match /admin_fcm_tokens/{adminUid} {
+      allow read, write: if isAuthenticated() || isAdmin();
+    }
+
+    match /audit_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() || isAuthenticated();
+      allow update, delete: if false;
+    }
+
+    match /rate_limits/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /one_time_resets/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    // ==================== SUPPORT MESSAGES COLLECTION ====================
+    match /support_messages/{msgId} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
+
+    // ==================== PASSWORD RESETS COLLECTION ====================
+    match /password_resets/{resetId} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
+
+    // ==================== PHONE DIRECTORY COLLECTION ====================
+    // Maps normalized phone numbers to their registered role without exposing sensitive profile data
+    match /phone_directory/{phoneKey} {
+      allow read: if true;
+      allow create, update: if isAuthenticated() || true;
+      allow delete: if isAuthenticated() || isAdmin();
+    }
+
+    // ==================== ADMIN NOTIFICATIONS COLLECTION ====================
+    match /admin_notifications/{notifId} {
+      allow create: if isAuthenticated() || true;
+      allow read, update, delete: if isAdmin();
+    }
+  }
+}

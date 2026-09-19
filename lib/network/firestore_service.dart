@@ -1,0 +1,578 @@
+// ==============================================================================
+// 🗄️ FIRESTORE DATABASE SERVICE
+// ==============================================================================
+// Implements DatabaseContract with cloud synchronization, multi-tier caching,
+// and atomic write operations for Mahameek data models.
+// ==============================================================================
+
+import 'dart:async';
+import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../data/models/lawyer.dart';
+import '../data/models/user_model.dart';
+import '../data/models/password_reset_model.dart';
+import 'database_contract.dart';
+import 'auth_service.dart';
+
+/// Database service managing all Firestore collections and queries.
+class FirestoreService implements DatabaseContract {
+  final FirebaseFirestore? _dbInstance;
+  FirebaseFirestore get _db => _dbInstance ?? FirebaseFirestore.instance;
+
+  FirestoreService({FirebaseFirestore? firestore}) : _dbInstance = firestore;
+
+  static const String _cachedApprovedLawyersKey = 'cached_approved_lawyers_v1';
+  static List<LawyerModel>? inMemoryApprovedLawyers;
+
+  // ===========================================================================
+  // ⚡ OFFLINE CACHE MANAGEMENT
+  // ===========================================================================
+
+  /// Save approved lawyers to local cache. If list is empty, clears cache to invalidate deleted/rejected lawyers.
+  @override
+  Future<void> cacheApprovedLawyersLocally(List<LawyerModel> lawyers) async {
+    inMemoryApprovedLawyers = lawyers;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (lawyers.isEmpty) {
+        await prefs.remove(_cachedApprovedLawyersKey);
+      } else {
+        final listJson =
+            lawyers.map((l) => jsonEncode(l.toJsonMap())).toList();
+        await prefs.setStringList(_cachedApprovedLawyersKey, listJson);
+      }
+    } catch (e) {
+      debugPrint('cacheApprovedLawyersLocally error: $e');
+    }
+  }
+
+  /// Clears local cache explicitly
+  @override
+  Future<void> clearLocalLawyerCache() async {
+    inMemoryApprovedLawyers = [];
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_cachedApprovedLawyersKey);
+    } catch (e) {
+      debugPrint('clearLocalLawyerCache error: $e');
+    }
+  }
+
+  /// Get locally cached approved lawyers (works 100% offline with in-memory speed)
+  @override
+  Future<List<LawyerModel>> getCachedApprovedLawyers() async {
+    if (inMemoryApprovedLawyers != null &&
+        inMemoryApprovedLawyers!.isNotEmpty) {
+      return inMemoryApprovedLawyers!;
+    }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final listJson = prefs.getStringList(_cachedApprovedLawyersKey) ?? [];
+      final result = listJson.map((item) {
+        final map = jsonDecode(item) as Map<String, dynamic>;
+        return LawyerModel.fromJsonMap(map);
+      }).toList();
+      if (result.isNotEmpty) {
+        inMemoryApprovedLawyers = result;
+      }
+      return result;
+    } catch (e) {
+      debugPrint('getCachedApprovedLawyers error: $e');
+      return [];
+    }
+  }
+
+  // ===========================================================================
+  // ⚖️ LAWYERS QUERIES & STREAMS
+  // ===========================================================================
+
+  /// Get approved lawyers by city with server-side query and immediate offline cache fallback
+  @override
+  Stream<List<LawyerModel>> getLawyersByCity(String city) async* {
+    // 1. Instantly yield cached lawyers for 0ms offline display
+    final cached = await getCachedApprovedLawyers();
+    final filteredCached = cached
+        .where((l) => city == 'جميع المدن' || l.city == city)
+        .toList();
+    if (filteredCached.isNotEmpty) {
+      yield filteredCached;
+    }
+
+    // 2. Server-side indexed Firestore Query
+    try {
+      Query<Map<String, dynamic>> query = _db
+          .collection('lawyers')
+          .where('status', isEqualTo: 'approved');
+
+      if (city != 'جميع المدن') {
+        query = query.where('city', isEqualTo: city);
+      }
+
+      await for (final snapshot in query.snapshots()) {
+        final list = snapshot.docs
+            .map((doc) => LawyerModel.fromMap(doc.data(), doc.id))
+            .toList();
+        list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+        if (city == 'جميع المدن') {
+          // Sync whole cache
+          await cacheApprovedLawyersLocally(list);
+        }
+
+        // Critical: If live result is empty (e.g. all lawyers in this city removed),
+        // yield empty list directly and do NOT show stale cache!
+        yield list;
+      }
+    } catch (e) {
+      debugPrint('getLawyersByCity query error: $e');
+      // If network fails, maintain offline cache if available
+      if (filteredCached.isNotEmpty) {
+        yield filteredCached;
+      } else {
+        yield [];
+      }
+    }
+  }
+
+  /// Get all approved lawyers with server-side query
+  @override
+  Stream<List<LawyerModel>> getApprovedLawyers() async* {
+    final cached = await getCachedApprovedLawyers();
+    if (cached.isNotEmpty) {
+      yield cached;
+    }
+
+    try {
+      final query = _db
+          .collection('lawyers')
+          .where('status', isEqualTo: 'approved');
+
+      await for (final snapshot in query.snapshots()) {
+        final list = snapshot.docs
+            .map((doc) => LawyerModel.fromMap(doc.data(), doc.id))
+            .toList();
+        list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+        await cacheApprovedLawyersLocally(list);
+
+        // If live list is empty, yield empty list directly
+        yield list;
+      }
+    } catch (e) {
+      debugPrint('getApprovedLawyers query error: $e');
+      if (cached.isNotEmpty) {
+        yield cached;
+      } else {
+        yield [];
+      }
+    }
+  }
+
+  /// Get recently approved lawyers (for admin dashboard)
+  @override
+  Stream<List<LawyerModel>> getRecentApprovedLawyers({int limit = 5}) {
+    return _db
+        .collection('lawyers')
+        .where('status', isEqualTo: 'approved')
+        .limit(limit)
+        .snapshots()
+        .map((snapshot) {
+      final list = snapshot.docs
+          .map((doc) => LawyerModel.fromMap(doc.data(), doc.id))
+          .toList();
+      list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return list;
+    });
+  }
+
+  /// Get pending lawyer requests (for admin)
+  @override
+  Stream<List<LawyerModel>> getPendingLawyers() {
+    return _db
+        .collection('lawyers')
+        .where('status', isEqualTo: 'pending')
+        .snapshots()
+        .map((snapshot) {
+      final list = snapshot.docs
+          .map((doc) => LawyerModel.fromMap(doc.data(), doc.id))
+          .toList();
+      list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return list;
+    });
+  }
+
+  /// Get all lawyers (for admin)
+  @override
+  Stream<List<LawyerModel>> getAllLawyers() {
+    return _db.collection('lawyers').snapshots().map((snapshot) {
+      final list = snapshot.docs
+          .map((doc) => LawyerModel.fromMap(doc.data(), doc.id))
+          .toList();
+      list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return list;
+    });
+  }
+
+  /// Approve / Activate a lawyer
+  @override
+  Future<void> approveLawyer(String uid) async {
+    await _db.collection('lawyers').doc(uid).update({'status': 'approved'});
+    await _db
+        .collection('users')
+        .doc(uid)
+        .set({'status': 'approved'}, SetOptions(merge: true));
+  }
+
+  /// Suspend / Deactivate a lawyer
+  @override
+  Future<void> suspendLawyer(String uid) async {
+    await _db.collection('lawyers').doc(uid).update({'status': 'suspended'});
+    await _db
+        .collection('users')
+        .doc(uid)
+        .set({'status': 'suspended'}, SetOptions(merge: true));
+  }
+
+  /// Activate a suspended lawyer back to approved
+  @override
+  Future<void> activateLawyer(String uid) async {
+    await approveLawyer(uid);
+  }
+
+  /// Reject a lawyer — marks status as 'rejected' with guidance for re-registration,
+  /// and clears phone_directory lock so the lawyer can immediately register again.
+  @override
+  Future<void> rejectLawyer(String uid, [String? reason]) async {
+    try {
+      final lawyerDoc = await _db.collection('lawyers').doc(uid).get();
+      final phone = lawyerDoc.data()?['phone']?.toString();
+
+      final rejectionMsg = reason ??
+          'تم رفض طلب انضمامك إلى منصة محاميك. يمكنك مراجعة وتعديل بياناتك والمحاولة مرة أخرى بإنشاء حساب جديد.';
+
+      final batch = _db.batch();
+      batch.set(
+        _db.collection('lawyers').doc(uid),
+        {
+          'status': 'rejected',
+          'rejectionReason': rejectionMsg,
+          'rejectedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+
+      batch.set(
+        _db.collection('users').doc(uid),
+        {
+          'status': 'rejected',
+          'rejectionReason': rejectionMsg,
+          'rejectedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+
+      // Free up phone numbers in phone_directory so the lawyer can create a fresh account
+      if (phone != null && phone.isNotEmpty) {
+        final cleanDigits = phone.replaceAll(RegExp(r'\D'), '');
+        final localDigits = cleanDigits.startsWith('249') && cleanDigits.length > 3
+            ? '0${cleanDigits.substring(3)}'
+            : cleanDigits;
+        batch.delete(_db.collection('phone_directory').doc(cleanDigits));
+        batch.delete(_db.collection('phone_directory').doc(localDigits));
+        if (cleanDigits.startsWith('0')) {
+          batch.delete(_db.collection('phone_directory').doc(cleanDigits.substring(1)));
+        }
+      }
+
+      await batch.commit();
+    } catch (e) {
+      debugPrint('[FirestoreService] rejectLawyer error: $e');
+      rethrow;
+    }
+  }
+
+  /// Delete lawyer (admin operation)
+  @override
+  Future<void> deleteLawyer(String uid) async {
+    final batch = _db.batch();
+    batch.delete(_db.collection('lawyers').doc(uid));
+    batch.delete(_db.collection('users').doc(uid));
+    await batch.commit();
+  }
+
+  /// Get a single lawyer
+  @override
+  Future<LawyerModel?> getLawyer(String uid) async {
+    final doc = await _db.collection('lawyers').doc(uid).get();
+    if (!doc.exists || doc.data() == null) return null;
+    return LawyerModel.fromMap(doc.data()!, doc.id);
+  }
+
+  /// Stream single lawyer live from Firestore
+  @override
+  Stream<LawyerModel?> streamLawyer(String uid) {
+    return _db.collection('lawyers').doc(uid).snapshots().map((doc) {
+      if (!doc.exists || doc.data() == null) return null;
+      return LawyerModel.fromMap(doc.data()!, doc.id);
+    });
+  }
+
+  /// Update lawyer profile details with atomic WriteBatch synchronization
+  @override
+  Future<bool> updateLawyerProfile({
+    required String uid,
+    String? name,
+    String? phone,
+    String? whatsapp,
+    String? city,
+    String? specialization,
+    String? photoUrl,
+    String? photoBase64,
+  }) async {
+    try {
+      final Map<String, dynamic> lawyerUpdates = {};
+      final Map<String, dynamic> userUpdates = {};
+
+      if (name != null && name.trim().isNotEmpty) {
+        lawyerUpdates['name'] = name.trim();
+        userUpdates['name'] = name.trim();
+      }
+      if (phone != null && phone.trim().isNotEmpty) {
+        lawyerUpdates['phone'] = phone.trim();
+        userUpdates['phone'] = phone.trim();
+      }
+      if (whatsapp != null) lawyerUpdates['whatsapp'] = whatsapp.trim();
+      if (city != null) lawyerUpdates['city'] = city.trim();
+      if (specialization != null) {
+        lawyerUpdates['specialization'] = specialization.trim();
+      }
+
+      if (photoUrl != null) {
+        if (photoUrl.isEmpty) {
+          lawyerUpdates['photoUrl'] = FieldValue.delete();
+          userUpdates['photoUrl'] = FieldValue.delete();
+        } else {
+          lawyerUpdates['photoUrl'] = photoUrl;
+          userUpdates['photoUrl'] = photoUrl;
+        }
+      }
+
+      // Backward compatibility for base64
+      if (photoBase64 != null) {
+        if (photoBase64.isEmpty) {
+          lawyerUpdates['photoBase64'] = FieldValue.delete();
+          userUpdates['photoBase64'] = FieldValue.delete();
+        } else {
+          lawyerUpdates['photoBase64'] = photoBase64;
+          userUpdates['photoBase64'] = photoBase64;
+        }
+      }
+
+      if (lawyerUpdates.isEmpty && userUpdates.isEmpty) return true;
+
+      // Atomically write both documents
+      final batch = _db.batch();
+      if (lawyerUpdates.isNotEmpty) {
+        batch.set(_db.collection('lawyers').doc(uid), lawyerUpdates,
+            SetOptions(merge: true));
+      }
+      if (userUpdates.isNotEmpty) {
+        batch.set(_db.collection('users').doc(uid), userUpdates,
+            SetOptions(merge: true));
+      }
+      await batch.commit();
+
+      // Update local memory cache if present
+      if (inMemoryApprovedLawyers != null) {
+        final updatedList = inMemoryApprovedLawyers!.map((l) {
+          if (l.uid == uid) {
+            return l.copyWith(
+              name: name ?? l.name,
+              phone: phone ?? l.phone,
+              whatsapp: whatsapp ?? l.whatsapp,
+              city: city ?? l.city,
+              specialization: specialization ?? l.specialization,
+              photoUrl: (photoUrl != null && photoUrl.isEmpty)
+                  ? null
+                  : (photoUrl ?? l.photoUrl),
+              photoBase64: (photoBase64 != null && photoBase64.isEmpty)
+                  ? null
+                  : (photoBase64 ?? l.photoBase64),
+            );
+          }
+          return l;
+        }).toList();
+        await cacheApprovedLawyersLocally(updatedList);
+      }
+
+      return true;
+    } catch (e) {
+      debugPrint('updateLawyerProfile error: $e');
+      rethrow;
+    }
+  }
+
+  // ===========================================================================
+  // 👥 USERS & CLIENTS MANAGEMENT
+  // ===========================================================================
+
+  @override
+  Future<UserModel?> getUser(String uid) async {
+    try {
+      final doc = await _db.collection('users').doc(uid).get();
+      if (!doc.exists || doc.data() == null) return null;
+      return UserModel.fromMap(doc.data()!, doc.id);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  @override
+  Stream<List<UserModel>> getAllClients() {
+    return _db
+        .collection('users')
+        .where('role', isEqualTo: 'client')
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => UserModel.fromMap(doc.data(), doc.id))
+            .toList());
+  }
+
+  @override
+  Future<void> suspendClient(String uid) async {
+    await _db.collection('users').doc(uid).update({'status': 'suspended'});
+  }
+
+  @override
+  Future<void> activateClient(String uid) async {
+    await _db.collection('users').doc(uid).update({'status': 'active'});
+  }
+
+  @override
+  Future<void> deleteClient(String uid) async {
+    await deleteUser(uid);
+  }
+
+  @override
+  Future<void> deleteUser(String uid) async {
+    final batch = _db.batch();
+    batch.delete(_db.collection('users').doc(uid));
+    batch.delete(_db.collection('lawyers').doc(uid));
+    await batch.commit();
+  }
+
+  // ===========================================================================
+  // 🔑 PASSWORD RESET TICKETS
+  // ===========================================================================
+
+  /// Submit a password reset ticket to Firestore
+  @override
+  Future<String> submitPasswordResetTicket({
+    required String phone,
+    required String source, // 'whatsapp' | 'in_app'
+    String? notes,
+  }) async {
+    try {
+      final res = await AuthService().submitPasswordResetTicket(
+        phone: phone,
+        source: source,
+        notes: notes,
+      );
+      if (res['success'] == true) {
+        return res['ticketId']?.toString() ?? '';
+      } else {
+        throw Exception(res['error'] ?? 'تعذر إرسال الطلب');
+      }
+    } catch (e) {
+      debugPrint('submitPasswordResetTicket error: $e');
+      rethrow;
+    }
+  }
+
+  /// Stream all pending password reset requests for admin dashboard
+  @override
+  Stream<List<PasswordResetModel>> getPasswordResetsStream() {
+    return _db
+        .collection('password_resets')
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs
+            .where((doc) {
+              final status = doc.data()['status']?.toString();
+              return status == null ||
+                  (status != 'resolved' && status != 'rejected');
+            })
+            .map((doc) => PasswordResetModel.fromMap(doc.data(), doc.id))
+            .toList());
+  }
+
+  /// Delete a password reset ticket permanently from Firestore
+  @override
+  Future<void> deletePasswordResetTicket(String ticketId) async {
+    try {
+      await _db.collection('password_resets').doc(ticketId).delete();
+    } catch (e) {
+      debugPrint('deletePasswordResetTicket error: $e');
+    }
+  }
+
+  /// Resolve a password reset ticket by deleting it from pending requests
+  @override
+  Future<void> resolvePasswordResetTicket({
+    required String ticketId,
+    required String tempPassword,
+  }) async {
+    await deletePasswordResetTicket(ticketId);
+  }
+
+  /// Reject or dismiss a password reset ticket by deleting it permanently
+  @override
+  Future<void> rejectPasswordResetTicket(String ticketId) async {
+    await deletePasswordResetTicket(ticketId);
+  }
+
+  // ===========================================================================
+  // 📊 STATS VIA CLOUD AGGREGATION
+  // ===========================================================================
+
+  /// Uses Firestore Aggregate count() queries to compute stats with 0 document downloads
+  @override
+  Future<Map<String, int>> getStats() async {
+    try {
+      final totalLawyersSnap = await _db.collection('lawyers').count().get();
+      final approvedLawyersSnap = await _db
+          .collection('lawyers')
+          .where('status', isEqualTo: 'approved')
+          .count()
+          .get();
+      final pendingLawyersSnap = await _db
+          .collection('lawyers')
+          .where('status', isEqualTo: 'pending')
+          .count()
+          .get();
+      final clientsSnap = await _db
+          .collection('users')
+          .where('role', isEqualTo: 'client')
+          .count()
+          .get();
+
+      return {
+        'totalLawyers': totalLawyersSnap.count ?? 0,
+        'approvedLawyers': approvedLawyersSnap.count ?? 0,
+        'pendingLawyers': pendingLawyersSnap.count ?? 0,
+        'totalClients': clientsSnap.count ?? 0,
+      };
+    } catch (e) {
+      debugPrint('getStats aggregate error: $e');
+      return {
+        'totalLawyers': 0,
+        'approvedLawyers': 0,
+        'pendingLawyers': 0,
+        'totalClients': 0,
+      };
+    }
+  }
+}
