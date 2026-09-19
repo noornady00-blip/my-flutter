@@ -25,13 +25,6 @@ jobs:
       - name: 📦 Install Flutter Dependencies
         run: flutter pub get
 
-      - name: 🥥 Install CocoaPods Dependencies
-        run: |
-          cd ios
-          pod repo update || true
-          pod install --repo-update || pod install
-          cd ..
-
       - name: 🍎 Build iOS (Unsigned Release)
         run: |
           flutter build ios --release --no-codesign
