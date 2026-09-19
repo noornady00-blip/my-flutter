@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/utils/search_utils.dart';
+import '../../../core/utils/phone_utils.dart';
 import '../../../data/models/lawyer.dart';
 import '../../../data/models/user_model.dart';
 import '../../../data/models/password_reset_model.dart';
@@ -976,7 +977,7 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
 
                 // 3. User Box
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   decoration: BoxDecoration(
                     color: const Color(0xFFF8FAFC),
                     borderRadius: BorderRadius.circular(14),
@@ -987,15 +988,38 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                       Text(
                         'سيتم تعيين كلمة المرور فورياً للحساب:',
                         style: GoogleFonts.cairo(fontSize: 12, color: const Color(0xFF64748B)),
+                        textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        name != null ? '$name ($phone)' : phone,
-                        textDirection: TextDirection.ltr,
-                        style: GoogleFonts.cairo(
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFF0B2A5B),
+                      const SizedBox(height: 6),
+                      if (name != null && name.trim().isNotEmpty) ...[
+                        Text(
+                          name.trim(),
+                          style: GoogleFonts.cairo(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0xFF0B2A5B),
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 5),
+                      ],
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3.5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0B2A5B).withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFF0B2A5B).withValues(alpha: 0.1)),
+                        ),
+                        child: Text(
+                          PhoneUtils.formatForDisplay(phone),
+                          textDirection: TextDirection.ltr,
+                          style: GoogleFonts.cairo(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0xFF0B2A5B),
+                            letterSpacing: 0.5,
+                          ),
+                          textAlign: TextAlign.center,
                         ),
                       ),
                     ],

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart' hide TextDirection;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/utils/search_utils.dart';
+import '../../../core/utils/phone_utils.dart';
 import '../../../data/models/password_reset_model.dart';
 import '../../../network/auth_service.dart';
 import '../../../network/firestore_service.dart';
@@ -104,7 +105,7 @@ class _AdminPasswordResetsScreenState extends State<AdminPasswordResetsScreen> {
 
                 // 3. User Target Box
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   decoration: BoxDecoration(
                     color: const Color(0xFFF8FAFC),
                     borderRadius: BorderRadius.circular(14),
@@ -115,15 +116,38 @@ class _AdminPasswordResetsScreenState extends State<AdminPasswordResetsScreen> {
                       Text(
                         'سيتم تعيين كلمة المرور فورياً للحساب:',
                         style: GoogleFonts.cairo(fontSize: 12, color: const Color(0xFF64748B)),
+                        textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        name != null ? '$name ($phone)' : phone,
-                        textDirection: TextDirection.ltr,
-                        style: GoogleFonts.cairo(
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFF0B2A5B),
+                      const SizedBox(height: 6),
+                      if (name != null && name.trim().isNotEmpty) ...[
+                        Text(
+                          name.trim(),
+                          style: GoogleFonts.cairo(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0xFF0B2A5B),
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 5),
+                      ],
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3.5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0B2A5B).withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFF0B2A5B).withValues(alpha: 0.1)),
+                        ),
+                        child: Text(
+                          PhoneUtils.formatForDisplay(phone),
+                          textDirection: TextDirection.ltr,
+                          style: GoogleFonts.cairo(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0xFF0B2A5B),
+                            letterSpacing: 0.5,
+                          ),
+                          textAlign: TextAlign.center,
                         ),
                       ),
                     ],
@@ -257,9 +281,9 @@ class _AdminPasswordResetsScreenState extends State<AdminPasswordResetsScreen> {
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         elevation: 12,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+          padding: const EdgeInsets.fromLTRB(16, 22, 16, 18),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -310,7 +334,7 @@ class _AdminPasswordResetsScreenState extends State<AdminPasswordResetsScreen> {
 
               // Credentials Luxury Card
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF8FAFC),
                   borderRadius: BorderRadius.circular(16),
@@ -322,42 +346,54 @@ class _AdminPasswordResetsScreenState extends State<AdminPasswordResetsScreen> {
                     Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.all(6),
+                          padding: const EdgeInsets.all(5),
                           decoration: BoxDecoration(
                             color: const Color(0xFF0B2A5B).withValues(alpha: 0.08),
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: const Icon(Icons.phone_android_rounded, size: 16, color: Color(0xFF0B2A5B)),
+                          child: const Icon(Icons.phone_android_rounded, size: 15, color: Color(0xFF0B2A5B)),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 6),
                         Text(
                           'رقم الهاتف:',
                           style: GoogleFonts.cairo(fontSize: 12, fontWeight: FontWeight.w700, color: const Color(0xFF64748B)),
                         ),
-                        const Spacer(),
-                        IconButton(
-                          icon: const Icon(Icons.copy_rounded, size: 16, color: Color(0xFF64748B)),
-                          visualDensity: VisualDensity.compact,
-                          tooltip: 'نسخ رقم الهاتف',
-                          onPressed: () {
-                            Clipboard.setData(ClipboardData(text: phone));
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('تم نسخ رقم الهاتف: $phone', style: GoogleFonts.cairo(fontWeight: FontWeight.w700)),
-                                backgroundColor: const Color(0xFF0B2A5B),
-                                behavior: SnackBarBehavior.floating,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  PhoneUtils.formatForDisplay(phone),
+                                  textDirection: TextDirection.ltr,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.cairo(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    color: const Color(0xFF0B2A5B),
+                                  ),
+                                ),
                               ),
-                            );
-                          },
-                        ),
-                        Text(
-                          phone,
-                          textDirection: TextDirection.ltr,
-                          style: GoogleFonts.cairo(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w900,
-                            color: const Color(0xFF0B2A5B),
+                              const SizedBox(width: 4),
+                              GestureDetector(
+                                onTap: () {
+                                  Clipboard.setData(ClipboardData(text: phone));
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('تم نسخ رقم الهاتف: $phone', style: GoogleFonts.cairo(fontWeight: FontWeight.w700)),
+                                      backgroundColor: const Color(0xFF0B2A5B),
+                                      behavior: SnackBarBehavior.floating,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                    ),
+                                  );
+                                },
+                                child: const Padding(
+                                  padding: EdgeInsets.all(4),
+                                  child: Icon(Icons.copy_rounded, size: 15, color: Color(0xFF64748B)),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
@@ -368,43 +404,55 @@ class _AdminPasswordResetsScreenState extends State<AdminPasswordResetsScreen> {
                     Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.all(6),
+                          padding: const EdgeInsets.all(5),
                           decoration: BoxDecoration(
                             color: const Color(0xFFD49B1A).withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: const Icon(Icons.vpn_key_rounded, size: 16, color: Color(0xFFD97706)),
+                          child: const Icon(Icons.vpn_key_rounded, size: 15, color: Color(0xFFD97706)),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 6),
                         Text(
                           'كلمة المرور:',
                           style: GoogleFonts.cairo(fontSize: 12, fontWeight: FontWeight.w700, color: const Color(0xFF64748B)),
                         ),
-                        const Spacer(),
-                        IconButton(
-                          icon: const Icon(Icons.copy_rounded, size: 16, color: Color(0xFFD97706)),
-                          visualDensity: VisualDensity.compact,
-                          tooltip: 'نسخ كلمة المرور',
-                          onPressed: () {
-                            Clipboard.setData(ClipboardData(text: newPassword));
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('تم نسخ كلمة المرور: $newPassword', style: GoogleFonts.cairo(fontWeight: FontWeight.w700)),
-                                backgroundColor: const Color(0xFF059669),
-                                behavior: SnackBarBehavior.floating,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  newPassword,
+                                  textDirection: TextDirection.ltr,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.cairo(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w900,
+                                    color: const Color(0xFF059669),
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
                               ),
-                            );
-                          },
-                        ),
-                        Text(
-                          newPassword,
-                          textDirection: TextDirection.ltr,
-                          style: GoogleFonts.cairo(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w900,
-                            color: const Color(0xFF059669),
-                            letterSpacing: 0.5,
+                              const SizedBox(width: 4),
+                              GestureDetector(
+                                onTap: () {
+                                  Clipboard.setData(ClipboardData(text: newPassword));
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('تم نسخ كلمة المرور: $newPassword', style: GoogleFonts.cairo(fontWeight: FontWeight.w700)),
+                                      backgroundColor: const Color(0xFF059669),
+                                      behavior: SnackBarBehavior.floating,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                    ),
+                                  );
+                                },
+                                child: const Padding(
+                                  padding: EdgeInsets.all(4),
+                                  child: Icon(Icons.copy_rounded, size: 15, color: Color(0xFFD97706)),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
