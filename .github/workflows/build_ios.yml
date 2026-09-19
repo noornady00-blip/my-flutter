@@ -28,7 +28,7 @@ jobs:
       - name: 🍎 Build iOS (Unsigned Release)
         run: |
           set -o pipefail
-          flutter build ios --release --no-codesign -v 2>&1 | tee flutter_build.log
+          flutter build ios --release --no-codesign -v 2>&1 | tee flutter_build.log || (echo "=== XCODE / FLUTTER BUILD FAILED - LAST 100 LINES ===" && tail -n 100 flutter_build.log && exit 1)
 
       - name: 📦 Package into IPA (Payload Structure)
         run: |
@@ -48,10 +48,16 @@ jobs:
       - name: 📋 Post Failure Summary to Job Page
         if: failure()
         run: |
-          echo "### ❌ Build Failure Diagnostics" >> $GITHUB_STEP_SUMMARY
+          echo "### ❌ Build Failure Diagnostics (Last 120 lines)" >> $GITHUB_STEP_SUMMARY
           echo '```text' >> $GITHUB_STEP_SUMMARY
           if [ -f flutter_build.log ]; then
-            grep -i -C 2 "error:" flutter_build.log | head -n 80 >> $GITHUB_STEP_SUMMARY || tail -n 80 flutter_build.log >> $GITHUB_STEP_SUMMARY
+            tail -n 120 flutter_build.log >> $GITHUB_STEP_SUMMARY
+          fi
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "### 🔍 Specific Errors Found in Log" >> $GITHUB_STEP_SUMMARY
+          echo '```text' >> $GITHUB_STEP_SUMMARY
+          if [ -f flutter_build.log ]; then
+            grep -E -C 2 "(error:|fatal error:|BUILD FAILED|The following build commands failed)" flutter_build.log | head -n 100 >> $GITHUB_STEP_SUMMARY || echo "No explicit error pattern matched." >> $GITHUB_STEP_SUMMARY
           fi
           echo '```' >> $GITHUB_STEP_SUMMARY
 
