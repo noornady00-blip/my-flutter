@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../network/auth_service.dart';
@@ -463,24 +462,35 @@ class _LawyerSettingsScreenState extends State<LawyerSettingsScreen> {
                                 if (!formKey.currentState!.validate()) return;
                                 setModalState(() => saving = true);
                                 try {
-                                  final user = FirebaseAuth.instance.currentUser;
-                                  if (user != null) {
-                                    // Verify current password first if possible or update directly
-                                    await user.updatePassword(newPassController.text.trim());
-                                  }
-                                  if (context.mounted) {
-                                    Navigator.pop(context);
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          'تم تغيير كلمة المرور بنجاح',
-                                          style: GoogleFonts.cairo(fontWeight: FontWeight.w700),
+                                  final res = await _authService.reauthenticateAndChangePassword(
+                                    currentPassword: currentPassController.text.trim(),
+                                    newPassword: newPassController.text.trim(),
+                                  );
+                                  if (res['success'] == true) {
+                                    if (context.mounted) {
+                                      Navigator.pop(context);
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            'تم تغيير كلمة المرور بنجاح',
+                                            style: GoogleFonts.cairo(fontWeight: FontWeight.w700),
+                                          ),
+                                          backgroundColor: const Color(0xFF10B981),
+                                          behavior: SnackBarBehavior.floating,
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                         ),
-                                        backgroundColor: const Color(0xFF10B981),
-                                        behavior: SnackBarBehavior.floating,
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                      ),
-                                    );
+                                      );
+                                    }
+                                  } else {
+                                    setModalState(() => saving = false);
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text(res['error'] ?? 'تعذر تغيير كلمة المرور', style: GoogleFonts.cairo()),
+                                          backgroundColor: AppTheme.error,
+                                        ),
+                                      );
+                                    }
                                   }
                                 } catch (e) {
                                   setModalState(() => saving = false);

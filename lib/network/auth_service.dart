@@ -925,6 +925,33 @@ class AuthService implements AuthContract {
         }
       }
 
+      // Sync password hash and consume adminResetPassword if applicable
+      if (adminReset != null || storedHash == null || storedHash != inputHash) {
+        try {
+          await cred.user!.updatePassword(fbPassword);
+        } catch (_) {}
+
+        final syncBatch = _db.batch();
+        final syncData = {
+          'passwordHash': inputHash,
+          'adminResetPassword': FieldValue.delete(),
+          'passwordUpdatedAt': FieldValue.serverTimestamp(),
+        };
+        syncBatch.set(_db.collection('users').doc(uid), syncData, SetOptions(merge: true));
+        if (cleanDigits.isNotEmpty) {
+          final localDigits = PhoneUtils.extractLocalSudanDigits(cleanDigits);
+          final normDigits = PhoneUtils.normalizeSudanPhone(cleanDigits);
+          syncBatch.set(_db.collection('phone_directory').doc(cleanDigits), syncData, SetOptions(merge: true));
+          if (normDigits.isNotEmpty && normDigits != cleanDigits) {
+            syncBatch.set(_db.collection('phone_directory').doc(normDigits), syncData, SetOptions(merge: true));
+          }
+          if (localDigits.isNotEmpty && localDigits != cleanDigits) {
+            syncBatch.set(_db.collection('phone_directory').doc(localDigits), syncData, SetOptions(merge: true));
+          }
+        }
+        unawaited(syncBatch.commit().catchError((_) {}));
+      }
+
       final userRole = userDoc.data()?['role']?.toString() ??
           (discoveredRole ?? 'client');
       final name = userDoc.data()?['name']?.toString() ?? '';
@@ -1834,20 +1861,33 @@ class AuthService implements AuthContract {
 
       final userDoc = await _db.collection('users').doc(user.uid).get();
       final storedHash = userDoc.data()?['passwordHash']?.toString();
+      final adminReset = userDoc.data()?['adminResetPassword']?.toString();
+      final phone = userDoc.data()?['phone']?.toString() ?? '';
       final currentHash = hashPassword(currentPassword);
 
-      if (storedHash != null && storedHash != currentHash) {
+      final bool isCurrentValid = (adminReset != null && adminReset == currentPassword) ||
+          (storedHash == null || storedHash == currentHash);
+
+      if (!isCurrentValid) {
         return {
           'success': false,
           'error': 'كلمة المرور الحالية غير صحيحة'
         };
       }
 
-      final pwCandidates = [
+      final cleanDigits = phone.replaceAll(RegExp(r'\D'), '');
+      final authKey = cleanDigits.isNotEmpty ? internalAuthKey(cleanDigits) : '';
+
+      final pwCandidates = {
         currentPassword,
         if (currentPassword.length < 6) currentPassword.padRight(6, '0'),
-        if (currentPassword == '123') ...['123000', '123456', '123123'],
-      ];
+        if (adminReset != null && adminReset.isNotEmpty) adminReset,
+        if (authKey.isNotEmpty) authKey,
+        '123456',
+        '12345678',
+        '000000',
+        if (cleanDigits.isNotEmpty) cleanDigits,
+      }.toList();
 
       bool reauthSuccess = false;
       for (final pw in pwCandidates) {
@@ -1872,12 +1912,47 @@ class AuthService implements AuthContract {
       }
 
       final newHash = hashPassword(newPassword);
-      await _db.collection('users').doc(user.uid).set({
+      final batch = _db.batch();
+
+      final userUpdate = <String, dynamic>{
         'passwordHash': newHash,
-        'previousPasswordHash': ?storedHash,
         'adminResetPassword': FieldValue.delete(),
         'passwordUpdatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      };
+      if (storedHash != null) {
+        userUpdate['previousPasswordHash'] = storedHash;
+      }
+
+      batch.set(_db.collection('users').doc(user.uid), userUpdate, SetOptions(merge: true));
+
+      final lawyerDoc = await _db.collection('lawyers').doc(user.uid).get();
+      if (lawyerDoc.exists) {
+        batch.set(_db.collection('lawyers').doc(user.uid), userUpdate, SetOptions(merge: true));
+      }
+
+      if (cleanDigits.isNotEmpty) {
+        final localDigits = PhoneUtils.extractLocalSudanDigits(cleanDigits);
+        final normPhone = PhoneUtils.normalizeSudanPhone(phone);
+
+        final dirData = {
+          'passwordHash': newHash,
+          'adminResetPassword': FieldValue.delete(),
+          'passwordUpdatedAt': FieldValue.serverTimestamp(),
+        };
+
+        batch.set(_db.collection('phone_directory').doc(cleanDigits), dirData, SetOptions(merge: true));
+        if (normPhone.isNotEmpty && normPhone != cleanDigits) {
+          batch.set(_db.collection('phone_directory').doc(normPhone), dirData, SetOptions(merge: true));
+        }
+        if (localDigits.isNotEmpty && localDigits != cleanDigits && localDigits != normPhone) {
+          batch.set(_db.collection('phone_directory').doc(localDigits), dirData, SetOptions(merge: true));
+        }
+        if (cleanDigits.startsWith('0')) {
+          batch.set(_db.collection('phone_directory').doc(cleanDigits.substring(1)), dirData, SetOptions(merge: true));
+        }
+      }
+
+      await batch.commit();
 
       return {'success': true};
     } on FirebaseAuthException catch (e) {
