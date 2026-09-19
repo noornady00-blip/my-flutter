@@ -116,11 +116,13 @@ class AuthRepo {
     required String phone,
     required String newPassword,
     String? ticketId,
+    String? targetUid,
   }) =>
       _authContract.adminResetUserPassword(
         phone: phone,
         newPassword: newPassword,
         ticketId: ticketId,
+        targetUid: targetUid,
       );
 
   Future<Map<String, String?>> getSavedSession() =>

@@ -1620,6 +1620,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     required String phone,
     String? name,
     String? ticketId,
+    String? targetUid,
   }) {
     final passCtrl = TextEditingController(text: '123456');
     bool isSaving = false;
@@ -1764,6 +1765,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                   phone: phone,
                                   newPassword: newPass,
                                   ticketId: ticketId,
+                                  targetUid: targetUid,
                                 );
 
                                 if (!mounted) return;

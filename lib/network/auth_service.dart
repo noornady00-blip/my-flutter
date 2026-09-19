@@ -229,16 +229,16 @@ class AuthService implements AuthContract {
       }
 
       final email = '$cleanDigits@mahameek.client.com';
+      final authKey = internalAuthKey(cleanDigits);
       final fbPassword =
           password.length < 6 ? password.padRight(6, '0') : password;
       final pwdHash = hashPassword(password);
-      final authKey = internalAuthKey(cleanDigits);
 
       UserCredential cred;
       try {
         cred = await _auth.createUserWithEmailAndPassword(
           email: email,
-          password: fbPassword,
+          password: authKey,
         );
       } catch (e) {
         if (e is FirebaseAuthException &&
@@ -253,7 +253,7 @@ class AuthService implements AuthContract {
         try {
           cred = await _auth.signInWithEmailAndPassword(
             email: email,
-            password: fbPassword,
+            password: authKey,
           );
         } catch (e2) {
           if (e2 is FirebaseAuthException &&
@@ -268,9 +268,9 @@ class AuthService implements AuthContract {
           try {
             cred = await _auth.signInWithEmailAndPassword(
               email: email,
-              password: authKey,
+              password: fbPassword,
             );
-            await cred.user!.updatePassword(fbPassword);
+            await cred.user!.updatePassword(authKey);
           } catch (_) {
             rethrow;
           }
@@ -441,16 +441,16 @@ class AuthService implements AuthContract {
       }
 
       final email = '$cleanDigits@mahameek.lawyer.com';
+      final authKey = internalAuthKey(cleanDigits);
       final fbPassword =
           password.length < 6 ? password.padRight(6, '0') : password;
       final pwdHash = hashPassword(password);
-      final authKey = internalAuthKey(cleanDigits);
 
       UserCredential cred;
       try {
         cred = await _auth.createUserWithEmailAndPassword(
           email: email,
-          password: fbPassword,
+          password: authKey,
         );
       } catch (e) {
         if (e is FirebaseAuthException &&
@@ -465,7 +465,7 @@ class AuthService implements AuthContract {
         try {
           cred = await _auth.signInWithEmailAndPassword(
             email: email,
-            password: fbPassword,
+            password: authKey,
           );
         } catch (e2) {
           if (e2 is FirebaseAuthException &&
@@ -480,9 +480,9 @@ class AuthService implements AuthContract {
           try {
             cred = await _auth.signInWithEmailAndPassword(
               email: email,
-              password: authKey,
+              password: fbPassword,
             );
-            await cred.user!.updatePassword(fbPassword);
+            await cred.user!.updatePassword(authKey);
           } catch (_) {
             rethrow;
           }
@@ -763,34 +763,75 @@ class AuthService implements AuthContract {
         final effectiveRole = role ?? discoveredRole;
         if (effectiveRole == 'lawyer') {
           emailCandidates.add(lawyerEmail);
+          if (localDigits.isNotEmpty && localDigits != cleanDigits) {
+            emailCandidates.add('$localDigits@mahameek.lawyer.com');
+          }
         } else if (effectiveRole == 'client') {
           emailCandidates.add(clientEmail);
+          if (localDigits.isNotEmpty && localDigits != cleanDigits) {
+            emailCandidates.add('$localDigits@mahameek.client.com');
+          }
         } else {
           emailCandidates.add(clientEmail);
           emailCandidates.add(lawyerEmail);
+          if (localDigits.isNotEmpty && localDigits != cleanDigits) {
+            emailCandidates.add('$localDigits@mahameek.client.com');
+            emailCandidates.add('$localDigits@mahameek.lawyer.com');
+          }
         }
         emailCandidates.add(legacyEmail);
+        if (localDigits.isNotEmpty && localDigits != cleanDigits) {
+          emailCandidates.add('$localDigits@mahameek.com');
+        }
       }
 
-      // Fetch directory record for fast verification
-      final dirSnap = cleanDigits.isNotEmpty
-          ? await _db.collection('phone_directory').doc(cleanDigits).get()
-          : null;
-      final dirData = (dirSnap != null && dirSnap.exists) ? dirSnap.data() : registered;
+      // Fetch directory record for fast verification across all possible phone formats
+      DocumentSnapshot<Map<String, dynamic>>? dirSnap;
+      final phoneFormats = [
+        cleanDigits,
+        normPhone,
+        localDigits,
+        digits,
+        if (cleanDigits.startsWith('0')) cleanDigits.substring(1),
+        if (digits.startsWith('0')) digits.substring(1),
+      ];
+      for (final key in phoneFormats) {
+        if (key.isEmpty) continue;
+        try {
+          final s = await _db.collection('phone_directory').doc(key).get();
+          if (s.exists && s.data() != null) {
+            dirSnap = s;
+            break;
+          }
+        } catch (_) {}
+      }
+
+      final Map<String, dynamic>? dirData = dirSnap?.data() ??
+          (registered?['data'] is Map<String, dynamic> ? (registered!['data'] as Map<String, dynamic>) : null);
       final storedAdminReset = dirData?['adminResetPassword']?.toString();
       final storedDirHash = dirData?['passwordHash']?.toString();
+      final storedDirPrevHash = dirData?['previousPasswordHash']?.toString();
+
+      final authKey = cleanDigits.isNotEmpty ? internalAuthKey(cleanDigits) : '';
+      final localAuthKey = localDigits.isNotEmpty ? internalAuthKey(localDigits) : '';
 
       final pwCandidates = {
+        if (authKey.isNotEmpty) authKey,
+        if (localAuthKey.isNotEmpty) localAuthKey,
         password,
         fbPassword,
         if (storedAdminReset != null && storedAdminReset.isNotEmpty) storedAdminReset,
         if (storedAdminReset != null && storedAdminReset.length < 6) storedAdminReset.padRight(6, '0'),
+        '123456',
+        '12345678',
+        '000000',
+        if (cleanDigits.isNotEmpty) cleanDigits,
       }.toList();
 
       UserCredential? cred;
       FirebaseAuthException? lastAuthException;
 
-      // 1. First attempt: Authenticate directly using the user's entered password
+      // 1. First attempt: Authenticate directly against Firebase Auth using candidate passwords
       for (final email in emailCandidates) {
         for (final pw in pwCandidates) {
           try {
@@ -814,143 +855,99 @@ class AuthService implements AuthContract {
         if (cred?.user != null) break;
       }
 
-      // 2. Second attempt: Legacy accounts or Admin-reset passwords verification
+      // If authentication failed across all candidates
       if (cred == null || cred.user == null) {
-        bool legacyVerified = false;
-        final authKey = cleanDigits.isNotEmpty ? internalAuthKey(cleanDigits) : '';
-        final extendedPwList = [
-          if (authKey.isNotEmpty) authKey,
-          '123456',
-          '12345678',
-          '000000',
-          if (cleanDigits.isNotEmpty) cleanDigits,
-        ];
-
-        for (final pw in extendedPwList) {
-          for (final email in emailCandidates) {
-            try {
-              final fallbackCred = await _auth.signInWithEmailAndPassword(
-                email: email,
-                password: pw,
-              );
-              if (fallbackCred.user != null) {
-                final uid = fallbackCred.user!.uid;
-                final userDoc = await _db.collection('users').doc(uid).get();
-                final docHash = userDoc.data()?['passwordHash']?.toString();
-                final docAdminReset = userDoc.data()?['adminResetPassword']?.toString();
-
-                final effectiveAdminReset = docAdminReset ?? storedAdminReset;
-                final effectiveHash = docHash ?? storedDirHash;
-
-                final bool isMatch = (effectiveAdminReset != null && effectiveAdminReset == password) ||
-                    (effectiveHash != null && effectiveHash == inputHash) ||
-                    (effectiveHash == null && effectiveAdminReset == null);
-
-                if (isMatch) {
-                  // Password verified! Update Firebase Auth password to fbPassword
-                  try {
-                    await fallbackCred.user!.updatePassword(fbPassword);
-                    await _db.collection('users').doc(uid).set({
-                      'passwordHash': inputHash,
-                      'adminResetPassword': FieldValue.delete(),
-                    }, SetOptions(merge: true));
-                    await _db.collection('phone_directory').doc(cleanDigits).set({
-                      'passwordHash': inputHash,
-                      'adminResetPassword': FieldValue.delete(),
-                    }, SetOptions(merge: true));
-                  } catch (_) {}
-                  cred = fallbackCred;
-                  legacyVerified = true;
-                  break;
-                } else {
-                  await _auth.signOut();
-                  return {
-                    'success': false,
-                    'error': 'كلمة المرور غير صحيحة، يرجى التأكد من كلمة المرور والمحاولة مجدداً.',
-                  };
-                }
-              }
-            } catch (_) {}
-          }
-          if (legacyVerified) break;
-        }
-
-        // If authentication failed across all candidates
-        if (!legacyVerified && (cred == null || cred.user == null)) {
-          if (registered != null) {
-            return {
-              'success': false,
-              'error': 'كلمة المرور غير صحيحة، يرجى التأكد من كلمة المرور والمحاولة مجدداً.',
-            };
-          }
-          if (lastAuthException != null) {
-            final code = lastAuthException.code;
-            if (code == 'wrong-password' || code == 'invalid-credential') {
-              return {
-                'success': false,
-                'error':
-                    'كلمة المرور غير صحيحة، يرجى التأكد من كلمة المرور والمحاولة مجدداً.',
-              };
-            }
-            if (code == 'user-not-found') {
-              return {
-                'success': false,
-                'error':
-                    'رقم الموبايل غير مسجل في التطبيق، يرجى إنشاء حساب جديد أولاً.',
-              };
-            }
-          }
-          return {
-            'success': false,
-            'error':
-                'رقم الموبايل غير مسجل في التطبيق، يرجى إنشاء حساب جديد أولاً.',
-          };
-        }
-      }
-
-      // User is authenticated! Now we can read users & lawyers docs safely
-      final uid = cred!.user!.uid;
-      final userDoc = await _db.collection('users').doc(uid).get();
-
-      // Double-check passwordHash if stored on user profile
-      final storedHash = userDoc.data()?['passwordHash']?.toString();
-      final adminReset = userDoc.data()?['adminResetPassword']?.toString();
-      if (storedHash != null && storedHash.isNotEmpty) {
-        if (storedHash != inputHash && (adminReset == null || adminReset != password)) {
-          await _auth.signOut();
+        if (registered != null) {
           return {
             'success': false,
             'error': 'كلمة المرور غير صحيحة، يرجى التأكد من كلمة المرور والمحاولة مجدداً.',
           };
         }
-      }
-
-      // Sync password hash and consume adminResetPassword if applicable
-      if (adminReset != null || storedHash == null || storedHash != inputHash) {
-        try {
-          await cred.user!.updatePassword(fbPassword);
-        } catch (_) {}
-
-        final syncBatch = _db.batch();
-        final syncData = {
-          'passwordHash': inputHash,
-          'adminResetPassword': FieldValue.delete(),
-          'passwordUpdatedAt': FieldValue.serverTimestamp(),
-        };
-        syncBatch.set(_db.collection('users').doc(uid), syncData, SetOptions(merge: true));
-        if (cleanDigits.isNotEmpty) {
-          final localDigits = PhoneUtils.extractLocalSudanDigits(cleanDigits);
-          final normDigits = PhoneUtils.normalizeSudanPhone(cleanDigits);
-          syncBatch.set(_db.collection('phone_directory').doc(cleanDigits), syncData, SetOptions(merge: true));
-          if (normDigits.isNotEmpty && normDigits != cleanDigits) {
-            syncBatch.set(_db.collection('phone_directory').doc(normDigits), syncData, SetOptions(merge: true));
+        if (lastAuthException != null) {
+          final code = lastAuthException.code;
+          if (code == 'wrong-password' || code == 'invalid-credential') {
+            return {
+              'success': false,
+              'error':
+                  'كلمة المرور غير صحيحة، يرجى التأكد من كلمة المرور والمحاولة مجدداً.',
+            };
           }
-          if (localDigits.isNotEmpty && localDigits != cleanDigits) {
-            syncBatch.set(_db.collection('phone_directory').doc(localDigits), syncData, SetOptions(merge: true));
+          if (code == 'user-not-found') {
+            return {
+              'success': false,
+              'error':
+                  'رقم الموبايل غير مسجل في التطبيق، يرجى إنشاء حساب جديد أولاً.',
+            };
           }
         }
-        unawaited(syncBatch.commit().catchError((_) {}));
+        return {
+          'success': false,
+          'error':
+              'رقم الموبايل غير مسجل في التطبيق، يرجى إنشاء حساب جديد أولاً.',
+        };
       }
+
+      // User is authenticated in Firebase Auth!
+      final uid = cred.user!.uid;
+      final userDoc = await _db.collection('users').doc(uid).get();
+
+      final docHash = userDoc.data()?['passwordHash']?.toString();
+      final docAdminReset = userDoc.data()?['adminResetPassword']?.toString();
+      final prevHash = userDoc.data()?['previousPasswordHash']?.toString() ?? storedDirPrevHash;
+      final effectiveAdminReset = docAdminReset ?? storedAdminReset;
+      final effectiveHash = docHash ?? storedDirHash;
+
+      // Verify entered password against Firestore records:
+      // Accepts:
+      // 1) The admin reset password (e.g. 123456)
+      // 2) The current active password hash
+      // 3) The previous password hash (so original password works even during reset period)
+      final bool isMatch = (effectiveAdminReset != null && effectiveAdminReset == password) ||
+          (effectiveHash != null && effectiveHash == inputHash) ||
+          (prevHash != null && prevHash == inputHash) ||
+          (effectiveHash == null && effectiveAdminReset == null);
+
+      if (!isMatch) {
+        await _auth.signOut();
+        return {
+          'success': false,
+          'error': 'كلمة المرور غير صحيحة، يرجى التأكد من كلمة المرور والمحاولة مجدداً.',
+        };
+      }
+
+      // Keep Firebase Auth password set to authKey for permanent stability across resets
+      if (authKey.isNotEmpty) {
+        try {
+          await cred.user!.updatePassword(authKey);
+        } catch (_) {}
+      }
+
+      // Synchronize Firestore: set active hash and delete adminResetPassword & previousPasswordHash
+      final syncBatch = _db.batch();
+      final syncData = <String, dynamic>{
+        'passwordHash': inputHash,
+        'adminResetPassword': FieldValue.delete(),
+        'previousPasswordHash': FieldValue.delete(),
+        'passwordUpdatedAt': FieldValue.serverTimestamp(),
+      };
+      syncBatch.set(_db.collection('users').doc(uid), syncData, SetOptions(merge: true));
+
+      final lawyerDocRef = _db.collection('lawyers').doc(uid);
+      final lawyerSnap = await lawyerDocRef.get();
+      if (lawyerSnap.exists) {
+        syncBatch.set(lawyerDocRef, syncData, SetOptions(merge: true));
+      }
+
+      if (cleanDigits.isNotEmpty) {
+        syncBatch.set(_db.collection('phone_directory').doc(cleanDigits), syncData, SetOptions(merge: true));
+        if (normPhone.isNotEmpty && normPhone != cleanDigits) {
+          syncBatch.set(_db.collection('phone_directory').doc(normPhone), syncData, SetOptions(merge: true));
+        }
+        if (localDigits.isNotEmpty && localDigits != cleanDigits) {
+          syncBatch.set(_db.collection('phone_directory').doc(localDigits), syncData, SetOptions(merge: true));
+        }
+      }
+      unawaited(syncBatch.commit().catchError((_) {}));
 
       final userRole = userDoc.data()?['role']?.toString() ??
           (discoveredRole ?? 'client');
@@ -1721,6 +1718,7 @@ class AuthService implements AuthContract {
     required String phone,
     required String newPassword,
     String? ticketId,
+    String? targetUid,
   }) async {
     try {
       if (newPassword.length < 6) {
@@ -1731,30 +1729,61 @@ class AuthService implements AuthContract {
       }
 
       final cleanDigits = phone.replaceAll(RegExp(r'[^0-9]'), '');
-      if (cleanDigits.isEmpty) {
+      if (cleanDigits.isEmpty && (targetUid == null || targetUid.isEmpty)) {
         return {'success': false, 'error': 'رقم الهاتف غير صالح'};
       }
 
-      QuerySnapshot userSnap = await _db
-          .collection('users')
-          .where('phone', isEqualTo: phone.trim())
-          .limit(1)
-          .get();
+      String? resolvedUid = targetUid;
 
-      if (userSnap.docs.isEmpty) {
-        userSnap = await _db
-            .collection('users')
-            .where('phone', isEqualTo: cleanDigits)
-            .limit(1)
-            .get();
+      // 1. If targetUid not passed, look up in phone_directory
+      if (resolvedUid == null || resolvedUid.isEmpty) {
+        try {
+          final dirSnap = await _db.collection('phone_directory').doc(cleanDigits).get();
+          if (dirSnap.exists && dirSnap.data()?['uid'] != null) {
+            resolvedUid = dirSnap.data()!['uid'].toString();
+          }
+        } catch (_) {}
       }
 
-      String? targetUid;
-      if (userSnap.docs.isNotEmpty) {
-        targetUid = userSnap.docs.first.id;
-      } else {
-        final allUsers = await _db.collection('users').get();
-        for (final doc in allUsers.docs) {
+      // 2. Query users collection
+      if (resolvedUid == null || resolvedUid.isEmpty) {
+        QuerySnapshot userSnap = await _db
+            .collection('users')
+            .where('phone', isEqualTo: phone.trim())
+            .limit(1)
+            .get();
+
+        if (userSnap.docs.isEmpty) {
+          userSnap = await _db
+              .collection('users')
+              .where('phone', isEqualTo: cleanDigits)
+              .limit(1)
+              .get();
+        }
+
+        if (userSnap.docs.isNotEmpty) {
+          resolvedUid = userSnap.docs.first.id;
+        } else {
+          final allUsers = await _db.collection('users').get();
+          for (final doc in allUsers.docs) {
+            final p = doc
+                .data()['phone']
+                ?.toString()
+                .replaceAll(RegExp(r'[^0-9]'), '');
+            if (p == cleanDigits ||
+                (p != null &&
+                    (p.endsWith(cleanDigits) || cleanDigits.endsWith(p)))) {
+              resolvedUid = doc.id;
+              break;
+            }
+          }
+        }
+      }
+
+      // 3. Query lawyers collection if still not found
+      if (resolvedUid == null || resolvedUid.isEmpty) {
+        final allLawyers = await _db.collection('lawyers').get();
+        for (final doc in allLawyers.docs) {
           final p = doc
               .data()['phone']
               ?.toString()
@@ -1762,18 +1791,22 @@ class AuthService implements AuthContract {
           if (p == cleanDigits ||
               (p != null &&
                   (p.endsWith(cleanDigits) || cleanDigits.endsWith(p)))) {
-            targetUid = doc.id;
+            resolvedUid = doc.id;
             break;
           }
         }
       }
 
-      if (targetUid == null) {
+      if (resolvedUid == null) {
         return {
           'success': false,
           'error': 'لم يتم العثور على حساب مسجل برقم الهاتف: $phone',
         };
       }
+
+      // Read existing user doc to preserve previousPasswordHash
+      final existingDoc = await _db.collection('users').doc(resolvedUid).get();
+      final prevHash = existingDoc.data()?['passwordHash']?.toString();
 
       final newHash = hashPassword(newPassword);
       final localDigits = PhoneUtils.extractLocalSudanDigits(cleanDigits);
@@ -1781,28 +1814,30 @@ class AuthService implements AuthContract {
 
       final batch = _db.batch();
 
-      batch.set(_db.collection('users').doc(targetUid), {
+      final updateData = <String, dynamic>{
         'adminResetPassword': newPassword,
         'passwordHash': newHash,
-        'passwordUpdatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-      final lawyerDoc = await _db.collection('lawyers').doc(targetUid).get();
-      if (lawyerDoc.exists) {
-        batch.set(_db.collection('lawyers').doc(targetUid), {
-          'adminResetPassword': newPassword,
-          'passwordHash': newHash,
-          'passwordUpdatedAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-      }
-
-      final dirData = {
-        'adminResetPassword': newPassword,
-        'passwordHash': newHash,
+        if (prevHash != null && prevHash != newHash) 'previousPasswordHash': prevHash,
         'passwordUpdatedAt': FieldValue.serverTimestamp(),
       };
 
-      batch.set(_db.collection('phone_directory').doc(cleanDigits), dirData, SetOptions(merge: true));
+      batch.set(_db.collection('users').doc(resolvedUid), updateData, SetOptions(merge: true));
+
+      final lawyerDoc = await _db.collection('lawyers').doc(resolvedUid).get();
+      if (lawyerDoc.exists) {
+        batch.set(_db.collection('lawyers').doc(resolvedUid), updateData, SetOptions(merge: true));
+      }
+
+      final dirData = <String, dynamic>{
+        'adminResetPassword': newPassword,
+        'passwordHash': newHash,
+        if (prevHash != null && prevHash != newHash) 'previousPasswordHash': prevHash,
+        'passwordUpdatedAt': FieldValue.serverTimestamp(),
+      };
+
+      if (cleanDigits.isNotEmpty) {
+        batch.set(_db.collection('phone_directory').doc(cleanDigits), dirData, SetOptions(merge: true));
+      }
       if (normPhone.isNotEmpty && normPhone != cleanDigits) {
         batch.set(_db.collection('phone_directory').doc(normPhone), dirData, SetOptions(merge: true));
       }
@@ -1825,7 +1860,7 @@ class AuthService implements AuthContract {
 
       return {
         'success': true,
-        'uid': targetUid,
+        'uid': resolvedUid,
         'newPassword': newPassword,
       };
     } catch (e) {

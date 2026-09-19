@@ -47,6 +47,7 @@ class _AdminPasswordResetsScreenState extends State<AdminPasswordResetsScreen> {
     required String phone,
     String? name,
     String? ticketId,
+    String? targetUid,
   }) {
     final passCtrl = TextEditingController(text: '123456');
     bool isSaving = false;
@@ -191,6 +192,7 @@ class _AdminPasswordResetsScreenState extends State<AdminPasswordResetsScreen> {
                                   phone: phone,
                                   newPassword: newPass,
                                   ticketId: ticketId,
+                                  targetUid: targetUid,
                                 );
 
                                 if (!mounted) return;
@@ -780,7 +782,9 @@ class _AdminPasswordResetsScreenState extends State<AdminPasswordResetsScreen> {
                 child: GlassButton(
                   onPressed: () => _showAdminResetPasswordDialog(
                     phone: req.phone,
+                    name: req.name,
                     ticketId: req.id,
+                    targetUid: req.uid,
                   ),
                   backgroundColor: const Color(0xFF0B2A5B),
                   borderColor: const Color(0xFF0B2A5B).withValues(alpha: 0.25),

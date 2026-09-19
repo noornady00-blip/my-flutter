@@ -74,6 +74,7 @@ abstract class AuthContract {
     required String phone,
     required String newPassword,
     String? ticketId,
+    String? targetUid,
   });
 
   /// Retrieve locally persisted session credentials

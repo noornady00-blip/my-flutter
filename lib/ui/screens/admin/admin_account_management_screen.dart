@@ -638,7 +638,7 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
               Expanded(
                 flex: 4,
                 child: ElevatedButton.icon(
-                  onPressed: () => _showChangePasswordDialog(phone: l.phone, name: l.name),
+                  onPressed: () => _showChangePasswordDialog(phone: l.phone, name: l.name, uid: l.uid),
                   icon: const Icon(Icons.key_rounded, size: 15, color: Color(0xFFD49B1A)),
                   label: Text(
                     'كلمة السر',
@@ -857,7 +857,7 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
               Expanded(
                 flex: 4,
                 child: ElevatedButton.icon(
-                  onPressed: () => _showChangePasswordDialog(phone: c.phone, name: c.name),
+                  onPressed: () => _showChangePasswordDialog(phone: c.phone, name: c.name, uid: c.uid),
                   icon: const Icon(Icons.key_rounded, size: 15, color: Color(0xFFD49B1A)),
                   label: Text(
                     'كلمة السر',
@@ -920,7 +920,7 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
   // ─────────────────────────────────────────────────────────────
 
   /// 1. نافذة تغيير وتعيين كلمة السر
-  void _showChangePasswordDialog({required String phone, String? name}) {
+  void _showChangePasswordDialog({required String phone, String? name, String? uid}) {
     final passCtrl = TextEditingController(text: '123456');
     bool isSaving = false;
 
@@ -1066,6 +1066,7 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                                 final res = await _authService.adminResetUserPassword(
                                   phone: phone,
                                   newPassword: newPass,
+                                  targetUid: uid,
                                 );
 
                                 if (!mounted) return;
