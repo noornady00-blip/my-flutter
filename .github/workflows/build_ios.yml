@@ -26,7 +26,9 @@ jobs:
         run: flutter pub get
 
       - name: 🍎 Build iOS (Unsigned Release)
-        run: flutter build ios --release --no-codesign
+        run: |
+          set -o pipefail
+          flutter build ios --release --no-codesign -v 2>&1 | tee flutter_build.log
 
       - name: 📦 Package into IPA (Payload Structure)
         run: |
@@ -42,3 +44,11 @@ jobs:
           name: Mahameek-iOS-IPA
           path: build/ios/iphoneos/Mahameek-unsigned.ipa
           retention-days: 14
+
+      - name: 📋 Upload Full Build Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-build-logs
+          path: flutter_build.log
+          if-no-files-found: ignore
