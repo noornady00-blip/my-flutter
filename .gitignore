@@ -50,3 +50,7 @@ key.properties
 *.keystore
 android/key.properties
 
+# Node & scratch files
+node_modules/
+functions/node_modules/
+users.json

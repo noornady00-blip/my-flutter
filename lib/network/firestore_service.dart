@@ -204,12 +204,13 @@ class FirestoreService implements DatabaseContract {
     });
   }
 
-  /// Get all lawyers (for admin)
+  /// Get all lawyers (for admin) — excludes rejected/deleted
   @override
   Stream<List<LawyerModel>> getAllLawyers() {
     return _db.collection('lawyers').snapshots().map((snapshot) {
       final list = snapshot.docs
           .map((doc) => LawyerModel.fromMap(doc.data(), doc.id))
+          .where((l) => l.status != 'rejected')
           .toList();
       list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       return list;
@@ -242,41 +243,28 @@ class FirestoreService implements DatabaseContract {
     await approveLawyer(uid);
   }
 
-  /// Reject a lawyer — marks status as 'rejected' with guidance for re-registration,
+  /// Reject a lawyer — deletes lawyer and user documents completely from Firestore,
   /// and clears phone_directory lock so the lawyer can immediately register again.
   @override
   Future<void> rejectLawyer(String uid, [String? reason]) async {
     try {
       final lawyerDoc = await _db.collection('lawyers').doc(uid).get();
       final phone = lawyerDoc.data()?['phone']?.toString();
-
-      final rejectionMsg = reason ??
-          'تم رفض طلب انضمامك إلى منصة محاميك. يمكنك مراجعة وتعديل بياناتك والمحاولة مرة أخرى بإنشاء حساب جديد.';
+      final userDoc = await _db.collection('users').doc(uid).get();
+      final userPhone = userDoc.data()?['phone']?.toString();
+      final effectivePhone = phone ?? userPhone;
 
       final batch = _db.batch();
-      batch.set(
-        _db.collection('lawyers').doc(uid),
-        {
-          'status': 'rejected',
-          'rejectionReason': rejectionMsg,
-          'rejectedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
 
-      batch.set(
-        _db.collection('users').doc(uid),
-        {
-          'status': 'rejected',
-          'rejectionReason': rejectionMsg,
-          'rejectedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
+      // 1. Delete completely from lawyers collection
+      batch.delete(_db.collection('lawyers').doc(uid));
 
-      // Free up phone numbers in phone_directory so the lawyer can create a fresh account
-      if (phone != null && phone.isNotEmpty) {
-        final cleanDigits = phone.replaceAll(RegExp(r'\D'), '');
+      // 2. Delete completely from users collection
+      batch.delete(_db.collection('users').doc(uid));
+
+      // 3. Free up all phone number variations in phone_directory
+      if (effectivePhone != null && effectivePhone.isNotEmpty) {
+        final cleanDigits = effectivePhone.replaceAll(RegExp(r'\D'), '');
         final localDigits = cleanDigits.startsWith('249') && cleanDigits.length > 3
             ? '0${cleanDigits.substring(3)}'
             : cleanDigits;
@@ -288,6 +276,9 @@ class FirestoreService implements DatabaseContract {
       }
 
       await batch.commit();
+
+      // Invalidate memory/local caches
+      inMemoryApprovedLawyers = null;
     } catch (e) {
       debugPrint('[FirestoreService] rejectLawyer error: $e');
       rethrow;
@@ -297,10 +288,34 @@ class FirestoreService implements DatabaseContract {
   /// Delete lawyer (admin operation)
   @override
   Future<void> deleteLawyer(String uid) async {
-    final batch = _db.batch();
-    batch.delete(_db.collection('lawyers').doc(uid));
-    batch.delete(_db.collection('users').doc(uid));
-    await batch.commit();
+    try {
+      final lawyerDoc = await _db.collection('lawyers').doc(uid).get();
+      final phone = lawyerDoc.data()?['phone']?.toString();
+      final userDoc = await _db.collection('users').doc(uid).get();
+      final userPhone = userDoc.data()?['phone']?.toString();
+      final effectivePhone = phone ?? userPhone;
+
+      final batch = _db.batch();
+      batch.delete(_db.collection('lawyers').doc(uid));
+      batch.delete(_db.collection('users').doc(uid));
+
+      if (effectivePhone != null && effectivePhone.isNotEmpty) {
+        final cleanDigits = effectivePhone.replaceAll(RegExp(r'\D'), '');
+        final localDigits = cleanDigits.startsWith('249') && cleanDigits.length > 3
+            ? '0${cleanDigits.substring(3)}'
+            : cleanDigits;
+        batch.delete(_db.collection('phone_directory').doc(cleanDigits));
+        if (localDigits != cleanDigits) {
+          batch.delete(_db.collection('phone_directory').doc(localDigits));
+        }
+      }
+
+      await batch.commit();
+      inMemoryApprovedLawyers = null;
+    } catch (e) {
+      debugPrint('[FirestoreService] deleteLawyer error: $e');
+      rethrow;
+    }
   }
 
   /// Get a single lawyer

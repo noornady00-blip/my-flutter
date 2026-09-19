@@ -161,3 +161,34 @@ exports.onLawyerCreated = functions.firestore
       return null;
     }
   });
+
+/**
+ * تحديث كلمة المرور في Firebase Auth مباشرة عند قيام الأدمن بإعادة تعيينها
+ */
+exports.onUserPasswordReset = functions.firestore
+  .document("users/{userId}")
+  .onWrite(async (change, context) => {
+    const afterData = change.after.exists ? change.after.data() : null;
+    const beforeData = change.before.exists ? change.before.data() : null;
+
+    if (!afterData) return null;
+
+    const newResetPw = afterData.adminResetPassword;
+    const oldResetPw = beforeData ? beforeData.adminResetPassword : null;
+
+    if (newResetPw && newResetPw !== oldResetPw) {
+      const uid = context.params.userId;
+      const cleanPw = String(newResetPw).trim();
+      const fbPassword = cleanPw.length >= 6 ? cleanPw : cleanPw.padRight(6, "0");
+
+      try {
+        await admin.auth().updateUser(uid, {
+          password: fbPassword,
+        });
+        console.log(`Successfully updated Firebase Auth password for user ${uid}`);
+      } catch (err) {
+        console.error(`Failed to update Firebase Auth password for ${uid}:`, err);
+      }
+    }
+    return null;
+  });
