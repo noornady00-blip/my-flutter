@@ -22,21 +22,11 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: 📦 Install Flutter Dependencies & Precache
-        run: |
-          flutter precache --ios
-          flutter pub get
-          flutter build ios --config-only
-
-      - name: 🍎 CocoaPods Install
-        run: |
-          cd ios
-          pod install --repo-update
-          cd ..
+      - name: 📦 Install Flutter Dependencies
+        run: flutter pub get
 
       - name: 🍎 Build iOS (Unsigned Release)
-        run: |
-          flutter build ios --release --no-codesign
+        run: flutter build ios --release --no-codesign
 
       - name: 📦 Package into IPA (Payload Structure)
         run: |
@@ -52,13 +42,3 @@ jobs:
           name: Mahameek-iOS-IPA
           path: build/ios/iphoneos/Mahameek-unsigned.ipa
           retention-days: 14
-
-      - name: 📋 Upload Diagnostic Logs on Failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-failure-logs
-          path: |
-            build/ios/archive/*.xcresult
-            ios/Podfile.lock
-            ios/Pods/Manifest.lock
