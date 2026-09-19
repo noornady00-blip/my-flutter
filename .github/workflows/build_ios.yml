@@ -22,8 +22,11 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: 📦 Install Flutter Dependencies
-        run: flutter pub get
+      - name: 📦 Install Flutter Dependencies & Precache
+        run: |
+          flutter precache --ios
+          flutter pub get
+          flutter build ios --config-only
 
       - name: 🍎 CocoaPods Install
         run: |
@@ -33,7 +36,7 @@ jobs:
 
       - name: 🍎 Build iOS (Unsigned Release)
         run: |
-          flutter build ios --release --no-codesign --verbose
+          flutter build ios --release --no-codesign
 
       - name: 📦 Package into IPA (Payload Structure)
         run: |
