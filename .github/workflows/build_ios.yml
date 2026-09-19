@@ -10,9 +10,12 @@ on:
 jobs:
   build-ios:
     name: Build Unsigned iOS IPA
-    runs-on: macos-14
+    runs-on: macos-15
 
     steps:
+      - name: 🍏 Verify Xcode Version
+        run: xcodebuild -version
+
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
 
