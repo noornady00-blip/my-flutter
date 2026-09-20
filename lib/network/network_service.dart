@@ -67,13 +67,13 @@ class NetworkState {
     required this.timestamp,
   });
 
-  /// Factory for initial offline state
+  /// Factory for initial state (defaults to online to prevent false offline flicker on launch)
   factory NetworkState.initial() => NetworkState(
         transportType: NetworkTransportType.unknown,
-        hasInternet: false,
+        hasInternet: true,
         isRestored: false,
-        status: NetworkStatus.noConnection,
-        message: 'جاري فحص الاتصال...',
+        status: NetworkStatus.online,
+        message: 'متصل بالإنترنت',
         timestamp: DateTime.now(),
       );
 
@@ -128,7 +128,7 @@ abstract class InternetReachabilityChecker {
   Future<bool> checkReachability({Duration timeout = const Duration(milliseconds: 2800)});
 }
 
-/// Default probe implementation executing lightweight HTTPS 204 probes.
+/// Default probe implementation executing lightweight, parallel DNS & HTTPS 204 probes.
 class DefaultInternetReachabilityChecker implements InternetReachabilityChecker {
   static const List<String> probeEndpoints = [
     'https://www.gstatic.com/generate_204',
@@ -137,13 +137,44 @@ class DefaultInternetReachabilityChecker implements InternetReachabilityChecker 
   ];
 
   @override
-  Future<bool> checkReachability({Duration timeout = const Duration(milliseconds: 2800)}) async {
+  Future<bool> checkReachability({Duration timeout = const Duration(milliseconds: 2500)}) async {
     if (kIsWeb) return true;
 
+    // 1. Ultra-fast DNS lookup (resolves in 15-40ms on healthy networks)
     try {
-      final futures = probeEndpoints.map((url) => _probeUrl(url, timeout));
-      final results = await Future.wait(futures);
-      return results.any((reachable) => reachable == true);
+      final dnsResults = await InternetAddress.lookup('google.com')
+          .timeout(const Duration(milliseconds: 1200));
+      if (dnsResults.isNotEmpty && dnsResults[0].rawAddress.isNotEmpty) {
+        return true;
+      }
+    } catch (_) {
+      // Proceed to HTTP probes if DNS is restricted or slow
+    }
+
+    // 2. Parallel HTTP 204 racing probes: returns true immediately when the FIRST endpoint responds
+    try {
+      final completer = Completer<bool>();
+      int failures = 0;
+
+      for (final url in probeEndpoints) {
+        _probeUrl(url, timeout).then((ok) {
+          if (ok && !completer.isCompleted) {
+            completer.complete(true);
+          } else {
+            failures++;
+            if (failures >= probeEndpoints.length && !completer.isCompleted) {
+              completer.complete(false);
+            }
+          }
+        }).catchError((_) {
+          failures++;
+          if (failures >= probeEndpoints.length && !completer.isCompleted) {
+            completer.complete(false);
+          }
+        });
+      }
+
+      return await completer.future.timeout(timeout, onTimeout: () => false);
     } catch (_) {
       return false;
     }
@@ -157,7 +188,7 @@ class DefaultInternetReachabilityChecker implements InternetReachabilityChecker 
       final request = await client.getUrl(uri).timeout(timeout);
       request.followRedirects = false;
       final response = await request.close().timeout(timeout);
-      await response.drain().timeout(const Duration(milliseconds: 400)).catchError((_) {});
+      await response.drain().timeout(const Duration(milliseconds: 350)).catchError((_) {});
       return response.statusCode == 204 || response.statusCode == 200;
     } catch (_) {
       return false;
