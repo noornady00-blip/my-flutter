@@ -36,10 +36,15 @@ exports.onPasswordResetCreated = functions.firestore
         },
       },
       apns: {
+        headers: {
+          "apns-priority": "10",
+          "apns-push-type": "alert",
+        },
         payload: {
           aps: {
             sound: "default",
             badge: 1,
+            "content-available": 1,
           },
         },
       },
@@ -89,10 +94,15 @@ exports.onSupportMessageCreated = functions.firestore
         },
       },
       apns: {
+        headers: {
+          "apns-priority": "10",
+          "apns-push-type": "alert",
+        },
         payload: {
           aps: {
             sound: "default",
             badge: 1,
+            "content-available": 1,
           },
         },
       },
@@ -143,10 +153,15 @@ exports.onLawyerCreated = functions.firestore
         },
       },
       apns: {
+        headers: {
+          "apns-priority": "10",
+          "apns-push-type": "alert",
+        },
         payload: {
           aps: {
             sound: "default",
             badge: 1,
+            "content-available": 1,
           },
         },
       },

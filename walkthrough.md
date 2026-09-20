@@ -4,7 +4,23 @@
 
 ---
 
-## التحديثات الأخيرة (تسجيل الخروج السلس + إدارة وحذف الإشعارات الإدارية)
+## التحديثات الأخيرة (تسجيل الخروج السلس + إدارة وحذف الإشعارات + حل إشعارات الأدمن عند قفل الهاتف)
+
+### 18. حل جذري ومعماري لوصول إشعارات المشرف عند قفل الهاتف (Android & iOS) وخارج التطبيق
+- **الملفات:** [notification_service.dart](file:///d:/xampp/htdocs/Mahameek/mahameek/lib/network/notification_service.dart), [fcm_dispatcher_service.dart](file:///d:/xampp/htdocs/Mahameek/mahameek/lib/network/fcm_dispatcher_service.dart), [AndroidManifest.xml](file:///d:/xampp/htdocs/Mahameek/mahameek/android/app/src/main/AndroidManifest.xml), [Info.plist](file:///d:/xampp/htdocs/Mahameek/mahameek/ios/Runner/Info.plist), [AppDelegate.swift](file:///d:/xampp/htdocs/Mahameek/mahameek/ios/Runner/AppDelegate.swift), [index.js](file:///d:/xampp/htdocs/Mahameek/mahameek/functions/index.js).
+- **التشخيص الجذري:**
+  1. كود إرسال الـ Push لم يكن يُستدعى إطلاقاً عند إضافة طلبات (استعادة كلمة مرور، رسالة دعم، تسجيل محامٍ)، وكان الاعتماد على Cloud Functions لم تُنشر على السحابة لأن باقة Firebase كانت Spark المجانية وتتطلب Blaze.
+  2. هواتف iOS كانت تفتقر إلى `UIBackgroundModes` و `remote-notification` في `Info.plist`، وتفتقر إلى تسجيل APNs في `AppDelegate.swift`.
+  3. مهلة تسجيل توكن المشرف كانت 3 ثوانٍ فقط، مما يتسبب في فشل تسجيل المشرف على شبكات الجوال البطيئة ويفشل على أجهزة آيفون لعدم انتظار توكن APNs.
+- **الحلول المعمارية المنفذة:**
+  1. بناء خدمة `FcmDispatcherService` المسؤولة عن توجيه التنبيهات الإدارية إلى فايرستور وقائمة إرسال الإشعارات وتنبيه الجلسات النشطة فورياً.
+  2. إضافة أذونات الخلفية `fetch` و `remote-notification` في `Info.plist` لنظام iOS، وتسجيل `UNUserNotificationCenterDelegate` في `AppDelegate.swift`.
+  3. إضافة إذن `RECEIVE_BOOT_COMPLETED` وتأكيد قناة التنبيهات القصوى `mahameek_urgent_alerts_v4` في `AndroidManifest.xml` لإيقاظ شاشة القفل.
+  4. ترقية كود تسجيل المشرف `registerAdminDevice`: زيادة المهلة إلى 15 ثانية، وانتظار توكن APNs في هواتف iOS، وحفظ شارة المشرف في `SharedPreferences`، وتخزين التوكن في مجموعات `admin_tokens` و `admin_fcm_tokens`.
+  5. تفعيل مراقب حي مباشر `startAdminLiveAlertsListener` في جلسة المشرف، لعرض الإشعارات المنبثقة فلاشياً وبالصوت أثناء فتح التطبيق.
+  6. ترقية حمولة Cloud Functions في `functions/index.js` بأعلى أولويات Apple و Google (`apns-priority: 10`, `content-available: 1`, `priority: max`) لتكون جاهزة فور الترقية لباقة Blaze.
+
+---
 
 ### 15. تسجيل خروج فائق السلاسة بأنيميشن سحب واختفاء (Smooth Slide Exit)
 - **الملفات:** [navigation_utils.dart](file:///d:/xampp/htdocs/Mahameek/mahameek/lib/core/utils/navigation_utils.dart), [admin_dashboard.dart](file:///d:/xampp/htdocs/Mahameek/mahameek/lib/ui/screens/admin/admin_dashboard.dart), [app_drawer.dart](file:///d:/xampp/htdocs/Mahameek/mahameek/lib/ui/custom_widgets/app_drawer.dart), [profile_screen.dart](file:///d:/xampp/htdocs/Mahameek/mahameek/lib/ui/screens/profile/profile_screen.dart), [lawyer_settings_screen.dart](file:///d:/xampp/htdocs/Mahameek/mahameek/lib/ui/screens/lawyer/lawyer_settings_screen.dart), [lawyer_pending_screen.dart](file:///d:/xampp/htdocs/Mahameek/mahameek/lib/ui/screens/auth/lawyer_pending_screen.dart).

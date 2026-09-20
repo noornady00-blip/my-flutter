@@ -18,6 +18,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/models/admin_notification_model.dart';
 import '../firebase_options.dart';
+import 'fcm_dispatcher_service.dart';
 import '../ui/screens/admin/admin_password_resets_screen.dart';
 import '../ui/screens/admin/admin_support_messages_screen.dart';
 import '../ui/screens/admin/admin_pending_lawyers_screen.dart';
@@ -31,10 +32,13 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform);
 
-    // Ensure device is registered to an admin account
+    // Verify device is registered as admin or message is from admin topic
     final prefs = await SharedPreferences.getInstance();
     final role = prefs.getString('role');
-    if (role != 'admin') {
+    final isAdminDevice = prefs.getBool('is_admin_device') ?? false;
+    final isFromAdminTopic = message.from?.contains('admin') ?? false;
+
+    if (role != 'admin' && !isAdminDevice && !isFromAdminTopic) {
       debugPrint('Background message ignored: device role is $role, not admin');
       return;
     }
@@ -50,8 +54,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         message.data['screen']?.toString() ??
         'admin_notification';
 
-    debugPrint(
-        'FCM Background message handling: $title | Payload: $payload');
+    debugPrint('FCM Background message handling: $title | Payload: $payload');
 
     // Self-contained Local Notifications in background isolate
     final localNotifications = FlutterLocalNotificationsPlugin();
@@ -125,13 +128,16 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         ? (message.messageId.hashCode.abs() % 100000)
         : (DateTime.now().millisecondsSinceEpoch % 100000);
 
-    await localNotifications.show(
-      notificationId,
-      title,
-      body,
-      notifDetails,
-      payload: payload,
-    );
+    // Only display if the system hasn't automatically displayed it from message.notification
+    if (message.notification == null) {
+      await localNotifications.show(
+        notificationId,
+        title,
+        body,
+        notifDetails,
+        payload: payload,
+      );
+    }
   } catch (e) {
     debugPrint('Background message handler error: $e');
   }
@@ -435,35 +441,65 @@ class NotificationService {
     if (kIsWeb) return;
     try {
       final messaging = FirebaseMessaging.instance;
-      await messaging
-          .requestPermission(
-            alert: true,
-            badge: true,
-            sound: true,
-            criticalAlert: true,
-          )
-          .timeout(const Duration(seconds: 3));
 
+      // 1. Request full push notification permissions with critical alert support
+      final settings = await messaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+        criticalAlert: true,
+        provisional: false,
+      );
+      debugPrint('Admin notification permission status: ${settings.authorizationStatus}');
+
+      // 2. For iOS devices, wait for APNs token before requesting FCM token
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        String? apnsToken = await messaging.getAPNSToken();
+        int attempts = 0;
+        while (apnsToken == null && attempts < 10) {
+          await Future.delayed(const Duration(milliseconds: 500));
+          apnsToken = await messaging.getAPNSToken();
+          attempts++;
+        }
+        debugPrint('APNs Token state: ${apnsToken != null ? "obtained" : "pending"}');
+      }
+
+      // 3. Subscribe to admin notification topics
       await messaging
           .subscribeToTopic(adminTopic)
-          .timeout(const Duration(seconds: 3));
+          .timeout(const Duration(seconds: 15))
+          .catchError((subErr) {
+        debugPrint('subscribeToTopic $adminTopic notice: $subErr');
+      });
+
       await messaging
           .subscribeToTopic(adminAlertsTopic)
-          .timeout(const Duration(seconds: 3));
+          .timeout(const Duration(seconds: 15))
+          .catchError((subErr) {
+        debugPrint('subscribeToTopic $adminAlertsTopic notice: $subErr');
+      });
 
+      // 4. Mark this device locally as an admin device
       final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('is_admin_device', true);
       final effectiveUid = adminUid ??
           prefs.getString('uid') ??
           FirebaseAuth.instance.currentUser?.uid ??
           'admin';
 
-      final token = await messaging.getToken().timeout(const Duration(seconds: 3));
+      // 5. Retrieve FCM device token and register in Firestore
+      final token = await messaging.getToken().timeout(const Duration(seconds: 15)).catchError((tokenErr) {
+        debugPrint('getToken timeout or error: $tokenErr');
+        return null;
+      });
+
       if (token != null) {
         final tokenData = {
           'token': token,
           'adminUid': effectiveUid,
           'platform': defaultTargetPlatform.name,
           'updatedAt': FieldValue.serverTimestamp(),
+          'device': 'admin_phone',
         };
 
         await _db.collection('admin_tokens').doc(token).set(tokenData, SetOptions(merge: true));
@@ -471,7 +507,11 @@ class NotificationService {
           await _db.collection('admin_fcm_tokens').doc(effectiveUid).set(tokenData, SetOptions(merge: true));
         }
       }
-      debugPrint('Admin subscribed to $adminTopic with token: $token (UID: $effectiveUid)');
+
+      // 6. Start real-time foreground listener for live admin notifications
+      startAdminLiveAlertsListener();
+
+      debugPrint('Admin registered successfully for $adminTopic | Token: ${token != null ? "OK" : "None"} (UID: $effectiveUid)');
     } catch (e) {
       debugPrint('registerAdminDevice error: $e');
     }
@@ -497,7 +537,7 @@ class NotificationService {
         criticalAlert: true,
         provisional: false,
         sound: true,
-      ).timeout(const Duration(seconds: 2));
+      );
 
       await registerAdminDevice(adminUid: adminUid);
 
@@ -513,13 +553,16 @@ class NotificationService {
   Future<void> unregisterAdminDevice() async {
     if (kIsWeb) return;
     try {
+      stopAdminLiveAlertsListener();
       final messaging = FirebaseMessaging.instance;
-      await messaging
-          .unsubscribeFromTopic(adminTopic)
-          .timeout(const Duration(seconds: 2));
-      await messaging
-          .unsubscribeFromTopic(adminAlertsTopic)
-          .timeout(const Duration(seconds: 2));
+      await messaging.unsubscribeFromTopic(adminTopic).catchError((_) {});
+      await messaging.unsubscribeFromTopic(adminAlertsTopic).catchError((_) {});
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('is_admin_device');
+      final token = await messaging.getToken().catchError((_) => null);
+      if (token != null) {
+        await _db.collection('admin_tokens').doc(token).delete().catchError((_) {});
+      }
     } catch (e) {
       debugPrint('unregisterAdminDevice error: $e');
     }
@@ -639,28 +682,58 @@ class NotificationService {
     required String body,
     Map<String, dynamic>? data,
   }) async {
-    try {
-      await _db.collection('admin_notifications').add({
-        'type': type,
-        'title': title,
-        'body': body,
-        'data': data ?? {},
-        'createdAt': FieldValue.serverTimestamp(),
-        'read': false,
-      });
+    await FcmDispatcherService().dispatchAlert(
+      type: type,
+      title: title,
+      body: body,
+      data: data,
+    );
+  }
 
+  // ---------------------------------------------------------------------------
+  // Live Foreground Stream for Active Admin Session
+  // ---------------------------------------------------------------------------
+  StreamSubscription? _adminLiveAlertsSubscription;
+
+  void startAdminLiveAlertsListener() {
+    if (kIsWeb) return;
+    _adminLiveAlertsSubscription?.cancel();
+
+    final now = DateTime.now().subtract(const Duration(seconds: 10));
+    _adminLiveAlertsSubscription = _db
+        .collection('admin_notifications')
+        .where('createdAt', isGreaterThan: Timestamp.fromDate(now))
+        .snapshots()
+        .listen((snapshot) async {
       final prefs = await SharedPreferences.getInstance();
-      if (prefs.getString('role') == 'admin') {
-        showNotificationDirect(
-          title: title,
-          body: body,
-          payload: type,
-          id: DateTime.now().millisecondsSinceEpoch % 100000,
-        );
+      final role = prefs.getString('role');
+      final isAdmin = role == 'admin' || prefs.getBool('is_admin_device') == true;
+      if (!isAdmin) return;
+
+      for (final change in snapshot.docChanges) {
+        if (change.type == DocumentChangeType.added) {
+          final data = change.doc.data();
+          if (data != null) {
+            final title = data['title']?.toString() ?? 'إشعار إداري جديد 🔔';
+            final body = data['body']?.toString() ?? '';
+            final type = data['type']?.toString();
+            showNotificationDirect(
+              title: title,
+              body: body,
+              payload: type,
+              id: change.doc.id.hashCode.abs() % 100000,
+            );
+          }
+        }
       }
-    } catch (e) {
-      debugPrint('dispatchAdminAlert error: $e');
-    }
+    }, onError: (err) {
+      debugPrint('startAdminLiveAlertsListener notice: $err');
+    });
+  }
+
+  void stopAdminLiveAlertsListener() {
+    _adminLiveAlertsSubscription?.cancel();
+    _adminLiveAlertsSubscription = null;
   }
 
   Stream<List<AdminNotificationModel>> getAdminNotificationsStream() {
