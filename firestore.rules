@@ -106,5 +106,11 @@ service cloud.firestore {
       allow create: if isAuthenticated() || true;
       allow read, update, delete: if isAdmin();
     }
+
+    // ==================== APP CONFIG COLLECTION ====================
+    match /app_config/{configId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
   }
 }
