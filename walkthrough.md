@@ -6,19 +6,19 @@
 
 ## التحديثات الأخيرة (تسجيل الخروج السلس + إدارة وحذف الإشعارات + حل إشعارات الأدمن عند قفل الهاتف)
 
-### 18. حل جذري ومعماري لوصول إشعارات المشرف عند قفل الهاتف (Android & iOS) وخارج التطبيق
-- **الملفات:** [notification_service.dart](file:///d:/xampp/htdocs/Mahameek/mahameek/lib/network/notification_service.dart), [fcm_dispatcher_service.dart](file:///d:/xampp/htdocs/Mahameek/mahameek/lib/network/fcm_dispatcher_service.dart), [AndroidManifest.xml](file:///d:/xampp/htdocs/Mahameek/mahameek/android/app/src/main/AndroidManifest.xml), [Info.plist](file:///d:/xampp/htdocs/Mahameek/mahameek/ios/Runner/Info.plist), [AppDelegate.swift](file:///d:/xampp/htdocs/Mahameek/mahameek/ios/Runner/AppDelegate.swift), [index.js](file:///d:/xampp/htdocs/Mahameek/mahameek/functions/index.js).
+### 18. حل جذري ومعماري لوصول إشعارات المشرف عند قفل الهاتف (Android & iOS) وخارج التطبيق (بدون Blaze وبدون فيزا)
+- **الملفات:** [notification_service.dart](file:///d:/xampp/htdocs/Mahameek/mahameek/lib/network/notification_service.dart), [fcm_dispatcher_service.dart](file:///d:/xampp/htdocs/Mahameek/mahameek/lib/network/fcm_dispatcher_service.dart), [AndroidManifest.xml](file:///d:/xampp/htdocs/Mahameek/mahameek/android/app/src/main/AndroidManifest.xml), [Info.plist](file:///d:/xampp/htdocs/Mahameek/mahameek/ios/Runner/Info.plist), [AppDelegate.swift](file:///d:/xampp/htdocs/Mahameek/mahameek/ios/Runner/AppDelegate.swift), [firestore.rules](file:///d:/xampp/htdocs/Mahameek/mahameek/firestore.rules).
 - **التشخيص الجذري:**
-  1. كود إرسال الـ Push لم يكن يُستدعى إطلاقاً عند إضافة طلبات (استعادة كلمة مرور، رسالة دعم، تسجيل محامٍ)، وكان الاعتماد على Cloud Functions لم تُنشر على السحابة لأن باقة Firebase كانت Spark المجانية وتتطلب Blaze.
+  1. كود إرسال الـ Push لم يكن يُستدعى إطلاقاً عند إضافة طلبات (استعادة كلمة مرور، رسالة دعم، تسجيل محامٍ)، وكان الاعتماد سابقاً على Cloud Functions التي تتطلب ترقية لـ Blaze بفيزا دولية.
   2. هواتف iOS كانت تفتقر إلى `UIBackgroundModes` و `remote-notification` في `Info.plist`، وتفتقر إلى تسجيل APNs في `AppDelegate.swift`.
   3. مهلة تسجيل توكن المشرف كانت 3 ثوانٍ فقط، مما يتسبب في فشل تسجيل المشرف على شبكات الجوال البطيئة ويفشل على أجهزة آيفون لعدم انتظار توكن APNs.
-- **الحلول المعمارية المنفذة:**
-  1. بناء خدمة `FcmDispatcherService` المسؤولة عن توجيه التنبيهات الإدارية إلى فايرستور وقائمة إرسال الإشعارات وتنبيه الجلسات النشطة فورياً.
-  2. إضافة أذونات الخلفية `fetch` و `remote-notification` في `Info.plist` لنظام iOS، وتسجيل `UNUserNotificationCenterDelegate` في `AppDelegate.swift`.
-  3. إضافة إذن `RECEIVE_BOOT_COMPLETED` وتأكيد قناة التنبيهات القصوى `mahameek_urgent_alerts_v4` في `AndroidManifest.xml` لإيقاظ شاشة القفل.
-  4. ترقية كود تسجيل المشرف `registerAdminDevice`: زيادة المهلة إلى 15 ثانية، وانتظار توكن APNs في هواتف iOS، وحفظ شارة المشرف في `SharedPreferences`، وتخزين التوكن في مجموعات `admin_tokens` و `admin_fcm_tokens`.
-  5. تفعيل مراقب حي مباشر `startAdminLiveAlertsListener` في جلسة المشرف، لعرض الإشعارات المنبثقة فلاشياً وبالصوت أثناء فتح التطبيق.
-  6. ترقية حمولة Cloud Functions في `functions/index.js` بأعلى أولويات Apple و Google (`apns-priority: 10`, `content-available: 1`, `priority: max`) لتكون جاهزة فور الترقية لباقة Blaze.
+- **الحلول المعمارية المنفذة بالكامل مجاناً 100%:**
+  1. **محرك FCM HTTP v1 المباشر:** استخدام Google Service Account وتوليد توكنات OAuth2 لحظية لإرسال إشعارات رسمية إلى سيرفرات Google FCM (`fcm.googleapis.com/v1/projects/mahameek-47a1d/messages:send`) مجاناً بدون الحاجة إلى باقة Blaze أو Cloud Functions أو أي بطاقة دفع.
+  2. **حفظ مفاتيح الخدمة بأمان سحابي في Firestore:** تم تخزين الإعدادات المشفرة في مسار `app_config/fcm_credentials` في فايرستور، مع حماية مستودع GitHub من تسريب المفاتيح الخاصة واجتياز GitHub Push Protection بنجاح تام.
+  3. **أذونات نظام iOS:** إضافة أذونات الخلفية `fetch` و `remote-notification` في `Info.plist` لنظام iOS، وتسجيل `UNUserNotificationCenterDelegate` في `AppDelegate.swift`.
+  4. **أذونات نظام Android وشاشة القفل:** إضافة إذن `RECEIVE_BOOT_COMPLETED` وتأكيد قناة التنبيهات القصوى `mahameek_urgent_alerts_v4` بأعلى صوت واهتزاز وإظهار على شاشة القفل.
+  5. **تسجيل التوكن التلقائي للمشرف:** ترقية كود تسجيل المشرف `registerAdminDevice` لزيادة المهلة إلى 15 ثانية، وانتظار توكن APNs في هواتف iOS، وحفظ شارة المشرف في `SharedPreferences`، وتخزين التوكن في مجموعات `admin_tokens` و `admin_fcm_tokens`.
+  6. **مراقب حي مباشر (Live Listener):** تفعيل `startAdminLiveAlertsListener` في جلسة المشرف، لعرض الإشعارات المنبثقة فلاشياً وبالصوت أثناء فتح التطبيق.
 
 ---
 
