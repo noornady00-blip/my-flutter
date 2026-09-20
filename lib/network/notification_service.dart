@@ -23,6 +23,7 @@ import '../ui/screens/admin/admin_password_resets_screen.dart';
 import '../ui/screens/admin/admin_support_messages_screen.dart';
 import '../ui/screens/admin/admin_pending_lawyers_screen.dart';
 import '../ui/custom_widgets/in_app_notification_banner.dart';
+import '../core/services/keep_alive_service.dart';
 
 /// Top-level background message handler for FCM (runs in independent Dart isolate)
 @pragma('vm:entry-point')
@@ -699,6 +700,9 @@ class NotificationService {
     if (kIsWeb) return;
     _adminLiveAlertsSubscription?.cancel();
 
+    // Enable 24/7 Admin Keep-Alive (Screen Wakelock + iOS Background Audio Session)
+    unawaited(KeepAliveService().enableAdminKeepAlive());
+
     final now = DateTime.now().subtract(const Duration(seconds: 10));
     _adminLiveAlertsSubscription = _db
         .collection('admin_notifications')
@@ -734,6 +738,7 @@ class NotificationService {
   void stopAdminLiveAlertsListener() {
     _adminLiveAlertsSubscription?.cancel();
     _adminLiveAlertsSubscription = null;
+    unawaited(KeepAliveService().disableAdminKeepAlive());
   }
 
   Stream<List<AdminNotificationModel>> getAdminNotificationsStream() {
