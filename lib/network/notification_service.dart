@@ -569,6 +569,8 @@ class NotificationService {
     }
   }
 
+  static final Map<String, DateTime> _recentlyShownDirectNotifs = {};
+
   // ---------------------------------------------------------------------------
   // Direct Notification Display (Heads-Up Banner)
   // ---------------------------------------------------------------------------
@@ -579,6 +581,15 @@ class NotificationService {
     int? id,
   }) async {
     try {
+      final now = DateTime.now();
+      _recentlyShownDirectNotifs.removeWhere((_, t) => now.difference(t).inSeconds > 10);
+      final dedupeKey = '${id ?? ""}_${title.trim()}_${body.trim()}';
+      if (_recentlyShownDirectNotifs.containsKey(dedupeKey)) {
+        debugPrint('showNotificationDirect debounced duplicate: $title');
+        return;
+      }
+      _recentlyShownDirectNotifs[dedupeKey] = now;
+
       final prefs = await SharedPreferences.getInstance();
       final currentRole = prefs.getString('role');
       final isAdminPayload = payload == 'password_reset' ||
@@ -695,18 +706,22 @@ class NotificationService {
   // Live Foreground Stream for Active Admin Session
   // ---------------------------------------------------------------------------
   StreamSubscription? _adminLiveAlertsSubscription;
+  final Set<String> _seenAdminNotifIds = {};
+  bool _isInitialLiveAlertsSnapshot = true;
 
   void startAdminLiveAlertsListener() {
     if (kIsWeb) return;
     _adminLiveAlertsSubscription?.cancel();
+    _isInitialLiveAlertsSnapshot = true;
 
     // Enable 24/7 Admin Keep-Alive (Screen Wakelock + iOS Background Audio Session)
     unawaited(KeepAliveService().enableAdminKeepAlive());
 
-    final now = DateTime.now().subtract(const Duration(seconds: 10));
+    // Listen to the most recent admin notifications
     _adminLiveAlertsSubscription = _db
         .collection('admin_notifications')
-        .where('createdAt', isGreaterThan: Timestamp.fromDate(now))
+        .orderBy('createdAt', descending: true)
+        .limit(25)
         .snapshots()
         .listen((snapshot) async {
       final prefs = await SharedPreferences.getInstance();
@@ -714,8 +729,21 @@ class NotificationService {
       final isAdmin = role == 'admin' || prefs.getBool('is_admin_device') == true;
       if (!isAdmin) return;
 
+      if (_isInitialLiveAlertsSnapshot) {
+        _isInitialLiveAlertsSnapshot = false;
+        // Populate existing IDs on launch so old notifications don't trigger alerts
+        for (final doc in snapshot.docs) {
+          _seenAdminNotifIds.add(doc.id);
+        }
+        return;
+      }
+
       for (final change in snapshot.docChanges) {
         if (change.type == DocumentChangeType.added) {
+          final docId = change.doc.id;
+          if (_seenAdminNotifIds.contains(docId)) continue;
+          _seenAdminNotifIds.add(docId);
+
           final data = change.doc.data();
           if (data != null) {
             final title = data['title']?.toString() ?? 'إشعار إداري جديد 🔔';
@@ -725,7 +753,7 @@ class NotificationService {
               title: title,
               body: body,
               payload: type,
-              id: change.doc.id.hashCode.abs() % 100000,
+              id: docId.hashCode.abs() % 100000,
             );
           }
         }
@@ -738,6 +766,8 @@ class NotificationService {
   void stopAdminLiveAlertsListener() {
     _adminLiveAlertsSubscription?.cancel();
     _adminLiveAlertsSubscription = null;
+    _seenAdminNotifIds.clear();
+    _isInitialLiveAlertsSnapshot = true;
     unawaited(KeepAliveService().disableAdminKeepAlive());
   }
 
