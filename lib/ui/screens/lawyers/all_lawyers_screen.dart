@@ -9,7 +9,8 @@ import '../../../core/utils/search_utils.dart';
 
 class AllLawyersScreen extends StatefulWidget {
   final VoidCallback? onOpenDrawer;
-  const AllLawyersScreen({super.key, this.onOpenDrawer});
+  final String? initialSpecialization;
+  const AllLawyersScreen({super.key, this.onOpenDrawer, this.initialSpecialization});
 
   @override
   State<AllLawyersScreen> createState() => _AllLawyersScreenState();
@@ -19,23 +20,16 @@ class _AllLawyersScreenState extends State<AllLawyersScreen> {
   final TextEditingController _searchController = TextEditingController();
   final FirestoreService _firestoreService = FirestoreService();
   String _searchQuery = '';
-  String _selectedSpec = 'الكل';
+  late String _selectedSpec;
 
-  final List<String> _specializations = [
-    'الكل',
-    'جنائي',
-    'مدني',
-    'شرعي وتوثيق',
-    'تجاري وشركات',
-    'عقارات وأراضي',
-    'عمالي وإداري',
-  ];
+  final List<String> _specializations = LawyerSpecializations.filterList;
 
   late final Stream<List<LawyerModel>> _lawyersStream;
 
   @override
   void initState() {
     super.initState();
+    _selectedSpec = widget.initialSpecialization ?? 'الكل';
     _lawyersStream = _firestoreService.getApprovedLawyers();
   }
 
@@ -54,7 +48,7 @@ class _AllLawyersScreenState extends State<AllLawyersScreen> {
         l.specialization,
         l.phone,
       ]);
-      final matchesSpec = _selectedSpec == 'الكل' || l.specialization == _selectedSpec;
+      final matchesSpec = LawyerSpecializations.matches(l.specialization, _selectedSpec);
       return isApproved && matchesSearch && matchesSpec;
     }).toList();
   }

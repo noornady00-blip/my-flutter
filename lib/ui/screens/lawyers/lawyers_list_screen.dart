@@ -8,7 +8,8 @@ import '../../../core/utils/search_utils.dart';
 
 class LawyersListScreen extends StatefulWidget {
   final String city;
-  const LawyersListScreen({super.key, required this.city});
+  final String? initialSpecialization;
+  const LawyersListScreen({super.key, required this.city, this.initialSpecialization});
 
   @override
   State<LawyersListScreen> createState() => _LawyersListScreenState();
@@ -17,24 +18,17 @@ class LawyersListScreen extends StatefulWidget {
 class _LawyersListScreenState extends State<LawyersListScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
-  String _selectedSpec = 'الكل';
+  late String _selectedSpec;
   final _firestoreService = FirestoreService();
   late final Stream<List<LawyerModel>> _lawyersStream;
   List<LawyerModel>? _initialLawyers;
 
-  static const List<String> _specializations = [
-    'الكل',
-    'جنائي',
-    'مدني',
-    'شرعي وتوثيق',
-    'تجاري وشركات',
-    'عقارات وأراضي',
-    'عمالي وإداري',
-  ];
+  static const List<String> _specializations = LawyerSpecializations.filterList;
 
   @override
   void initState() {
     super.initState();
+    _selectedSpec = widget.initialSpecialization ?? 'الكل';
     _lawyersStream = _firestoreService.getLawyersByCity(widget.city);
     final inMem = FirestoreService.inMemoryApprovedLawyers;
     if (inMem != null && inMem.isNotEmpty) {
@@ -59,7 +53,7 @@ class _LawyersListScreenState extends State<LawyersListScreen> {
         l.city,
         l.phone,
       ]);
-      final matchesSpec = _selectedSpec == 'الكل' || l.specialization == _selectedSpec;
+      final matchesSpec = LawyerSpecializations.matches(l.specialization, _selectedSpec);
       return isApproved && matchesQuery && matchesSpec;
     }).toList();
   }

@@ -54,18 +54,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
     'كادقلي',
   ];
 
-  final List<String> _specializations = const [
-    'قانون جنائي',
-    'قانون مدني',
-    'شرعي وأحوال شخصية وتوثيق',
-    'تجاري وشركات واستثمار',
-    'عقارات وأراضي وتسجيلات',
-    'عمالي وإداري ومظالم',
-    'قانون دولي وحقوق إنسان',
-    'ملكية فكرية وبراءات اختراع',
-    'قضايا مصرفية ومالية',
-    'استشارات عامة وقضايا متنوعة',
-  ];
+  final List<String> _specializations = LawyerSpecializations.list;
 
   @override
   void initState() {
@@ -397,24 +386,66 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
         title: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const AppLogoBadge(height: 28, withPillBackground: true),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (Navigator.canPop(context)) ...[
+                  InkWell(
+                    onTap: () => Navigator.pop(context),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.28),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.55),
+                          width: 1.2,
+                        ),
+                      ),
+                      child: const Center(
+                        child: Icon(
+                          Icons.arrow_forward_ios_rounded,
+                          color: Color(0xFF0B2A5B),
+                          size: 16,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                ],
+                const AppLogoBadge(height: 28, withPillBackground: true, isGlass: true),
+              ],
+            ),
             Flexible(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.25),
-                  borderRadius: BorderRadius.circular(12),
+                  color: Colors.white.withValues(alpha: 0.28),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.55),
+                    width: 1.2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.shield_rounded, color: Color(0xFF0B2A5B), size: 15),
-                    const SizedBox(width: 4),
+                    const Icon(Icons.shield_rounded, color: Color(0xFF0B2A5B), size: 16),
+                    const SizedBox(width: 6),
                     Flexible(
                       child: Text(
                         'مكتب المحامي',
                         style: GoogleFonts.cairo(
-                          fontSize: 12,
+                          fontSize: 12.5,
                           fontWeight: FontWeight.w800,
                           color: const Color(0xFF0B2A5B),
                         ),

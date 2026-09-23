@@ -28,17 +28,65 @@ class SudanCities {
 /// Standard lawyer specialization categories.
 class LawyerSpecializations {
   static const List<String> list = [
-    'محامي عام',
-    'قانون الأسرة والأحوال الشخصية',
-    'القانون التجاري والشركات',
-    'قانون العقارات والعقود',
-    'القانون الجنائي',
-    'قانون العمل والتأمينات',
-    'القانون الدولي',
-    'قانون الملكية الفكرية',
-    'القانون الإداري',
-    'قانون المصارف والتمويل',
-    'قانون الميراث والوصايا',
-    'قانون حقوق الإنسان',
+    'قانون جنائي',
+    'قانون مدني',
+    'شرعي وأحوال شخصية وتوثيق',
+    'تجاري وشركات واستثمار',
+    'عقارات وأراضي وتسجيلات',
+    'عمالي وإداري ومظالم',
+    'قانون دولي وحقوق إنسان',
+    'ملكية فكرية وبراءات اختراع',
+    'قضايا مصرفية ومالية',
+    'استشارات عامة وقضايا متنوعة',
   ];
+
+  static const List<String> filterList = [
+    'الكل',
+    'قانون جنائي',
+    'قانون مدني',
+    'شرعي وأحوال شخصية وتوثيق',
+    'تجاري وشركات واستثمار',
+    'عقارات وأراضي وتسجيلات',
+    'عمالي وإداري ومظالم',
+    'قانون دولي وحقوق إنسان',
+    'ملكية فكرية وبراءات اختراع',
+    'قضايا مصرفية ومالية',
+    'استشارات عامة وقضايا متنوعة',
+  ];
+
+  /// Intelligent matching that supports exact matches, cleaned prefixes, and semantic keyword matching.
+  static bool matches(String? lawyerSpec, String selectedFilter) {
+    if (selectedFilter == 'الكل' || selectedFilter.trim().isEmpty) return true;
+    if (lawyerSpec == null || lawyerSpec.trim().isEmpty) return false;
+
+    final trimmedLawyer = lawyerSpec.trim();
+    final trimmedFilter = selectedFilter.trim();
+    if (trimmedLawyer == trimmedFilter) return true;
+
+    // Remove common prefixes
+    String clean(String s) => s
+        .replaceAll('قانون ', '')
+        .replaceAll('القانون ', '')
+        .replaceAll('قضايا ', '')
+        .trim();
+
+    final cLawyer = clean(trimmedLawyer);
+    final cFilter = clean(trimmedFilter);
+    if (cLawyer == cFilter || cLawyer.contains(cFilter) || cFilter.contains(cLawyer)) {
+      return true;
+    }
+
+    // Keyword matching for compound categories (e.g. شركات, عقارات, جنائي, مدني, شرعي, عمالي, مصرفية)
+    final filterWords = cFilter
+        .split(RegExp(r'[\s،و]+'))
+        .where((w) => w.length >= 3 && w != 'عام' && w != 'عامة')
+        .toList();
+
+    for (final word in filterWords) {
+      if (trimmedLawyer.contains(word)) return true;
+    }
+
+    return false;
+  }
 }
+
