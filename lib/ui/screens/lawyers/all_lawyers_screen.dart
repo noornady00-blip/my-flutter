@@ -73,7 +73,7 @@ class _AllLawyersScreenState extends State<AllLawyersScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             const AppLogoBadge(
-              height: 30,
+              height: 26,
               withPillBackground: true,
             ),
             Container(

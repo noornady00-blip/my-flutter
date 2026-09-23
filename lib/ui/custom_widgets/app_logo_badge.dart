@@ -15,7 +15,7 @@ class AppLogoBadge extends StatelessWidget {
 
   const AppLogoBadge({
     super.key,
-    this.height = 30,
+    this.height = 26,
     this.withPillBackground = true,
     this.isGlass = false,
   });
@@ -43,7 +43,7 @@ class AppLogoBadge extends StatelessWidget {
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: isGlass
             ? Colors.white.withValues(alpha: 0.28)

@@ -238,9 +238,8 @@ class _CitiesScreenState extends State<CitiesScreen> {
         children: [
           // Left side: Official Logo with soft, eye-pleasing white pill container
           const AppLogoBadge(
-            height: 30,
+            height: 26,
             withPillBackground: true,
-            isGlass: true,
           ),
 
           // Right side: Hamburger Menu Button

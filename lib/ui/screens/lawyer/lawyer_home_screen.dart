@@ -415,7 +415,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
                   ),
                   const SizedBox(width: 10),
                 ],
-                const AppLogoBadge(height: 28, withPillBackground: true, isGlass: true),
+                const AppLogoBadge(height: 25, withPillBackground: true),
               ],
             ),
             Flexible(

@@ -782,7 +782,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(height: 4),
             Text(
-              'الإصدار 2.4.0 (2026)',
+              'الإصدار 1.0.0 (2026)',
               style: GoogleFonts.cairo(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w600,
@@ -905,7 +905,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             const AppLogoBadge(
-              height: 30,
+              height: 26,
               withPillBackground: true,
             ),
             if (widget.isStandalone)

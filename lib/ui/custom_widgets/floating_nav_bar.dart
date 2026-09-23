@@ -52,7 +52,7 @@ class FloatingNavBar extends StatelessWidget {
         : 0.0;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+      padding: const EdgeInsets.fromLTRB(14, 0, 14, 22),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(22),
         child: BackdropFilter(
