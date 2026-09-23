@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../network/auth_service.dart';
 import '../../network/notification_service.dart';
 import '../../core/utils/navigation_utils.dart';
+import '../../core/utils/phone_utils.dart';
 import 'app_logo_badge.dart';
 import '../screens/admin/admin_dashboard.dart';
 import '../screens/auth/login_screen.dart';
@@ -154,8 +155,8 @@ class _AppDrawerState extends State<AppDrawer> {
   }
 
   Widget _buildAvatar() {
-    // 1. Check local file on device (fastest, zero network delay)
-    if (_photoPath != null && _photoPath!.trim().isNotEmpty) {
+    // 1. Check local file on device (fastest, zero network delay) — not supported on web
+    if (!kIsWeb && _photoPath != null && _photoPath!.trim().isNotEmpty) {
       try {
         final file = File(_photoPath!.trim());
         if (file.existsSync()) {
@@ -470,9 +471,9 @@ class _AppDrawerState extends State<AppDrawer> {
                 onPressed: loading
                     ? null
                     : () async {
-                        final oldP = oldPassCtrl.text;
-                        final newP = newPassCtrl.text;
-                        final confP = confirmPassCtrl.text;
+                        final oldP = PhoneUtils.normalizeDigits(oldPassCtrl.text.trim());
+                        final newP = PhoneUtils.normalizeDigits(newPassCtrl.text.trim());
+                        final confP = PhoneUtils.normalizeDigits(confirmPassCtrl.text.trim());
 
                         if (oldP.isEmpty || newP.isEmpty || confP.isEmpty) {
                           setModalState(() => error = 'يرجى تعبئة كافة الحقول المطلوبة');
@@ -492,26 +493,36 @@ class _AppDrawerState extends State<AppDrawer> {
                           error = null;
                         });
 
-                        final res = await AuthService().reauthenticateAndChangePassword(
-                          currentPassword: oldP,
-                          newPassword: newP,
-                        );
+                        Map<String, dynamic> res;
+                        try {
+                          res = await AuthService().reauthenticateAndChangePassword(
+                            currentPassword: oldP,
+                            newPassword: newP,
+                          );
+                        } catch (e) {
+                          res = {'success': false, 'error': 'حدث خطأ غير متوقع، يرجى المحاولة مجدداً'};
+                        }
 
-                        if (!mounted) return;
-                        setModalState(() => loading = false);
+                        // Always reset loading first, then check mounted
+                        setModalState(() {
+                          loading = false;
+                          if (res['success'] != true) {
+                            error = res['error']?.toString() ?? 'تعذر تغيير كلمة المرور';
+                          }
+                        });
 
                         if (res['success'] == true) {
                           if (modalCtx.mounted) Navigator.pop(modalCtx);
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('تم تغيير كلمة المرور بنجاح!', style: GoogleFonts.cairo()),
-                                backgroundColor: const Color(0xFF10B981),
-                              ),
-                            );
-                          }
-                        } else {
-                          setModalState(() => error = res['error'] ?? 'تعذر تغيير كلمة المرور');
+                          if (!mounted) return;
+                          Navigator.of(context).pop();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('تم تغيير كلمة المرور بنجاح!', style: GoogleFonts.cairo(fontWeight: FontWeight.w700)),
+                              backgroundColor: const Color(0xFF10B981),
+                              behavior: SnackBarBehavior.floating,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                          );
                         }
                       },
                 style: ElevatedButton.styleFrom(
@@ -626,10 +637,24 @@ class _AppDrawerState extends State<AppDrawer> {
             OutlinedButton.icon(
               onPressed: () {
                 Navigator.pop(sheetCtx);
+                NotificationService.openAutoStartSettings();
+              },
+              icon: const Icon(Icons.bolt_rounded, size: 18, color: Color(0xFFD97706)),
+              label: Text('إعداد التشغيل التلقائي والبطارية (شاومي / ريدمي / سامسونج)', style: GoogleFonts.cairo(fontWeight: FontWeight.w700, fontSize: 13, color: const Color(0xFF0B2A5B))),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 13),
+                side: const BorderSide(color: Color(0xFFCBD5E1)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: () {
+                Navigator.pop(sheetCtx);
                 NotificationService.openNotificationSettings();
               },
               icon: const Icon(Icons.settings_suggest_rounded, size: 18, color: Color(0xFF0B2A5B)),
-              label: Text('فتح إعدادات النظام للهاتف (لشاومي / ريدمي)', style: GoogleFonts.cairo(fontWeight: FontWeight.w700, fontSize: 13, color: const Color(0xFF0B2A5B))),
+              label: Text('فتح إعدادات قنوات النظام (تنبيهات منبثقة)', style: GoogleFonts.cairo(fontWeight: FontWeight.w700, fontSize: 13, color: const Color(0xFF0B2A5B))),
               style: OutlinedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 13),
                 side: const BorderSide(color: Color(0xFFCBD5E1)),

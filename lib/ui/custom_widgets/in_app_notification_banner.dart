@@ -222,22 +222,33 @@ class _InAppNotificationWidgetState extends State<_InAppNotificationWidget>
                               Row(
                                 children: [
                                   Container(
-                                    padding: const EdgeInsets.all(4),
+                                    width: 22,
+                                    height: 22,
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFF0B2A5B),
                                       borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: const Color(0xFFD49B1A),
+                                        width: 1,
+                                      ),
                                     ),
-                                    child: const Icon(
-                                      Icons.balance_rounded,
-                                      size: 13,
-                                      color: Color(0xFFD49B1A),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(5),
+                                      child: Image.asset(
+                                        'assets/images/app_icon.png',
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, _, _) => const Icon(
+                                          Icons.balance_rounded,
+                                          size: 13,
+                                          color: Color(0xFFD49B1A),
+                                        ),
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(width: 7),
                                   Text(
                                     'منصة محاميك',
                                     style: GoogleFonts.cairo(
-                                      fontSize: 11.5,
+                                      fontSize: 12,
                                       fontWeight: FontWeight.w800,
                                       color: const Color(0xFF0B2A5B),
                                     ),
@@ -255,9 +266,9 @@ class _InAppNotificationWidgetState extends State<_InAppNotificationWidget>
                                   Text(
                                     typeLabel,
                                     style: GoogleFonts.cairo(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: const Color(0xFF64748B),
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: const Color(0xFFD49B1A),
                                     ),
                                   ),
                                   const Spacer(),
@@ -267,7 +278,7 @@ class _InAppNotificationWidgetState extends State<_InAppNotificationWidget>
                                     child: const Padding(
                                       padding: EdgeInsets.all(3),
                                       child: Icon(Icons.close_rounded,
-                                          size: 17, color: Color(0xFF94A3B8)),
+                                          size: 18, color: Color(0xFF94A3B8)),
                                     ),
                                   ),
                                 ],
@@ -276,27 +287,66 @@ class _InAppNotificationWidgetState extends State<_InAppNotificationWidget>
                               Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Container(
-                                    width: 42,
-                                    height: 42,
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF0B2A5B),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: const Color(0xFFD49B1A)
-                                            .withValues(alpha: 0.4),
-                                        width: 1,
+                                  Stack(
+                                    clipBehavior: Clip.none,
+                                    children: [
+                                      Container(
+                                        width: 44,
+                                        height: 44,
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF0B2A5B),
+                                          borderRadius: BorderRadius.circular(12),
+                                          border: Border.all(
+                                            color: const Color(0xFFD49B1A)
+                                                .withValues(alpha: 0.5),
+                                            width: 1.2,
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: const Color(0xFF0B2A5B).withValues(alpha: 0.15),
+                                              blurRadius: 8,
+                                              offset: const Offset(0, 3),
+                                            ),
+                                          ],
+                                        ),
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(10),
+                                          child: Image.asset(
+                                            'assets/images/app_icon.png',
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (_, _, _) => Center(
+                                              child: Icon(
+                                                typeIcon,
+                                                color: const Color(0xFFD49B1A),
+                                                size: 22,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
                                       ),
-                                    ),
-                                    child: Center(
-                                      child: Icon(
-                                        typeIcon,
-                                        color: const Color(0xFFD49B1A),
-                                        size: 21,
+                                      Positioned(
+                                        bottom: -2,
+                                        left: -2,
+                                        child: Container(
+                                          padding: const EdgeInsets.all(3),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF0B2A5B),
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                              color: const Color(0xFFD49B1A),
+                                              width: 1,
+                                            ),
+                                          ),
+                                          child: Icon(
+                                            typeIcon,
+                                            size: 10,
+                                            color: const Color(0xFFD49B1A),
+                                          ),
+                                        ),
                                       ),
-                                    ),
+                                    ],
                                   ),
-                                  const SizedBox(width: 11),
+                                  const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment:

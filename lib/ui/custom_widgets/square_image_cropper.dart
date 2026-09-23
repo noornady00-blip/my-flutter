@@ -169,9 +169,14 @@ class _SquareImageCropperState extends State<SquareImageCropper> {
     _recenterImage();
   }
 
+  String? _cropError;
+
   Future<void> _onSave() async {
     if (_isProcessing) return;
-    setState(() => _isProcessing = true);
+    setState(() {
+      _isProcessing = true;
+      _cropError = null;
+    });
 
     try {
       final boundary = _cropAreaKey.currentContext?.findRenderObject()
@@ -193,12 +198,11 @@ class _SquareImageCropperState extends State<SquareImageCropper> {
       final Uint8List croppedBytes = byteData.buffer.asUint8List();
       final String b64String = base64Encode(croppedBytes);
 
-      final tempDir = Directory.systemTemp;
-      final tempFile = File(
-          '${tempDir.path}/cropped_profile_${DateTime.now().millisecondsSinceEpoch}.png');
-      await tempFile.writeAsBytes(croppedBytes);
-
-      final xFile = XFile(tempFile.path);
+      final xFile = XFile.fromData(
+        croppedBytes,
+        mimeType: 'image/png',
+        name: 'cropped_profile_${DateTime.now().millisecondsSinceEpoch}.png',
+      );
 
       if (mounted) {
         Navigator.of(context).pop(CroppedImageResult(
@@ -209,27 +213,10 @@ class _SquareImageCropperState extends State<SquareImageCropper> {
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _isProcessing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              textDirection: TextDirection.rtl,
-              children: [
-                const Icon(Icons.error_outline_rounded,
-                    color: Colors.white, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'حدث خطأ أثناء حفظ الصورة: $e',
-                    style: GoogleFonts.cairo(
-                        fontSize: 13, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: const Color(0xFFDC2626),
-          ),
-        );
+        setState(() {
+          _isProcessing = false;
+          _cropError = 'حدث خطأ أثناء حفظ واقتصاص الصورة: $e';
+        });
       }
     }
   }
@@ -575,7 +562,43 @@ class _SquareImageCropperState extends State<SquareImageCropper> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 14),
+                if (_cropError != null) ...[
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 9),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFDC2626).withValues(alpha: 0.22),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: const Color(0xFFEF4444).withValues(alpha: 0.7),
+                        width: 1.2,
+                      ),
+                    ),
+                    child: Row(
+                      textDirection: TextDirection.rtl,
+                      children: [
+                        const Icon(
+                          Icons.error_outline_rounded,
+                          color: Color(0xFFEF4444),
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _cropError!,
+                            textDirection: TextDirection.rtl,
+                            style: GoogleFonts.cairo(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
 
                 // Bottom Action Buttons (100% Overflow-Safe)
                 Row(

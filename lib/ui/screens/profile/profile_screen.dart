@@ -1,5 +1,5 @@
-import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -18,6 +18,7 @@ import '../auth/auth_gateway_screen.dart';
 import 'contact_admin_screen.dart';
 import '../../../core/utils/phone_utils.dart';
 import '../../../core/utils/navigation_utils.dart';
+import '../../../core/utils/image_utils.dart';
 
 class ProfileScreen extends StatefulWidget {
   final bool isStandalone;
@@ -595,15 +596,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onPressed: loading
                       ? null
                       : () async {
-                          if (oldPassCtrl.text.isEmpty) {
+                          if (oldPassCtrl.text.trim().isEmpty) {
                             setModalState(() => error = 'يرجى إدخال كلمة المرور الحالية');
                             return;
                           }
-                          if (newPassCtrl.text.length < 6) {
+                          if (newPassCtrl.text.trim().length < 6) {
                             setModalState(() => error = 'كلمة المرور يجب أن تكون 6 أحرف على الأقل');
                             return;
                           }
-                          if (newPassCtrl.text != confirmPassCtrl.text) {
+                          if (newPassCtrl.text.trim() != confirmPassCtrl.text.trim()) {
                             setModalState(() => error = 'كلمة المرور غير متطابقة');
                             return;
                           }
@@ -613,35 +614,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             error = null;
                           });
 
+                          Map<String, dynamic> res;
                           try {
-                            final res = await _authService.reauthenticateAndChangePassword(
-                              currentPassword: oldPassCtrl.text,
-                              newPassword: newPassCtrl.text,
+                            res = await _authService.reauthenticateAndChangePassword(
+                              currentPassword: PhoneUtils.normalizeDigits(oldPassCtrl.text.trim()),
+                              newPassword: PhoneUtils.normalizeDigits(newPassCtrl.text.trim()),
                             );
-                            if (!mounted) return;
-                            if (res['success'] == true) {
-                              if (ctx.mounted) {
-                                Navigator.of(ctx).pop();
-                              }
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('تم تغيير كلمة المرور بنجاح!', style: GoogleFonts.cairo()),
-                                    backgroundColor: const Color(0xFF10B981),
-                                  ),
-                                );
-                              }
-                            } else {
-                              setModalState(() {
-                                loading = false;
-                                error = res['error'] ?? 'حدث خطأ، يرجى التأكد من كلمة المرور الحالية';
-                              });
-                            }
                           } catch (e) {
-                            setModalState(() {
-                              loading = false;
-                              error = 'حدث خطأ، يرجى إعادة تسجيل الدخول والمحاولة مجدداً';
-                            });
+                            res = {'success': false, 'error': 'حدث خطأ غير متوقع، يرجى المحاولة مجدداً'};
+                          }
+
+                          // Always reset loading regardless of mount state
+                          setModalState(() {
+                            loading = false;
+                            if (res['success'] != true) {
+                              error = res['error']?.toString() ??
+                                  'حدث خطأ، يرجى التأكد من كلمة المرور الحالية';
+                            }
+                          });
+
+                          if (res['success'] == true) {
+                            if (ctx.mounted) Navigator.of(ctx).pop();
+                            if (mounted && context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('تم تغيير كلمة المرور بنجاح!',
+                                      style: GoogleFonts.cairo(fontWeight: FontWeight.w700)),
+                                  backgroundColor: const Color(0xFF10B981),
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                              );
+                            }
                           }
                         },
                   style: ElevatedButton.styleFrom(
@@ -1219,39 +1223,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ],
                             ),
                             child: ClipOval(
-                              child: _photoUrl != null && _photoUrl!.isNotEmpty
-                                  ? (_photoUrl!.startsWith('data:image')
-                                      ? Image.memory(
-                                          base64Decode(_photoUrl!.split(',').last),
-                                          width: 104,
-                                          height: 104,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (context, error, stackTrace) => _buildFallbackAvatar(),
-                                        )
-                                      : Image.network(
-                                          _photoUrl!,
-                                          width: 104,
-                                          height: 104,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (context, error, stackTrace) => _buildFallbackAvatar(),
-                                        ))
-                                  : (_photoBase64 != null && _photoBase64!.isNotEmpty
-                                      ? Image.memory(
-                                          base64Decode(_photoBase64!),
-                                          width: 104,
-                                          height: 104,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (context, error, stackTrace) => _buildFallbackAvatar(),
-                                        )
-                                      : (_photoPath != null && File(_photoPath!).existsSync()
-                                          ? Image.file(
-                                              File(_photoPath!),
-                                              width: 104,
-                                              height: 104,
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (context, error, stackTrace) => _buildFallbackAvatar(),
-                                            )
-                                          : _buildFallbackAvatar())),
+                              child: (!kIsWeb && _photoPath != null && File(_photoPath!).existsSync())
+                                  ? Image.file(
+                                      File(_photoPath!),
+                                      width: 104,
+                                      height: 104,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (context, error, stackTrace) => _buildFallbackAvatar(),
+                                    )
+                                  : AppImageUtils.buildAvatarImage(
+                                      photoBase64: _photoBase64,
+                                      photoUrl: _photoUrl,
+                                      width: 104,
+                                      height: 104,
+                                      fallback: _buildFallbackAvatar(),
+                                    ),
                             ),
                           ),
                         ),

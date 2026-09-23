@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -6,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/utils/search_utils.dart';
 import '../../../core/utils/phone_utils.dart';
+import '../../../core/utils/image_utils.dart';
 import '../../../data/models/lawyer.dart';
 import '../../../data/models/user_model.dart';
 import '../../../data/models/password_reset_model.dart';
@@ -1279,43 +1279,19 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
   }
 
   Widget _buildLawyerAvatarContent(LawyerModel l) {
-    if (l.photoBase64 != null && l.photoBase64!.isNotEmpty) {
-      try {
-        return Image.memory(
-          base64Decode(l.photoBase64!),
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) => _buildFallbackLetter(l.name, const Color(0xFFFFFBEB), const Color(0xFFD49B1A)),
-        );
-      } catch (_) {}
-    }
-    if (l.photoUrl != null && l.photoUrl!.isNotEmpty && l.photoUrl != 'default') {
-      return Image.network(
-        l.photoUrl!,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => _buildFallbackLetter(l.name, const Color(0xFFFFFBEB), const Color(0xFFD49B1A)),
-      );
-    }
-    return _buildFallbackLetter(l.name, const Color(0xFFFFFBEB), const Color(0xFFD49B1A));
+    return AppImageUtils.buildAvatarImage(
+      photoBase64: l.photoBase64,
+      photoUrl: l.photoUrl,
+      fallback: _buildFallbackLetter(l.name, const Color(0xFFFFFBEB), const Color(0xFFD49B1A)),
+    );
   }
 
   Widget _buildClientAvatarContent(UserModel c) {
-    if (c.photoBase64 != null && c.photoBase64!.isNotEmpty) {
-      try {
-        return Image.memory(
-          base64Decode(c.photoBase64!),
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) => _buildFallbackLetter(c.name, const Color(0xFFEFF6FF), const Color(0xFF2563EB)),
-        );
-      } catch (_) {}
-    }
-    if (c.photoUrl != null && c.photoUrl!.isNotEmpty && c.photoUrl != 'default') {
-      return Image.network(
-        c.photoUrl!,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => _buildFallbackLetter(c.name, const Color(0xFFEFF6FF), const Color(0xFF2563EB)),
-      );
-    }
-    return _buildFallbackLetter(c.name, const Color(0xFFEFF6FF), const Color(0xFF2563EB));
+    return AppImageUtils.buildAvatarImage(
+      photoBase64: c.photoBase64,
+      photoUrl: c.photoUrl,
+      fallback: _buildFallbackLetter(c.name, const Color(0xFFEFF6FF), const Color(0xFF2563EB)),
+    );
   }
 
   Widget _buildFallbackLetter(String name, Color bg, Color textCol) {

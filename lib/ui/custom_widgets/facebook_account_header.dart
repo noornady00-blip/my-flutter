@@ -4,7 +4,6 @@
 // Displays user profile picture, display name, verification badge, and details modal trigger.
 // ==============================================================================
 
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -13,6 +12,7 @@ import '../../data/models/lawyer.dart';
 import '../../data/models/user_model.dart';
 import '../../network/auth_service.dart';
 import '../../core/utils/phone_utils.dart';
+import '../../core/utils/image_utils.dart';
 import 'profile_details_modal.dart';
 
 /// Social header component rendering avatar, badges, and user info with modal tap handler.
@@ -76,30 +76,29 @@ class _FacebookAccountHeaderState extends State<FacebookAccountHeader> {
       }
 
       try {
-        final userDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(targetUid)
-            .get();
-        if (userDoc.exists && userDoc.data() != null) {
-          final res = {
-            'uid': targetUid,
-            'role': userDoc.data()?['role']?.toString() ?? 'client',
-            'data': userDoc.data()!,
-          };
-          FacebookAccountHeader._uidCache[targetUid] = res;
-          if (mounted) setState(() => _accountData = res);
-          return;
-        }
+        final results = await Future.wait([
+          FirebaseFirestore.instance.collection('users').doc(targetUid).get(),
+          FirebaseFirestore.instance.collection('lawyers').doc(targetUid).get(),
+        ]);
+        final userDoc = results[0];
+        final lawyerDoc = results[1];
 
-        final lawyerDoc = await FirebaseFirestore.instance
-            .collection('lawyers')
-            .doc(targetUid)
-            .get();
-        if (lawyerDoc.exists && lawyerDoc.data() != null) {
+        final hasLawyer = lawyerDoc.exists && lawyerDoc.data() != null;
+        final hasUser = userDoc.exists && userDoc.data() != null;
+
+        if (hasLawyer || hasUser) {
+          final isLawyer = hasLawyer && (lawyerDoc.data()?['status'] != 'deleted');
+          final primaryDoc = isLawyer ? lawyerDoc : userDoc;
+          final fallbackDoc = isLawyer ? userDoc : lawyerDoc;
+
+          final mergedData = Map<String, dynamic>.from(fallbackDoc.data() ?? {});
+          mergedData.addAll(primaryDoc.data() ?? {});
+
+          final role = isLawyer ? 'lawyer' : (mergedData['role']?.toString() ?? 'client');
           final res = {
             'uid': targetUid,
-            'role': 'lawyer',
-            'data': lawyerDoc.data()!,
+            'role': role,
+            'data': mergedData,
           };
           FacebookAccountHeader._uidCache[targetUid] = res;
           if (mounted) setState(() => _accountData = res);
@@ -122,14 +121,39 @@ class _FacebookAccountHeaderState extends State<FacebookAccountHeader> {
 
     try {
       final res = await AuthService().checkPhoneRegistration(clean);
-      FacebookAccountHeader._accountCache[clean] = res;
-      if (res != null && res['uid'] != null) {
-        FacebookAccountHeader._uidCache[res['uid'].toString()] = res;
-      }
-      if (mounted) {
-        setState(() {
-          _accountData = res;
-        });
+      if (res != null) {
+        final targetUid = res['uid']?.toString() ?? '';
+        final role = res['role']?.toString() ?? '';
+        final data = Map<String, dynamic>.from(res['data'] as Map<String, dynamic>? ?? {});
+
+        // Fetch full profile document if photoBase64 is missing
+        if (targetUid.isNotEmpty &&
+            (data['photoBase64'] == null || data['photoBase64'].toString().trim().isEmpty)) {
+          try {
+            if (role == 'lawyer') {
+              final lDoc = await FirebaseFirestore.instance.collection('lawyers').doc(targetUid).get();
+              if (lDoc.exists && lDoc.data() != null) data.addAll(lDoc.data()!);
+            } else {
+              final uDoc = await FirebaseFirestore.instance.collection('users').doc(targetUid).get();
+              if (uDoc.exists && uDoc.data() != null) data.addAll(uDoc.data()!);
+            }
+          } catch (_) {}
+        }
+
+        final fullRes = {
+          'uid': targetUid,
+          'role': role,
+          'data': data,
+        };
+        FacebookAccountHeader._accountCache[clean] = fullRes;
+        if (targetUid.isNotEmpty) {
+          FacebookAccountHeader._uidCache[targetUid] = fullRes;
+        }
+        if (mounted) {
+          setState(() {
+            _accountData = fullRes;
+          });
+        }
       }
     } catch (_) {}
   }
@@ -186,36 +210,15 @@ class _FacebookAccountHeaderState extends State<FacebookAccountHeader> {
 
   Widget _buildAvatar(
       String? photoBase64, String? photoUrl, String name, double size) {
-    if (photoBase64 != null && photoBase64.trim().isNotEmpty) {
-      try {
-        final bytes = base64Decode(photoBase64.trim());
-        return ClipOval(
-          child: Image.memory(
-            bytes,
-            width: size,
-            height: size,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) =>
-                _buildFallbackInitial(name, size),
-          ),
-        );
-      } catch (_) {}
-    }
-
-    if (photoUrl != null && photoUrl.trim().isNotEmpty) {
-      return ClipOval(
-        child: Image.network(
-          photoUrl.trim(),
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) =>
-              _buildFallbackInitial(name, size),
-        ),
-      );
-    }
-
-    return _buildFallbackInitial(name, size);
+    return ClipOval(
+      child: AppImageUtils.buildAvatarImage(
+        photoBase64: photoBase64,
+        photoUrl: photoUrl,
+        width: size,
+        height: size,
+        fallback: _buildFallbackInitial(name, size),
+      ),
+    );
   }
 
   Widget _buildFallbackInitial(String name, double size) {
@@ -258,9 +261,15 @@ class _FacebookAccountHeaderState extends State<FacebookAccountHeader> {
                 ? 'محامي مسجل'
                 : (isClient ? 'عميل مسجل' : 'حساب: ${widget.phone}')));
 
-    final photoBase64 =
-        data?['photoBase64']?.toString() ?? widget.fallbackPhotoBase64;
-    final photoUrl = data?['photoUrl']?.toString() ?? widget.fallbackPhotoUrl;
+    final rawBase64 = data?['photoBase64']?.toString().trim();
+    final photoBase64 = (rawBase64 != null && rawBase64.isNotEmpty && rawBase64 != 'default')
+        ? rawBase64
+        : widget.fallbackPhotoBase64;
+
+    final rawUrl = data?['photoUrl']?.toString().trim();
+    final photoUrl = (rawUrl != null && rawUrl.isNotEmpty && rawUrl != 'default')
+        ? rawUrl
+        : widget.fallbackPhotoUrl;
 
     String sub = widget.subtitle ?? '';
     if (sub.isEmpty) {

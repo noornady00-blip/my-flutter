@@ -187,8 +187,8 @@ class _ContactAdminScreenState extends State<ContactAdminScreen> {
       try {
         await NotificationService().dispatchAdminAlert(
           type: 'support_message',
-          title: '💬 رسالة تواصل جديدة من $senderName',
-          body: msgBody,
+          title: 'رسالة دعم فني جديدة',
+          body: 'المرسل: $senderName ($senderPhone)\n$msgBody',
           data: {
             'phone': senderPhone,
             'name': senderName,

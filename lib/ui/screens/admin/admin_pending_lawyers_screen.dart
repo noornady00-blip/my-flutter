@@ -1,10 +1,10 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/utils/search_utils.dart';
 import '../../../core/utils/phone_utils.dart';
+import '../../../core/utils/image_utils.dart';
 import '../../../data/models/lawyer.dart';
 import '../../../network/firestore_service.dart';
 import '../../../network/notification_service.dart';
@@ -92,26 +92,16 @@ class _AdminPendingLawyersScreenState extends State<AdminPendingLawyersScreen> {
   }
 
   Widget _buildAvatar(LawyerModel lawyer, double size) {
-    Widget content;
-    final p64 = lawyer.photoBase64;
-    if (p64 != null && p64.isNotEmpty) {
-      try {
-        final bytes = base64Decode(p64);
-        content = Image.memory(bytes, width: size, height: size, fit: BoxFit.cover);
-      } catch (_) {
-        content = _buildFallbackAvatar(lawyer.name, size);
-      }
-    } else if (lawyer.photoUrl != null && lawyer.photoUrl!.isNotEmpty) {
-      content = Image.network(
-        lawyer.photoUrl!,
+    final fallback = _buildFallbackAvatar(lawyer.name, size);
+    final content = ClipOval(
+      child: AppImageUtils.buildAvatarImage(
+        photoBase64: lawyer.photoBase64,
+        photoUrl: lawyer.photoUrl,
         width: size,
         height: size,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => _buildFallbackAvatar(lawyer.name, size),
-      );
-    } else {
-      content = _buildFallbackAvatar(lawyer.name, size);
-    }
+        fallback: fallback,
+      ),
+    );
 
     return GestureDetector(
       // Normal tap → open lawyer profile

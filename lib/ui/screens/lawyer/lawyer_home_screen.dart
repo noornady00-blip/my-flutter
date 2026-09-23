@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -26,6 +28,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
   String? _uid;
   String? _cachedName;
   String? _cachedPhone;
+  String? _cachedPhotoUrl;
   bool _isLoading = true;
 
   final List<String> _sudaneseCities = const [
@@ -77,6 +80,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
       _uid = session['uid'] ?? user?.uid;
       _cachedName = session['name'] ?? 'الأستاذ المحامي';
       _cachedPhone = session['phone'];
+      _cachedPhotoUrl = session['photoUrl'];
       _isLoading = false;
     });
   }
@@ -434,6 +438,9 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
           final city = lawyer?.city.isNotEmpty == true ? lawyer!.city : 'الخرطوم';
           final spec = lawyer?.specialization.isNotEmpty == true ? lawyer!.specialization : 'قانون عام وقضايا متنوعة';
           final photoBase64 = lawyer?.photoBase64;
+          final photoUrl = (lawyer?.photoUrl != null && lawyer!.photoUrl!.isNotEmpty)
+              ? lawyer.photoUrl
+              : _cachedPhotoUrl;
 
           return SingleChildScrollView(
             physics: const BouncingScrollPhysics(),
@@ -446,6 +453,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
                   name: name,
                   spec: spec,
                   city: city,
+                  photoUrl: photoUrl,
                   photoBase64: photoBase64,
                   lawyer: lawyer,
                 ),
@@ -509,6 +517,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
     required String name,
     required String spec,
     required String city,
+    String? photoUrl,
     String? photoBase64,
     LawyerModel? lawyer,
   }) {
@@ -542,20 +551,24 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
                 onTap: () {
                   if (lawyer != null) {
                     ProfileDetailsModal.showLawyerModal(context, lawyer: lawyer);
-                  } else if (photoBase64 != null && photoBase64.isNotEmpty) {
+                  } else if ((photoUrl != null && photoUrl.isNotEmpty) ||
+                      (photoBase64 != null && photoBase64.isNotEmpty)) {
                     ProfileDetailsModal.openPhotoViewer(
                       context,
                       name: name,
+                      photoUrl: photoUrl,
                       photoBase64: photoBase64,
                       subtitle: spec,
                     );
                   }
                 },
                 onLongPress: () {
-                  if (photoBase64 != null && photoBase64.isNotEmpty) {
+                  if ((photoUrl != null && photoUrl.isNotEmpty) ||
+                      (photoBase64 != null && photoBase64.isNotEmpty)) {
                     ProfileDetailsModal.openPhotoViewer(
                       context,
                       name: name,
+                      photoUrl: photoUrl,
                       photoBase64: photoBase64,
                       subtitle: spec,
                     );
@@ -577,7 +590,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
                     ],
                   ),
                   child: ClipOval(
-                    child: _buildAvatar(photoBase64, name),
+                    child: _buildAvatar(photoUrl, photoBase64, name),
                   ),
                 ),
               ),
@@ -1081,13 +1094,62 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
     );
   }
 
-  Widget _buildAvatar(String? photoBase64, [String? name]) {
+  Widget _buildAvatar(String? photoUrl, String? photoBase64, [String? name]) {
+    if (photoUrl != null && photoUrl.isNotEmpty && photoUrl != 'default') {
+      if (photoUrl.startsWith('http://') || photoUrl.startsWith('https://')) {
+        return Image.network(
+          photoUrl,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) =>
+              _buildAvatarFromBase64OrFallback(photoBase64, name),
+        );
+      } else if (photoUrl.startsWith('data:image')) {
+        try {
+          final base64String = photoUrl.split(',').last;
+          final bytes = base64Decode(base64String);
+          return Image.memory(
+            bytes,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) =>
+                _buildAvatarFallback(name),
+          );
+        } catch (_) {}
+      } else if (!kIsWeb) {
+        try {
+          final file = File(photoUrl);
+          if (file.existsSync()) {
+            return Image.file(
+              file,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) =>
+                  _buildAvatarFromBase64OrFallback(photoBase64, name),
+            );
+          }
+        } catch (_) {}
+      }
+    }
+    return _buildAvatarFromBase64OrFallback(photoBase64, name);
+  }
+
+  Widget _buildAvatarFromBase64OrFallback(String? photoBase64, [String? name]) {
     if (photoBase64 != null && photoBase64.isNotEmpty) {
       try {
-        final bytes = base64Decode(photoBase64);
-        return Image.memory(bytes, fit: BoxFit.cover);
+        final cleanBase64 = photoBase64.contains(',')
+            ? photoBase64.split(',').last
+            : photoBase64;
+        final bytes = base64Decode(cleanBase64);
+        return Image.memory(
+          bytes,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) =>
+              _buildAvatarFallback(name),
+        );
       } catch (_) {}
     }
+    return _buildAvatarFallback(name);
+  }
+
+  Widget _buildAvatarFallback([String? name]) {
     final String initial = (name != null && name.trim().isNotEmpty)
         ? name.trim().characters.first
         : 'م';

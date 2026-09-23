@@ -134,5 +134,20 @@ class AuthRepo {
 
   Future<Map<String, dynamic>> deleteAccount({String? currentPassword}) =>
       _authContract.deleteAccount(currentPassword: currentPassword);
+
+  Future<bool> deleteUserAuthAccount({
+    required String phone,
+    String? role,
+    String? uid,
+    String? password,
+    String? userEmail,
+  }) =>
+      _authContract.deleteUserAuthAccount(
+        phone: phone,
+        role: role,
+        uid: uid,
+        password: password,
+        userEmail: userEmail,
+      );
 }
 

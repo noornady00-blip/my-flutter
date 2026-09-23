@@ -1,5 +1,3 @@
-import 'dart:convert';
-import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -29,6 +27,7 @@ import '../../../core/utils/navigation_utils.dart';
 import '../../../core/utils/phone_utils.dart';
 import '../../custom_widgets/sudan_phone_field.dart';
 import '../../custom_widgets/app_dialog.dart';
+import '../../../core/utils/image_utils.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -43,8 +42,15 @@ class _AdminDashboardState extends State<AdminDashboard> {
   final FirestoreService _firestoreService = FirestoreService();
   final AuthService _authService = AuthService();
 
-  bool _isCheckingAuth = true;
-  bool _isAdminVerified = false;
+  Future<Map<String, int>>? _statsFuture;
+  final Set<int> _activatedTabs = {0};
+
+  Future<void> _refreshStats() async {
+    setState(() {
+      _statsFuture = _firestoreService.getStats();
+    });
+  }
+
   String _currentAdminEmail = '';
   String _currentAdminPhone = '';
 
@@ -87,114 +93,39 @@ class _AdminDashboardState extends State<AdminDashboard> {
   @override
   void initState() {
     super.initState();
+    _statsFuture = _firestoreService.getStats();
     _accountsSearchCtrl.addListener(() {
       setState(() => _accountsSearchQuery = _accountsSearchCtrl.text.trim().toLowerCase());
     });
     _directorySearchCtrl.addListener(() {
       setState(() => _directorySearchQuery = _directorySearchCtrl.text.trim().toLowerCase());
     });
-    _verifyAdminAccess();
+
+    // 1. Initialize admin credentials immediately from cached user
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      _currentAdminEmail = user.email ?? 'المشرف';
+      if (user.email != null) {
+        _currentAdminPhone = user.email!
+            .replaceAll('@mahameek.admin.com', '')
+            .replaceAll('@mahameek.client.com', '')
+            .replaceAll('@mahameek.lawyer.com', '');
+      }
+    }
+
+    // 2. Immediately enable all push notification channels and start real-time Firestore listeners (Zero Lag)
+    NotificationService().enableAllNotifications(adminUid: user?.uid);
+    NotificationService().clearAllSystemNotifications();
+    _startAdminRealtimeListeners();
+
+    // 3. Perform silent background profile sync (Never blocks UI or drops notifications)
+    _syncAdminInfoInBackground();
   }
 
   bool _isLoggingOut = false;
 
   void _startAdminRealtimeListeners() {
-    if (_isLoggingOut) return;
-    _startSupportMessagesListener();
-    _startPasswordResetsListener();
-    _startPendingLawyersListener();
-  }
-
-  void _startSupportMessagesListener() {
-    _supportMessagesSub?.cancel();
-    if (_isLoggingOut) return;
-    bool isInitialSnapshot = true;
-    _supportMessagesSub = FirebaseFirestore.instance
-        .collection('support_messages')
-        .where('status', isEqualTo: 'unread')
-        .snapshots()
-        .listen((snap) {
-      if (_isLoggingOut || isInitialSnapshot) {
-        isInitialSnapshot = false;
-        return;
-      }
-      for (final change in snap.docChanges) {
-        if (change.type == DocumentChangeType.added) {
-          final data = change.doc.data();
-          final name = data?['name']?.toString() ?? 'مستخدم المنصة';
-          final body = data?['message']?.toString() ?? 'وصلتك رسالة تواصل جديدة';
-          NotificationService().showNotificationDirect(
-            title: 'رسالة تواصل جديدة من $name',
-            body: body,
-            payload: 'support_message',
-            id: change.doc.id.hashCode,
-          );
-        }
-      }
-    }, onError: (e) {
-      debugPrint('supportMessagesSub error: $e');
-    });
-  }
-
-  void _startPasswordResetsListener() {
-    _passwordResetsSub?.cancel();
-    if (_isLoggingOut) return;
-    bool isInitialSnapshot = true;
-    _passwordResetsSub = FirebaseFirestore.instance
-        .collection('password_resets')
-        .where('status', isEqualTo: 'pending')
-        .snapshots()
-        .listen((snap) {
-      if (_isLoggingOut || isInitialSnapshot) {
-        isInitialSnapshot = false;
-        return;
-      }
-      for (final change in snap.docChanges) {
-        if (change.type == DocumentChangeType.added) {
-          final data = change.doc.data();
-          final phone = data?['phone']?.toString() ?? 'غير محدد';
-          NotificationService().showNotificationDirect(
-            title: 'طلب استعادة كلمة المرور',
-            body: 'طلب جديد لاستعادة كلمة المرور لرقم: $phone',
-            payload: 'password_reset',
-            id: change.doc.id.hashCode,
-          );
-        }
-      }
-    }, onError: (e) {
-      debugPrint('passwordResetsSub error: $e');
-    });
-  }
-
-  void _startPendingLawyersListener() {
-    _pendingLawyersSub?.cancel();
-    if (_isLoggingOut) return;
-    bool isInitialSnapshot = true;
-    _pendingLawyersSub = FirebaseFirestore.instance
-        .collection('lawyers')
-        .where('status', isEqualTo: 'pending')
-        .snapshots()
-        .listen((snap) {
-      if (_isLoggingOut || isInitialSnapshot) {
-        isInitialSnapshot = false;
-        return;
-      }
-      for (final change in snap.docChanges) {
-        if (change.type == DocumentChangeType.added) {
-          final data = change.doc.data();
-          final name = data?['name']?.toString() ?? 'محامٍ جديد';
-          final city = data?['city']?.toString() ?? '';
-          NotificationService().showNotificationDirect(
-            title: 'طلب انضمام محامٍ جديد',
-            body: 'طلب انضمام جديد من المحامي: $name${city.isNotEmpty ? " ($city)" : ""}',
-            payload: 'lawyer_registration',
-            id: change.doc.id.hashCode,
-          );
-        }
-      }
-    }, onError: (e) {
-      debugPrint('pendingLawyersSub error: $e');
-    });
+    // Handled centrally by NotificationService without duplication on screen entry
   }
 
   @override
@@ -211,11 +142,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
     super.dispose();
   }
 
-  Future<void> _verifyAdminAccess() async {
+  /// مزامنة صامتة في الخلفية لبيانات المشرف دون إيقاف الواجهة أو تعطيل الإشعارات إطلاقاً
+  Future<void> _syncAdminInfoInBackground() async {
     if (_isLoggingOut) return;
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      if (mounted && !_isLoggingOut) {
+      final session = await _authService.getSavedSession();
+      if (session['role'] != 'admin' && mounted && !_isLoggingOut) {
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (_) => const LoginScreen(role: 'admin')),
@@ -226,39 +159,16 @@ class _AdminDashboardState extends State<AdminDashboard> {
     }
 
     try {
-      final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-      final role = doc.data()?['role']?.toString();
-      final isAdmin = role == 'admin' || (await FirebaseFirestore.instance.collection('admins').doc(user.uid).get()).exists;
-
-      if (!isAdmin) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('تم رفض الوصول: هذا الحساب ليس لديه صلاحيات المشرف.', style: GoogleFonts.cairo()),
-              backgroundColor: const Color(0xFFDC2626),
-            ),
-          );
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(builder: (_) => const LoginScreen(role: 'admin')),
-            (_) => false,
-          );
+      String detectedPhone = _currentAdminPhone;
+      final adminDoc = await FirebaseFirestore.instance.collection('admins').doc(user.uid).get();
+      if (adminDoc.exists && adminDoc.data()?['phone'] != null && adminDoc.data()!['phone'].toString().isNotEmpty) {
+        detectedPhone = adminDoc.data()!['phone'].toString();
+      } else {
+        final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        if (userDoc.exists && userDoc.data()?['phone'] != null && userDoc.data()!['phone'].toString().isNotEmpty) {
+          detectedPhone = userDoc.data()!['phone'].toString();
         }
-        return;
       }
-
-      String detectedPhone = '';
-      try {
-        final adminDoc = await FirebaseFirestore.instance.collection('admins').doc(user.uid).get();
-        if (adminDoc.exists && adminDoc.data()?['phone'] != null && adminDoc.data()!['phone'].toString().isNotEmpty) {
-          detectedPhone = adminDoc.data()!['phone'].toString();
-        } else {
-          final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-          if (userDoc.exists && userDoc.data()?['phone'] != null && userDoc.data()!['phone'].toString().isNotEmpty) {
-            detectedPhone = userDoc.data()!['phone'].toString();
-          }
-        }
-      } catch (_) {}
 
       if (detectedPhone.isEmpty && user.email != null) {
         detectedPhone = user.email!
@@ -267,24 +177,17 @@ class _AdminDashboardState extends State<AdminDashboard> {
             .replaceAll('@mahameek.lawyer.com', '');
       }
 
-      if (mounted) {
+      if (mounted && detectedPhone.isNotEmpty && detectedPhone != _currentAdminPhone) {
         setState(() {
-          _isAdminVerified = true;
-          _isCheckingAuth = false;
-          _currentAdminEmail = user.email ?? 'المشرف';
           _currentAdminPhone = detectedPhone;
+          if (user.email != null && user.email!.isNotEmpty) {
+            _currentAdminEmail = user.email!;
+          }
         });
-        NotificationService().enableAllNotifications(adminUid: user.uid);
-        _startAdminRealtimeListeners();
       }
     } catch (e) {
-      if (mounted) {
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (_) => const LoginScreen(role: 'admin')),
-          (_) => false,
-        );
-      }
+      // انقطاع الشبكة أو بطء مؤقت: لا يتم طرد المشرف أو تعطيل الإشعارات
+      debugPrint('Admin background sync notice: $e');
     }
   }
 
@@ -372,33 +275,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
     const Color headerGold = Color(0xFFD49B1A);
     const Color pageBg = Color(0xFFFCFBF9);
 
-    if (_isCheckingAuth || !_isAdminVerified) {
-      return Scaffold(
-        backgroundColor: pageBg,
-        body: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(
-                width: 38,
-                height: 38,
-                child: CircularProgressIndicator(color: headerGold, strokeWidth: 3),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'جاري التحقق من صلاحيات المشرف...',
-                style: GoogleFonts.cairo(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFF0B2A5B),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: pageBg,
@@ -412,18 +288,21 @@ class _AdminDashboardState extends State<AdminDashboard> {
           _buildOverviewTab(),
 
           // 1. حسابات (Accounts Management)
-          _buildAccountsTab(),
+          _activatedTabs.contains(1) ? _buildAccountsTab() : const SizedBox.shrink(),
 
           // 2. المستخدمين (All Registered Users Directory & Ledger)
-          _buildUsersDirectoryTab(),
+          _activatedTabs.contains(2) ? _buildUsersDirectoryTab() : const SizedBox.shrink(),
 
           // 3. الإعدادات (Settings & Account)
-          _buildAdminSettingsTab(),
+          _activatedTabs.contains(3) ? _buildAdminSettingsTab() : const SizedBox.shrink(),
         ],
       ),
       bottomNavigationBar: FloatingNavBar(
         currentIndex: _currentIndex,
-        onTap: (index) => setState(() => _currentIndex = index),
+        onTap: (index) => setState(() {
+          _currentIndex = index;
+          _activatedTabs.add(index);
+        }),
         items: _adminNavItems,
         barBackgroundColor: headerGold,
         activeBgColor: Colors.white,
@@ -572,29 +451,34 @@ class _AdminDashboardState extends State<AdminDashboard> {
   // TAB 0: OVERVIEW TAB (Matching Image 2 Mockup)
   // ─────────────────────────────────────────────────────────────
   Widget _buildOverviewTab() {
-    return SingleChildScrollView(
-      controller: _overviewScrollCtrl,
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 95),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // 1. Greeting Banner (Welcome Admin + Justice Emblem)
-          _buildWelcomeBanner(),
-          const SizedBox(height: 20),
+    return RefreshIndicator(
+      color: const Color(0xFFD49B1A),
+      backgroundColor: Colors.white,
+      onRefresh: _refreshStats,
+      child: SingleChildScrollView(
+        controller: _overviewScrollCtrl,
+        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 95),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // 1. Greeting Banner (Welcome Admin + Justice Emblem)
+            _buildWelcomeBanner(),
+            const SizedBox(height: 20),
 
-          // 2. إحصائيات عامة (General Statistics)
-          _buildSectionHeader(title: 'إحصائيات عامة'),
-          const SizedBox(height: 12),
-          _buildStatsRow(),
-          const SizedBox(height: 24),
+            // 2. إحصائيات عامة (General Statistics)
+            _buildSectionHeader(title: 'إحصائيات عامة'),
+            const SizedBox(height: 12),
+            _buildStatsRow(),
+            const SizedBox(height: 24),
 
-          // 3. الأقسام الأربعة الرئيسية في لوحة التحكم (نظام أربع خانات رأسية)
-          _buildSectionHeader(title: 'أقسام الإدارة والطلبات'),
-          const SizedBox(height: 12),
-          _buildFourDepartmentCards(),
-          const SizedBox(height: 14),
-        ],
+            // 3. الأقسام الأربعة الرئيسية في لوحة التحكم (نظام أربع خانات رأسية)
+            _buildSectionHeader(title: 'أقسام الإدارة والطلبات'),
+            const SizedBox(height: 12),
+            _buildFourDepartmentCards(),
+            const SizedBox(height: 14),
+          ],
+        ),
       ),
     );
   }
@@ -967,7 +851,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
   // 2. Stats Grid (Airy 2x2 Grid)
   Widget _buildStatsRow() {
     return FutureBuilder<Map<String, int>>(
-      future: _firestoreService.getStats(),
+      future: _statsFuture,
       builder: (context, snapshot) {
         final stats = snapshot.data ?? {
           'totalLawyers': 0,
@@ -3381,7 +3265,27 @@ class _AdminDashboardState extends State<AdminDashboard> {
               child: Row(
                 textDirection: TextDirection.rtl,
                 children: [
-                  _buildAvatarWidget(photoBase64, photoUrl, name, 50),
+                  Builder(
+                    builder: (context) {
+                      if ((photoBase64 != null && photoBase64.isNotEmpty) ||
+                          (photoUrl != null && photoUrl.isNotEmpty && photoUrl != 'default')) {
+                        return _buildAvatarWidget(photoBase64, photoUrl, name, 50);
+                      }
+                      return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                        future: targetUid.isNotEmpty
+                            ? FirebaseFirestore.instance.collection('users').doc(targetUid).get()
+                            : null,
+                        builder: (context, snap) {
+                          final data = snap.data?.data();
+                          final fBase64 = data?['photoBase64']?.toString() ??
+                              data?['photo']?.toString() ??
+                              photoBase64;
+                          final fUrl = data?['photoUrl']?.toString() ?? photoUrl;
+                          return _buildAvatarWidget(fBase64, fUrl, name, 50);
+                        },
+                      );
+                    },
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -4266,6 +4170,17 @@ class _AdminDashboardState extends State<AdminDashboard> {
   // HELPERS & DIALOGS
   // ─────────────────────────────────────────────────────────────
   Widget _buildAvatarWidget(String? base64, String? url, String name, double size) {
+    final fallback = Center(
+      child: Text(
+        name.trim().isNotEmpty ? name.trim().characters.first : '؟',
+        style: GoogleFonts.cairo(
+          fontSize: size * 0.38,
+          fontWeight: FontWeight.bold,
+          color: const Color(0xFF0B2A5B),
+        ),
+      ),
+    );
+
     return GestureDetector(
       onTap: () {
         if ((base64 != null && base64.isNotEmpty) || (url != null && url.isNotEmpty)) {
@@ -4287,23 +4202,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
           border: Border.all(color: const Color(0xFF0B2A5B), width: 1.5),
         ),
         child: ClipOval(
-          child: base64 != null && base64.isNotEmpty
-              ? Image.memory(
-                  base64Decode(base64),
-                  width: size,
-                  height: size,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) => Center(
-                    child: Text(name.isNotEmpty ? name[0] : '؟', style: GoogleFonts.cairo(fontSize: 16, fontWeight: FontWeight.bold)),
-                  ),
-                )
-              : (url != null && url.isNotEmpty
-                  ? (url.startsWith('http')
-                      ? Image.network(url, width: size, height: size, fit: BoxFit.cover)
-                      : Image.file(File(url), width: size, height: size, fit: BoxFit.cover))
-                  : Center(
-                      child: Text(name.isNotEmpty ? name[0] : '؟', style: GoogleFonts.cairo(fontSize: 16, fontWeight: FontWeight.bold)),
-                    )),
+          child: AppImageUtils.buildAvatarImage(
+            photoBase64: base64,
+            photoUrl: url,
+            width: size,
+            height: size,
+            fallback: fallback,
+          ),
         ),
       ),
     );

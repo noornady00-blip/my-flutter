@@ -26,13 +26,17 @@ service cloud.firestore {
       // User can read their own profile, or an authenticated admin can read any profile
       allow read: if isOwner(uid) || isAdmin();
 
-      // Users can create their own document (or admin creating accounts)
-      allow create: if isOwner(uid) || isAdmin();
+      // Users can create their own document (cannot self-assign admin role)
+      allow create: if (isOwner(uid) && (!('role' in request.resource.data) || request.resource.data.role != 'admin')) || isAdmin();
 
-      // Users can update their own data, or admin can update
-      allow update: if isOwner(uid) || isAdmin();
+      // Users can update their own data, but CANNOT elevate their role to admin
+      allow update: if isAdmin() || (
+        isOwner(uid) &&
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'isPrimary'])) &&
+        (!('adminResetPassword' in request.resource.data) || request.resource.data.adminResetPassword == resource.data.adminResetPassword)
+      );
 
-      // Users can delete their own document, or admins can delete
+      // Only admins or the owner can delete the account document
       allow delete: if isOwner(uid) || isAdmin();
     }
 
@@ -42,12 +46,14 @@ service cloud.firestore {
       allow read: if (resource.data.status == 'approved') || isOwner(uid) || isAdmin();
 
       // Lawyer can register with initial status 'pending', or admin can create
-      allow create: if isOwner(uid) || isAdmin();
+      allow create: if (isOwner(uid) && (!('status' in request.resource.data) || request.resource.data.status == 'pending')) || isAdmin();
 
-      // Lawyer can update their profile information, but only admin can approve/reject
+      // Lawyer can update their profile information, but only admin can approve/reject status
       allow update: if isAdmin() || (
         isOwner(uid) &&
-        request.resource.data.status == resource.data.status
+        request.resource.data.status == resource.data.status &&
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['isVerified', 'featured'])) &&
+        (!('adminResetPassword' in request.resource.data) || request.resource.data.adminResetPassword == resource.data.adminResetPassword)
       );
 
       // Lawyer can delete their own document or admins can delete
@@ -55,8 +61,11 @@ service cloud.firestore {
     }
 
     // ==================== ADMINS COLLECTION ====================
+    // STRICT SECURITY: Only existing admins can read/write the admins collection.
+    // Self-promotion vulnerability eliminated.
     match /admins/{docId} {
-      allow read, write: if isAdmin() || isOwner(docId);
+      allow read: if isAdmin();
+      allow write: if isAdmin();
     }
 
     match /admin_tokens/{tokenId} {
@@ -94,11 +103,11 @@ service cloud.firestore {
     }
 
     // ==================== PHONE DIRECTORY COLLECTION ====================
-    // Maps normalized phone numbers to their registered role without exposing sensitive profile data
     match /phone_directory/{phoneKey} {
       allow read: if true;
-      allow create, update: if isAuthenticated() || true;
-      allow delete: if isAuthenticated() || isAdmin();
+      allow create, update: if isAuthenticated() || isAdmin();
+      // Owner can delete their own phone_directory entry (verified by uid field), admins can delete any
+      allow delete: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
     }
 
     // ==================== ADMIN NOTIFICATIONS COLLECTION ====================
@@ -108,9 +117,17 @@ service cloud.firestore {
     }
 
     // ==================== APP CONFIG COLLECTION ====================
+    // SECURITY: fcm_credentials is restricted to Admin only!
     match /app_config/{configId} {
-      allow read: if true;
+      allow read: if configId != 'fcm_credentials' || isAdmin();
       allow write: if isAdmin();
+    }
+
+    // ==================== LAWYER REQUESTS COLLECTION ====================
+    match /lawyer_requests/{uid} {
+      allow create: if isOwner(uid) || isAdmin();
+      allow read, update: if isOwner(uid) || isAdmin();
+      allow delete: if isOwner(uid) || isAdmin();
     }
   }
 }

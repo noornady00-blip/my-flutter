@@ -11,6 +11,17 @@ class PhoneUtils {
   // 1. SUDAN PHONE EXTRACTION & NORMALIZATION
   // ==========================================
 
+  /// تحويل الأرقام العربية والفارسية إلى أرقام إنجليزية قياسية
+  static String normalizeDigits(String input) {
+    const arabic = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+    const persian = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+    var res = input;
+    for (int i = 0; i < 10; i++) {
+      res = res.replaceAll(arabic[i], '$i').replaceAll(persian[i], '$i');
+    }
+    return res;
+  }
+
   /// استخراج الأرقام المحلية السودانية فقط (9 أرقام بدون 0 في البداية وبدون رمز الدولة)
   /// أمثلة:
   /// - 0912345678     -> 912345678
@@ -19,7 +30,7 @@ class PhoneUtils {
   /// - 00249912345678 -> 912345678
   /// - 912345678      -> 912345678
   static String extractLocalSudanDigits(String phone) {
-    var raw = phone.trim();
+    var raw = normalizeDigits(phone.trim());
     if (raw.isEmpty) return '';
 
     // إزالة كل ما هو غير أرقام
@@ -38,6 +49,11 @@ class PhoneUtils {
     // إزالة أي صفر بادئ (0)
     while (digits.startsWith('0')) {
       digits = digits.substring(1);
+    }
+
+    // استثناء خاص للمشرف الرئيسي: 01146979833 أو 1146979833
+    if (digits.endsWith('1146979833')) {
+      return '1146979833';
     }
 
     // اقتصار على 9 أرقام كحد أقصى للرقم السوداني
@@ -66,6 +82,18 @@ class PhoneUtils {
     return withPlus ? '+$full' : full;
   }
 
+  /// الصيغة الموحدة الرسمية الوحيدة لحفظ أرقام الهواتف في كامل المنصة وقاعدة البيانات
+  /// مفتاح الدولة + الرقم المحلي (مثال: +249912345678 أو للمشرف +2491146979833)
+  static String toUnifiedPhone(String phone) {
+    return normalizeSudanPhone(phone, withPlus: true);
+  }
+
+  /// استخراج الرقم المحلي المجرد (9 أرقام تبدأ بـ 9) الذي يدخله العميل في الواجهة
+  /// مثال: 912345678
+  static String toLocalDisplay(String phone) {
+    return extractLocalSudanDigits(phone);
+  }
+
   /// التحقق من صحة رقم الهاتف السوداني (يجب أن يكون 9 أرقام)
   static bool isValidSudanPhone(String phone) {
     final local = extractLocalSudanDigits(phone);
@@ -82,7 +110,7 @@ class PhoneUtils {
   /// هذا التنسيق يضمن فتح محادثة واتساب فوراً دون ظهور خطأ "رقم غير صالح"
   /// مثال: 249912345678 أو لأي رقم دولي آخر (مثل 201037864619)
   static String formatWhatsAppNumber(String phone) {
-    var raw = phone.trim();
+    var raw = normalizeDigits(phone.trim());
     if (raw.isEmpty) return '';
 
     // تنظيف جميع الرموز غير الرقمية

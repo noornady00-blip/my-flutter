@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "71340241385",
-    "project_id": "mahameek-47a1d",
-    "storage_bucket": "mahameek-47a1d.firebasestorage.app"
+    "project_number": "527214852381",
+    "project_id": "mahameek-30c70",
+    "storage_bucket": "mahameek-30c70.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:71340241385:android:d5953a4274451639181b78",
+        "mobilesdk_app_id": "1:527214852381:android:2f8f96da08e27aac9349f4",
         "android_client_info": {
           "package_name": "com.mahameek.app"
         }
@@ -15,26 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyDJlaWDcjrUrsghoGkSMoHYhaMfLUgrlSY"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": []
-        }
-      }
-    },
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:71340241385:android:d5953a4274451639181b78",
-        "android_client_info": {
-          "package_name": "com.example.mahameek"
-        }
-      },
-      "oauth_client": [],
-      "api_key": [
-        {
-          "current_key": "AIzaSyDJlaWDcjrUrsghoGkSMoHYhaMfLUgrlSY"
+          "current_key": "AIzaSyADXC4ls6GxJaXqGSyosY4_tw57Xe1unZM"
         }
       ],
       "services": {

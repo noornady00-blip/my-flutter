@@ -324,15 +324,17 @@ class ExecutiveLawyerCard extends StatelessWidget {
           width: 54,
           height: 54,
           fit: BoxFit.cover,
+          gaplessPlayback: true,
           errorBuilder: (context, error, stackTrace) =>
               _buildBase64OrFallback(),
         );
-      } else if (!kIsWeb) {
+      } else if (!kIsWeb && !lawyer.photoUrl!.startsWith('data:')) {
         return Image.file(
           File(lawyer.photoUrl!),
           width: 54,
           height: 54,
           fit: BoxFit.cover,
+          gaplessPlayback: true,
           errorBuilder: (context, error, stackTrace) =>
               _buildBase64OrFallback(),
         );
@@ -342,13 +344,30 @@ class ExecutiveLawyerCard extends StatelessWidget {
   }
 
   Widget _buildBase64OrFallback() {
-    if (lawyer.photoBase64 != null && lawyer.photoBase64!.isNotEmpty) {
+    final rawBase64 = lawyer.photoBase64?.trim() ?? '';
+    final rawUrl = lawyer.photoUrl?.trim() ?? '';
+
+    // Check if either photoBase64 or photoUrl contains base64 image data
+    String target = '';
+    if (rawBase64.isNotEmpty) {
+      target = rawBase64;
+    } else if (rawUrl.isNotEmpty &&
+        (rawUrl.startsWith('data:image') || !rawUrl.startsWith('http'))) {
+      target = rawUrl;
+    }
+
+    if (target.isNotEmpty) {
       try {
+        final clean = target.contains(',')
+            ? target.split(',').last.trim().replaceAll(RegExp(r'\s+'), '')
+            : target.replaceAll(RegExp(r'\s+'), '');
+        final bytes = base64Decode(clean);
         return Image.memory(
-          base64Decode(lawyer.photoBase64!),
+          bytes,
           width: 54,
           height: 54,
           fit: BoxFit.cover,
+          gaplessPlayback: true,
           errorBuilder: (context, error, stackTrace) =>
               _buildExecutiveAvatarFallback(),
         );

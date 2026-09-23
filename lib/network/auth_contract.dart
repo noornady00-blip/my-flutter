@@ -88,4 +88,13 @@ abstract class AuthContract {
 
   /// Permanently delete active account
   Future<Map<String, dynamic>> deleteAccount({String? currentPassword});
+
+  /// Permanently delete a specific account from Firebase Auth (admin or background purge)
+  Future<bool> deleteUserAuthAccount({
+    required String phone,
+    String? role,
+    String? uid,
+    String? password,
+    String? userEmail,
+  });
 }

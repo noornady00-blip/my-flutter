@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -13,6 +12,7 @@ import '../../../network/notification_service.dart';
 import '../../custom_widgets/profile_details_modal.dart';
 import '../../custom_widgets/glass_widgets.dart';
 import '../../../core/utils/phone_utils.dart';
+import '../../../core/utils/image_utils.dart';
 
 // ============================================================================
 // AdminSupportMessagesScreen
@@ -702,25 +702,16 @@ class _AdminSupportMessagesScreenState extends State<AdminSupportMessagesScreen>
 
   Widget _buildSenderAvatar(String? photoBase64, String? photoUrl, String name) {
     const double size = 46;
-    Widget content;
-    if (photoBase64 != null && photoBase64.isNotEmpty) {
-      try {
-        final bytes = base64Decode(photoBase64);
-        content = Image.memory(bytes, width: size, height: size, fit: BoxFit.cover);
-      } catch (_) {
-        content = _buildFallbackAvatar(name, size);
-      }
-    } else if (photoUrl != null && photoUrl.isNotEmpty) {
-      content = Image.network(
-        photoUrl,
+    final fallback = _buildFallbackAvatar(name, size);
+    final content = ClipOval(
+      child: AppImageUtils.buildAvatarImage(
+        photoBase64: photoBase64,
+        photoUrl: photoUrl,
         width: size,
         height: size,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => _buildFallbackAvatar(name, size),
-      );
-    } else {
-      content = _buildFallbackAvatar(name, size);
-    }
+        fallback: fallback,
+      ),
+    );
 
     return Container(
       width: size,

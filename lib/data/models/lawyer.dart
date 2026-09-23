@@ -77,8 +77,10 @@ class LawyerModel {
       city: cityVal,
       specialization: specVal,
       status: map['status']?.toString() ?? 'pending',
-      photoBase64: map['photoBase64']?.toString(),
-      photoUrl: map['photoUrl']?.toString(),
+      photoBase64: map['photoBase64']?.toString() ??
+          map['photo']?.toString() ??
+          map['avatar']?.toString(),
+      photoUrl: map['photoUrl']?.toString() ?? map['imageUrl']?.toString(),
       createdAt: parsedDate,
     );
   }

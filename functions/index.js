@@ -18,8 +18,8 @@ exports.onPasswordResetCreated = functions.firestore
     const payload = {
       topic: "admin_notifications",
       notification: {
-        title: "طلب استعادة كلمة المرور 🔑",
-        body: `طلب جديد لاستعادة كلمة المرور لرقم: ${phone}`,
+        title: "طلب استعادة كلمة المرور",
+        body: `رقم الهاتف: ${phone}`,
       },
       data: {
         type: "password_reset",
@@ -33,6 +33,8 @@ exports.onPasswordResetCreated = functions.firestore
           sound: "default",
           priority: "max",
           visibility: "public",
+          icon: "ic_stat_mahameek",
+          color: "#0B2A5B",
         },
       },
       apns: {
@@ -75,7 +77,7 @@ exports.onSupportMessageCreated = functions.firestore
     const payload = {
       topic: "admin_notifications",
       notification: {
-        title: `💬 رسالة تواصل جديدة من ${name}`,
+        title: `رسالة تواصل جديدة من ${name}`,
         body: String(body),
       },
       data: {
@@ -91,6 +93,8 @@ exports.onSupportMessageCreated = functions.firestore
           sound: "default",
           priority: "max",
           visibility: "public",
+          icon: "ic_stat_mahameek",
+          color: "#0B2A5B",
         },
       },
       apns: {
@@ -133,8 +137,8 @@ exports.onLawyerCreated = functions.firestore
     const payload = {
       topic: "admin_notifications",
       notification: {
-        title: "طلب انضمام محامٍ جديد ⚖️",
-        body: `تم تقديم طلب انضمام جديد من المحامي: ${name} (${city})`,
+        title: "طلب انضمام محام جديد",
+        body: `طلب انضمام جديد من المحامي: ${name} (${city})`,
       },
       data: {
         type: "lawyer_registration",
@@ -150,6 +154,8 @@ exports.onLawyerCreated = functions.firestore
           sound: "default",
           priority: "max",
           visibility: "public",
+          icon: "ic_stat_mahameek",
+          color: "#0B2A5B",
         },
       },
       apns: {
@@ -238,3 +244,92 @@ exports.onLawyerPasswordReset = functions.firestore
     }
     return null;
   });
+
+/**
+ * حذف الحساب بالكامل من Firebase Authentication عند حذف المستخدم من Firestore
+ */
+exports.onUserDeleted = functions.firestore
+  .document("users/{userId}")
+  .onDelete(async (snap, context) => {
+    const uid = context.params.userId;
+    try {
+      await admin.auth().deleteUser(uid);
+      console.log(`Successfully deleted Auth user for user ${uid}`);
+    } catch (err) {
+      if (err.code === "auth/user-not-found") {
+        console.log(`Auth user ${uid} was already deleted or does not exist.`);
+      } else {
+        console.error(`Failed to delete Auth user ${uid}:`, err);
+      }
+    }
+  });
+
+/**
+ * حذف الحساب بالكامل من Firebase Authentication عند حذف المحامي من Firestore
+ */
+exports.onLawyerDeleted = functions.firestore
+  .document("lawyers/{lawyerId}")
+  .onDelete(async (snap, context) => {
+    const uid = context.params.lawyerId;
+    try {
+      await admin.auth().deleteUser(uid);
+      console.log(`Successfully deleted Auth user for lawyer ${uid}`);
+    } catch (err) {
+      if (err.code === "auth/user-not-found") {
+        console.log(`Auth user ${uid} was already deleted or does not exist.`);
+      } else {
+        console.error(`Failed to delete Auth user ${uid}:`, err);
+      }
+    }
+  });
+
+/**
+ * ✅ Callable Function — حذف حساب المستخدم نهائياً من Firebase Auth
+ * يستخدم Admin SDK الذي يحذف الحساب بدون أي قيود (no requires-recent-login).
+ * المستخدم لا يقدر يحذف إلا حسابه الخاص فقط.
+ */
+exports.deleteMyAccount = functions.https.onCall(async (data, context) => {
+  // يجب أن يكون المستخدم مسجلاً الدخول
+  if (!context.auth) {
+    throw new functions.https.HttpsError(
+      "unauthenticated",
+      "يجب تسجيل الدخول أولاً لتنفيذ هذا الإجراء."
+    );
+  }
+
+  const callerUid = context.auth.uid;
+
+  // السماح فقط بحذف الحساب الخاص أو حساب آخر إذا كان المستدعي مشرفاً
+  const targetUid = (data && data.uid) ? data.uid : callerUid;
+  if (targetUid !== callerUid) {
+    try {
+      const adminDoc = await admin.firestore().collection("admins").doc(callerUid).get();
+      const userDoc = await admin.firestore().collection("users").doc(callerUid).get();
+      const isAdmin =
+        adminDoc.exists ||
+        (userDoc.exists && userDoc.data() && userDoc.data().role === "admin");
+      if (!isAdmin) {
+        throw new functions.https.HttpsError(
+          "permission-denied",
+          "غير مصرح لك بحذف حساب مستخدم آخر."
+        );
+      }
+    } catch (err) {
+      if (err instanceof functions.https.HttpsError) throw err;
+      throw new functions.https.HttpsError("internal", "تعذر التحقق من صلاحيات المستخدم.");
+    }
+  }
+
+  try {
+    await admin.auth().deleteUser(targetUid);
+    console.log(`✅ [deleteMyAccount] Auth user ${targetUid} deleted by ${callerUid}`);
+    return { success: true };
+  } catch (err) {
+    if (err.code === "auth/user-not-found") {
+      console.log(`[deleteMyAccount] User ${targetUid} not found in Auth (already deleted).`);
+      return { success: true };
+    }
+    console.error(`[deleteMyAccount] Failed to delete auth user ${targetUid}:`, err);
+    throw new functions.https.HttpsError("internal", `فشل حذف الحساب: ${err.message}`);
+  }
+});

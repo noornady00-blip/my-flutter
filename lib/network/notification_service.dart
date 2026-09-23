@@ -33,29 +33,38 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform);
 
-    // Verify device is registered as admin or message is from admin topic
+    // Verify device is registered as admin or message is from admin topic or has admin payload
     final prefs = await SharedPreferences.getInstance();
     final role = prefs.getString('role');
     final isAdminDevice = prefs.getBool('is_admin_device') ?? false;
     final isFromAdminTopic = message.from?.contains('admin') ?? false;
+    final payloadType = message.data['type']?.toString();
+    final isAdminPayload = payloadType == 'password_reset' ||
+        payloadType == 'support_message' ||
+        payloadType == 'lawyer_registration' ||
+        message.data['screen'] == 'admin_notification';
 
-    if (role != 'admin' && !isAdminDevice && !isFromAdminTopic) {
+    if (role != 'admin' && !isAdminDevice && !isFromAdminTopic && !isAdminPayload) {
       debugPrint('Background message ignored: device role is $role, not admin');
       return;
     }
 
     final notification = message.notification;
-    final title = notification?.title ??
-        message.data['title']?.toString() ??
-        'إشعار إداري جديد 🔔';
-    final body = notification?.body ??
-        message.data['body']?.toString() ??
-        'وصلك تحديث جديد في المنصة';
+    // If the FCM message already contains a notification payload, Android and iOS
+    // automatically display it in the system tray. Calling localNotifications.show()
+    // here causes a duplicate notification. Only show manually if notification block is null (data-only).
+    if (notification != null) {
+      debugPrint('Background message already contains an OS notification block. Skipping manual local notification to prevent duplicate.');
+      return;
+    }
+
+    final title = message.data['title']?.toString() ?? 'إشعار إداري جديد';
+    final body = message.data['body']?.toString() ?? 'وصلك تحديث جديد في المنصة';
     final payload = message.data['type']?.toString() ??
         message.data['screen']?.toString() ??
         'admin_notification';
 
-    debugPrint('FCM Background message handling: $title | Payload: $payload');
+    debugPrint('FCM Background data-only message handling: $title | Payload: $payload');
 
     // Self-contained Local Notifications in background isolate
     final localNotifications = FlutterLocalNotificationsPlugin();
@@ -91,6 +100,8 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       NotificationService.adminChannelId,
       NotificationService.adminChannelName,
       channelDescription: NotificationService.adminChannelDesc,
+      icon: '@drawable/ic_stat_mahameek',
+      largeIcon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
       importance: Importance.max,
       priority: Priority.max,
       showWhen: true,
@@ -104,9 +115,9 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       enableLights: true,
       visibility: NotificationVisibility.public,
       category: AndroidNotificationCategory.message,
-      largeIcon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
       ticker: title,
       channelShowBadge: true,
+      subText: 'منصة محاميك',
       styleInformation: BigTextStyleInformation(
         body,
         contentTitle: title,
@@ -196,6 +207,26 @@ class NotificationService {
       });
     } catch (e) {
       debugPrint('openNotificationSettings error: $e');
+    }
+  }
+
+  /// Requests battery optimization exemption so app is never frozen by OS
+  static Future<void> requestIgnoreBatteryOptimizations() async {
+    try {
+      await _settingsChannel.invokeMethod('requestIgnoreBatteryOptimizations');
+    } catch (e) {
+      debugPrint('requestIgnoreBatteryOptimizations error: $e');
+    }
+  }
+
+  /// Opens auto-start management settings for Xiaomi/Redmi/Huawei/Oppo/Vivo/Samsung
+  static Future<bool> openAutoStartSettings() async {
+    try {
+      final res = await _settingsChannel.invokeMethod('openAutoStartSettings');
+      return res == true;
+    } catch (e) {
+      debugPrint('openAutoStartSettings error: $e');
+      return false;
     }
   }
 
@@ -357,7 +388,14 @@ class NotificationService {
       FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
         final prefs = await SharedPreferences.getInstance();
         final currentRole = prefs.getString('role');
-        if (currentRole != 'admin') {
+        final isAdminDevice = prefs.getBool('is_admin_device') ?? false;
+        final isFromAdminTopic = message.from?.contains('admin') ?? false;
+        final payloadType = message.data['type']?.toString();
+        final isAdminPayload = payloadType == 'password_reset' ||
+            payloadType == 'support_message' ||
+            payloadType == 'lawyer_registration';
+
+        if (currentRole != 'admin' && !isAdminDevice && !isFromAdminTopic && !isAdminPayload) {
           debugPrint(
               'Foreground FCM message ignored: recipient is not admin (role: $currentRole)');
           return;
@@ -569,6 +607,17 @@ class NotificationService {
     }
   }
 
+  /// Clears all visible app notifications from the Android/iOS notification tray
+  Future<void> clearAllSystemNotifications() async {
+    if (kIsWeb) return;
+    try {
+      await _localNotifications.cancelAll();
+      debugPrint('All system notifications cleared from tray.');
+    } catch (e) {
+      debugPrint('clearAllSystemNotifications notice: $e');
+    }
+  }
+
   static final Map<String, DateTime> _recentlyShownDirectNotifs = {};
 
   // ---------------------------------------------------------------------------
@@ -582,8 +631,9 @@ class NotificationService {
   }) async {
     try {
       final now = DateTime.now();
-      _recentlyShownDirectNotifs.removeWhere((_, t) => now.difference(t).inSeconds > 10);
-      final dedupeKey = '${id ?? ""}_${title.trim()}_${body.trim()}';
+      _recentlyShownDirectNotifs.removeWhere((_, t) => now.difference(t).inSeconds > 15);
+      // Strictly deduplicate by title and body to prevent duplicate notifications between FCM and Firestore live stream
+      final dedupeKey = '${title.trim()}_${body.trim()}';
       if (_recentlyShownDirectNotifs.containsKey(dedupeKey)) {
         debugPrint('showNotificationDirect debounced duplicate: $title');
         return;
@@ -592,6 +642,7 @@ class NotificationService {
 
       final prefs = await SharedPreferences.getInstance();
       final currentRole = prefs.getString('role');
+      final isAdminDevice = prefs.getBool('is_admin_device') ?? false;
       final isAdminPayload = payload == 'password_reset' ||
           payload == 'support_message' ||
           payload == 'lawyer_registration' ||
@@ -600,7 +651,7 @@ class NotificationService {
           title.contains('انضمام محام') ||
           title.contains('رسالة تواصل');
 
-      if (isAdminPayload && currentRole != 'admin') {
+      if (isAdminPayload && currentRole != 'admin' && !isAdminDevice) {
         debugPrint(
             'showNotificationDirect blocked: recipient is not admin (role: $currentRole)');
         return;
@@ -609,6 +660,8 @@ class NotificationService {
         adminChannelId,
         adminChannelName,
         channelDescription: adminChannelDesc,
+        icon: '@drawable/ic_stat_mahameek',
+        largeIcon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
         importance: Importance.max,
         priority: Priority.max,
         showWhen: true,
@@ -622,9 +675,9 @@ class NotificationService {
         enableLights: true,
         visibility: NotificationVisibility.public,
         category: AndroidNotificationCategory.message,
-        largeIcon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
-        ticker: 'إشعار جديد من منصة محاميك',
+        ticker: title,
         channelShowBadge: true,
+        subText: 'منصة محاميك',
         actions: <AndroidNotificationAction>[
           const AndroidNotificationAction(
             'open_action',
@@ -637,8 +690,6 @@ class NotificationService {
           body,
           contentTitle: title,
           summaryText: 'منصة محاميك',
-          htmlFormatContent: true,
-          htmlFormatTitle: true,
         ),
       );
 
@@ -746,7 +797,13 @@ class NotificationService {
 
           final data = change.doc.data();
           if (data != null) {
-            final title = data['title']?.toString() ?? 'إشعار إداري جديد 🔔';
+            // Guard: Do not trigger alerts for notifications older than 2 minutes on app entry
+            final createdAt = (data['createdAt'] as Timestamp?)?.toDate();
+            if (createdAt != null && DateTime.now().difference(createdAt).inMinutes > 2) {
+              continue;
+            }
+
+            final title = data['title']?.toString() ?? 'إشعار إداري جديد';
             final body = data['body']?.toString() ?? '';
             final type = data['type']?.toString();
             showNotificationDirect(

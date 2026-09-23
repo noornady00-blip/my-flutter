@@ -2,4 +2,5 @@
 <resources>
     <color name="splash_bg">#FFFFFF</color>
     <color name="primary_navy">#0F1B3E</color>
+    <color name="notification_color">#0B2A5B</color>
 </resources>

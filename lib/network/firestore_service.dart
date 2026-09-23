@@ -14,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../data/models/lawyer.dart';
 import '../data/models/user_model.dart';
 import '../data/models/password_reset_model.dart';
+import '../core/utils/phone_utils.dart';
 import 'database_contract.dart';
 import 'auth_service.dart';
 
@@ -256,26 +257,32 @@ class FirestoreService implements DatabaseContract {
 
       final batch = _db.batch();
 
-      // 1. Delete completely from lawyers collection
+      // 1. Delete completely from lawyers, users, and lawyer_requests
       batch.delete(_db.collection('lawyers').doc(uid));
-
-      // 2. Delete completely from users collection
       batch.delete(_db.collection('users').doc(uid));
+      batch.delete(_db.collection('lawyer_requests').doc(uid));
 
-      // 3. Free up all phone number variations in phone_directory
+      // 2. Free up phone_directory
       if (effectivePhone != null && effectivePhone.isNotEmpty) {
-        final cleanDigits = effectivePhone.replaceAll(RegExp(r'\D'), '');
-        final localDigits = cleanDigits.startsWith('249') && cleanDigits.length > 3
-            ? '0${cleanDigits.substring(3)}'
-            : cleanDigits;
-        batch.delete(_db.collection('phone_directory').doc(cleanDigits));
-        batch.delete(_db.collection('phone_directory').doc(localDigits));
-        if (cleanDigits.startsWith('0')) {
-          batch.delete(_db.collection('phone_directory').doc(cleanDigits.substring(1)));
+        final unified = PhoneUtils.toUnifiedPhone(effectivePhone);
+        batch.delete(_db.collection('phone_directory').doc(unified));
+        final candidates = PhoneUtils.generatePhoneCandidates(effectivePhone);
+        for (final cand in candidates) {
+          batch.delete(_db.collection('phone_directory').doc(cand));
         }
       }
 
       await batch.commit();
+
+      try {
+        final dirSnap = await _db
+            .collection('phone_directory')
+            .where('uid', isEqualTo: uid)
+            .get();
+        for (final doc in dirSnap.docs) {
+          await doc.reference.delete().catchError((_) {});
+        }
+      } catch (_) {}
 
       // Invalidate memory/local caches
       inMemoryApprovedLawyers = null;
@@ -298,19 +305,42 @@ class FirestoreService implements DatabaseContract {
       final batch = _db.batch();
       batch.delete(_db.collection('lawyers').doc(uid));
       batch.delete(_db.collection('users').doc(uid));
+      batch.delete(_db.collection('lawyer_requests').doc(uid));
 
       if (effectivePhone != null && effectivePhone.isNotEmpty) {
-        final cleanDigits = effectivePhone.replaceAll(RegExp(r'\D'), '');
-        final localDigits = cleanDigits.startsWith('249') && cleanDigits.length > 3
-            ? '0${cleanDigits.substring(3)}'
-            : cleanDigits;
-        batch.delete(_db.collection('phone_directory').doc(cleanDigits));
-        if (localDigits != cleanDigits) {
-          batch.delete(_db.collection('phone_directory').doc(localDigits));
+        final unified = PhoneUtils.toUnifiedPhone(effectivePhone);
+        batch.delete(_db.collection('phone_directory').doc(unified));
+        final candidates = PhoneUtils.generatePhoneCandidates(effectivePhone);
+        for (final cand in candidates) {
+          batch.delete(_db.collection('phone_directory').doc(cand));
         }
       }
 
       await batch.commit();
+
+      try {
+        final dirSnap = await _db
+            .collection('phone_directory')
+            .where('uid', isEqualTo: uid)
+            .get();
+        for (final doc in dirSnap.docs) {
+          await doc.reference.delete().catchError((_) {});
+        }
+      } catch (_) {}
+
+      // Delete user account permanently from Firebase Authentication
+      if (effectivePhone != null && effectivePhone.isNotEmpty) {
+        try {
+          await AuthService().deleteUserAuthAccount(
+            phone: effectivePhone,
+            role: 'lawyer',
+            uid: uid,
+          );
+        } catch (authErr) {
+          debugPrint('[FirestoreService] deleteUserAuthAccount notice: $authErr');
+        }
+      }
+
       inMemoryApprovedLawyers = null;
     } catch (e) {
       debugPrint('[FirestoreService] deleteLawyer error: $e');
@@ -473,10 +503,57 @@ class FirestoreService implements DatabaseContract {
 
   @override
   Future<void> deleteUser(String uid) async {
-    final batch = _db.batch();
-    batch.delete(_db.collection('users').doc(uid));
-    batch.delete(_db.collection('lawyers').doc(uid));
-    await batch.commit();
+    try {
+      final userDoc = await _db.collection('users').doc(uid).get();
+      final phone = userDoc.data()?['phone']?.toString();
+      final lawyerDoc = await _db.collection('lawyers').doc(uid).get();
+      final lawyerPhone = lawyerDoc.data()?['phone']?.toString();
+      final effectivePhone = phone ?? lawyerPhone;
+
+      final batch = _db.batch();
+      batch.delete(_db.collection('users').doc(uid));
+      batch.delete(_db.collection('lawyers').doc(uid));
+      batch.delete(_db.collection('lawyer_requests').doc(uid));
+
+      if (effectivePhone != null && effectivePhone.isNotEmpty) {
+        final unified = PhoneUtils.toUnifiedPhone(effectivePhone);
+        batch.delete(_db.collection('phone_directory').doc(unified));
+        final candidates = PhoneUtils.generatePhoneCandidates(effectivePhone);
+        for (final cand in candidates) {
+          batch.delete(_db.collection('phone_directory').doc(cand));
+        }
+      }
+
+      await batch.commit();
+
+      try {
+        final dirSnap = await _db
+            .collection('phone_directory')
+            .where('uid', isEqualTo: uid)
+            .get();
+        for (final doc in dirSnap.docs) {
+          await doc.reference.delete().catchError((_) {});
+        }
+      } catch (_) {}
+
+      // Delete user account permanently from Firebase Authentication
+      if (effectivePhone != null && effectivePhone.isNotEmpty) {
+        try {
+          await AuthService().deleteUserAuthAccount(
+            phone: effectivePhone,
+            role: 'client',
+            uid: uid,
+          );
+        } catch (authErr) {
+          debugPrint('[FirestoreService] deleteUserAuthAccount notice: $authErr');
+        }
+      }
+
+      inMemoryApprovedLawyers = null;
+    } catch (e) {
+      debugPrint('[FirestoreService] deleteUser error: $e');
+      rethrow;
+    }
   }
 
   // ===========================================================================
@@ -557,28 +634,18 @@ class FirestoreService implements DatabaseContract {
   @override
   Future<Map<String, int>> getStats() async {
     try {
-      final totalLawyersSnap = await _db.collection('lawyers').count().get();
-      final approvedLawyersSnap = await _db
-          .collection('lawyers')
-          .where('status', isEqualTo: 'approved')
-          .count()
-          .get();
-      final pendingLawyersSnap = await _db
-          .collection('lawyers')
-          .where('status', isEqualTo: 'pending')
-          .count()
-          .get();
-      final clientsSnap = await _db
-          .collection('users')
-          .where('role', isEqualTo: 'client')
-          .count()
-          .get();
+      final results = await Future.wait([
+        _db.collection('lawyers').count().get(),
+        _db.collection('lawyers').where('status', isEqualTo: 'approved').count().get(),
+        _db.collection('lawyers').where('status', isEqualTo: 'pending').count().get(),
+        _db.collection('users').where('role', isEqualTo: 'client').count().get(),
+      ]);
 
       return {
-        'totalLawyers': totalLawyersSnap.count ?? 0,
-        'approvedLawyers': approvedLawyersSnap.count ?? 0,
-        'pendingLawyers': pendingLawyersSnap.count ?? 0,
-        'totalClients': clientsSnap.count ?? 0,
+        'totalLawyers': results[0].count ?? 0,
+        'approvedLawyers': results[1].count ?? 0,
+        'pendingLawyers': results[2].count ?? 0,
+        'totalClients': results[3].count ?? 0,
       };
     } catch (e) {
       debugPrint('getStats aggregate error: $e');

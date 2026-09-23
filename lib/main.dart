@@ -5,12 +5,17 @@ import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'firebase_options.dart';
 import 'core/theme/app_theme.dart';
 import 'network/network_service.dart';
 import 'network/notification_service.dart';
 import 'ui/screens/onboarding/onboarding_screen.dart';
+import 'ui/screens/admin/admin_dashboard.dart';
+import 'ui/screens/main_navigation_screen.dart';
+import 'ui/screens/auth/lawyer_pending_screen.dart';
 import 'ui/custom_widgets/global_network_banner.dart';
 
 // ============================================================================
@@ -30,23 +35,29 @@ void main() async {
 
   // 2. Set preferred device orientations & modern system UI overlay on mobile
   if (!kIsWeb) {
-    unawaited(SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-    ]));
+    unawaited(
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.portraitDown,
+      ]),
+    );
 
-    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
-      systemNavigationBarColor: Colors.white,
-      systemNavigationBarIconBrightness: Brightness.dark,
-    ));
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        systemNavigationBarColor: Colors.white,
+        systemNavigationBarIconBrightness: Brightness.dark,
+      ),
+    );
   }
 
   // 3. Initialize background network monitoring service
-  unawaited(NetworkService().init().catchError((err) {
-    debugPrint('NetworkService init error: $err');
-  }));
+  unawaited(
+    NetworkService().init().catchError((err) {
+      debugPrint('NetworkService init error: $err');
+    }),
+  );
 
   // 4. Initialize Firebase Core & Firestore offline persistence
   try {
@@ -65,17 +76,104 @@ void main() async {
   }
 
   // 5. Initialize Notification channels & listeners in background (never blocks UI)
-  unawaited(NotificationService().init().catchError((notifErr) {
-    debugPrint('NotificationService init notice: $notifErr');
-  }));
+  unawaited(
+    NotificationService().init().catchError((notifErr) {
+      debugPrint('NotificationService init notice: $notifErr');
+    }),
+  );
 
-  // 6. Launch Application with Onboarding Gateway immediately
-  runApp(const MahameekApp(initialScreen: OnboardingScreen()));
+  // 6. Resolve Initial Screen dynamically from local session
+  Widget initialScreen = const OnboardingScreen();
+  
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final savedRole = prefs.getString('role');
+    final savedUid = prefs.getString('uid');
+    final savedStatus = prefs.getString('status');
+    final savedName = prefs.getString('name');
+
+    // Safely attempt to get Firebase user without breaking local SharedPreferences logic
+    User? currentUser;
+    try {
+      currentUser = FirebaseAuth.instance.currentUser;
+    } catch (_) {}
+
+    // Determine effective role
+    String? effectiveRole = (savedRole != null && savedRole.trim().isNotEmpty) ? savedRole.trim() : null;
+    if (effectiveRole == null && currentUser?.email != null) {
+      final email = currentUser!.email!.toLowerCase();
+      if (email.contains('@mahameek.admin.com') || email.startsWith('admin_')) {
+        effectiveRole = 'admin';
+      } else if (email.contains('@mahameek.lawyer.com')) {
+        effectiveRole = 'lawyer';
+      } else if (email.contains('@mahameek.client.com')) {
+        effectiveRole = 'client';
+      }
+    }
+
+    // Radical Session Persistence: If savedUid or currentUser exists, user is logged in
+    final bool hasLocalSession = savedUid != null && savedUid.trim().isNotEmpty;
+    final bool hasFirebaseUser = currentUser != null;
+    final bool isLoggedIn = hasLocalSession || hasFirebaseUser;
+
+    if (isLoggedIn) {
+      final String role = effectiveRole ?? 'client';
+      if (role == 'admin') {
+        initialScreen = const AdminDashboard();
+        try {
+          unawaited(NotificationService().enableAllNotifications(adminUid: savedUid ?? currentUser?.uid));
+        } catch (_) {}
+      } else if (role == 'lawyer') {
+        if (savedStatus == 'pending') {
+          initialScreen = LawyerPendingScreen(lawyerName: savedName);
+        } else {
+          initialScreen = const MainNavigationScreen(role: 'lawyer');
+        }
+      } else {
+        initialScreen = const MainNavigationScreen(role: 'client');
+      }
+    } else {
+      initialScreen = const OnboardingScreen();
+    }
+  } catch (sessionErr) {
+    debugPrint('Session resolution notice: $sessionErr');
+    initialScreen = const OnboardingScreen();
+  }
+
+  // 7. Launch Application with resolved initial screen
+  runApp(MahameekApp(initialScreen: initialScreen));
 }
 
-class MahameekApp extends StatelessWidget {
+class MahameekApp extends StatefulWidget {
   final Widget initialScreen;
   const MahameekApp({super.key, required this.initialScreen});
+
+  @override
+  State<MahameekApp> createState() => _MahameekAppState();
+}
+
+class _MahameekAppState extends State<MahameekApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // Dismiss all system notifications on cold launch / app entry
+    NotificationService().clearAllSystemNotifications();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Dismiss all system notifications when app returns to foreground
+      NotificationService().clearAllSystemNotifications();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -97,13 +195,11 @@ class MahameekApp extends StatelessWidget {
                 maxScaleFactor: 1.35,
               ),
             ),
-            child: GlobalNetworkBannerWrapper(
-              child: child!,
-            ),
+            child: GlobalNetworkBannerWrapper(child: child!),
           ),
         );
       },
-      home: initialScreen,
+      home: widget.initialScreen,
     );
   }
 }

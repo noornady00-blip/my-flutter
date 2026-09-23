@@ -301,229 +301,244 @@ class _LoginScreenState extends State<LoginScreen> {
   void _showForgotPasswordDialog() {
     final resetCtrl = TextEditingController(text: _identifierController.text.trim());
     bool isSubmitting = false;
+    String? modalError;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (modalCtx) => StatefulBuilder(
-        builder: (ctx, setModalState) => Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          padding: EdgeInsets.only(
-            left: 20,
-            right: 20,
-            top: 14,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Drag Handle
-              Center(
-                child: Container(
-                  width: 44,
-                  height: 4.5,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFCBD5E1),
-                    borderRadius: BorderRadius.circular(10),
+        builder: (ctx, setModalState) {
+          return Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            ),
+            padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: 14,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Drag Handle
+                Center(
+                  child: Container(
+                    width: 44,
+                    height: 4.5,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFCBD5E1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 18),
+                const SizedBox(height: 18),
 
-              // Title & Icon
-              Row(
-                textDirection: TextDirection.rtl,
-                children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFFBEB),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: const Color(0xFFD49B1A), width: 1.5),
+                // Title & Icon
+                Row(
+                  textDirection: TextDirection.rtl,
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFFBEB),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: const Color(0xFFD49B1A), width: 1.5),
+                      ),
+                      child: const Icon(Icons.lock_reset_rounded, color: Color(0xFFD49B1A), size: 26),
                     ),
-                    child: const Icon(Icons.lock_reset_rounded, color: Color(0xFFD49B1A), size: 26),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'استعادة كلمة المرور',
-                          style: GoogleFonts.cairo(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            color: const Color(0xFF0B2A5B),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'استعادة كلمة المرور',
+                            style: GoogleFonts.cairo(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                              color: const Color(0xFF0B2A5B),
+                            ),
                           ),
-                        ),
-                        Text(
-                          'الدعم الفني المباشر واستعادة الحساب',
+                          Text(
+                            'الدعم الفني المباشر واستعادة الحساب',
+                            style: GoogleFonts.cairo(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                              color: const Color(0xFF64748B),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, color: Color(0xFF94A3B8)),
+                      onPressed: () => Navigator.pop(modalCtx),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+
+                // Guidance Notice Card
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.info_outline_rounded, color: Color(0xFF0284C7), size: 22),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'يرجى إدخال رقم هاتفك المسجل لإرسال طلب استعادة كلمة المرور إلى إدارة التطبيق، وسيتم مراجعة الطلب وتعيين كلمة المرور وإشعارك.',
                           style: GoogleFonts.cairo(
                             fontSize: 12.5,
+                            height: 1.5,
+                            color: const Color(0xFF334155),
                             fontWeight: FontWeight.w600,
-                            color: const Color(0xFF64748B),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+
+                // Phone Number Input
+                SudanPhoneFormField(
+                  controller: resetCtrl,
+                  isRequired: true,
+                ),
+
+                // In-Modal Error Card
+                if (modalError != null) ...[
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF2F2),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: const Color(0xFFFCA5A5),
+                        width: 1.2,
+                      ),
+                    ),
+                    child: Row(
+                      textDirection: TextDirection.rtl,
+                      children: [
+                        const Icon(
+                          Icons.error_outline_rounded,
+                          color: Color(0xFFDC2626),
+                          size: 22,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            modalError!,
+                            textDirection: TextDirection.rtl,
+                            style: GoogleFonts.cairo(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF991B1B),
+                              height: 1.4,
+                            ),
                           ),
                         ),
                       ],
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded, color: Color(0xFF94A3B8)),
-                    onPressed: () => Navigator.pop(modalCtx),
-                  ),
                 ],
-              ),
-              const SizedBox(height: 14),
+                const SizedBox(height: 20),
 
-              // Guidance Notice Card
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Icon(Icons.info_outline_rounded, color: Color(0xFF0284C7), size: 22),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'يرجى إدخال رقم هاتفك المسجل لإرسال طلب استعادة كلمة المرور إلى إدارة التطبيق، وسيتم مراجعة الطلب وتعيين كلمة المرور وإشعارك.',
-                        style: GoogleFonts.cairo(
-                          fontSize: 12.5,
-                          height: 1.5,
-                          color: const Color(0xFF334155),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 18),
+                // In-App Request to Administration Button
+                ElevatedButton(
+                  onPressed: isSubmitting
+                      ? null
+                      : () async {
+                          setModalState(() => modalError = null);
+                          final phone = resetCtrl.text.trim();
+                          final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+                          if (digits.length < 9 || digits.length > 15) {
+                            setModalState(() {
+                              modalError = 'رقم الهاتف غير صحيح، يرجى التأكد من كتابة الرقم بشكل صحيح (9 أرقام).';
+                            });
+                            return;
+                          }
 
-              // Phone Number Input
-              SudanPhoneFormField(
-                controller: resetCtrl,
-                isRequired: true,
-              ),
-              const SizedBox(height: 20),
+                          final nav = Navigator.of(modalCtx);
 
-              // In-App Request to Administration Button
-              ElevatedButton(
-                onPressed: isSubmitting
-                    ? null
-                    : () async {
-                        final phone = resetCtrl.text.trim();
-                        final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
-                        if (digits.length < 9 || digits.length > 15) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('رقم الهاتف غير صحيح أو غير مسجل، يرجى التأكد من كتابة الرقم بشكل صحيح', style: GoogleFonts.cairo()),
-                              backgroundColor: AppTheme.error,
-                              behavior: SnackBarBehavior.floating,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            ),
+                          final hasNet = await NetworkService().hasInternet();
+                          if (!hasNet) {
+                            if (!mounted) return;
+                            setModalState(() {
+                              modalError = 'الشبكة المتصل بها لا يتوفر بها إنترنت. يرجى التأكد من اتصالك بالإنترنت والمحاولة مجدداً.';
+                            });
+                            return;
+                          }
+
+                          setModalState(() {
+                            isSubmitting = true;
+                            modalError = null;
+                          });
+
+                          final res = await _authService.submitPasswordResetTicket(
+                            phone: phone,
+                            source: 'in_app',
                           );
-                          return;
-                        }
 
-                        final messenger = ScaffoldMessenger.of(context);
-                        final nav = Navigator.of(modalCtx);
-
-                        final hasNet = await NetworkService().hasInternet();
-                        if (!hasNet) {
                           if (!mounted) return;
-                          messenger.showSnackBar(
-                            SnackBar(
-                              content: Row(
-                                textDirection: TextDirection.rtl,
-                                children: [
-                                  const Icon(Icons.wifi_off_rounded, color: Colors.white, size: 20),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Text(
-                                      'الشبكة المتصل بها لا يتوفر بها إنترنت. يرجى التأكد من اتصالك بالإنترنت والمحاولة مجدداً.',
-                                      style: GoogleFonts.cairo(fontSize: 13, color: Colors.white, fontWeight: FontWeight.w600),
-                                    ),
-                                  ),
-                                ],
+
+                          if (res['success'] == true) {
+                            nav.pop();
+                            await AppDialog.success(
+                              context,
+                              title: 'تم تسجيل طلبك بنجاح',
+                              message: 'تم إرسال طلب استعادة كلمة المرور لرقم الهاتف:\n$phone\nبنجاح إلى إدارة التطبيق.\n\nسيقوم المشرف بمراجعة الطلب وتعيين كلمة المرور وإشعارك لتتمكن من تسجيل الدخول مباشرة.',
+                              buttonLabel: 'حسناً',
+                            );
+                          } else {
+                            setModalState(() {
+                              isSubmitting = false;
+                              modalError = res['error'] ?? 'الرقم غير مسجل في المنصة، يرجى التأكد من كتابة الرقم بشكل صحيح.';
+                            });
+                          }
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF0B2A5B),
+                    foregroundColor: Colors.white,
+                    elevation: 2,
+                    padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                  child: isSubmitting
+                      ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.send_rounded, color: Color(0xFFD49B1A), size: 20),
+                            const SizedBox(width: 10),
+                            Text(
+                              'إرسال طلب استعادة كلمة المرور',
+                              style: GoogleFonts.cairo(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
                               ),
-                              backgroundColor: const Color(0xFFDC2626),
-                              behavior: SnackBarBehavior.floating,
-                              duration: const Duration(seconds: 4),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              margin: const EdgeInsets.all(16),
                             ),
-                          );
-                          return;
-                        }
-
-                        setModalState(() => isSubmitting = true);
-                        final res = await _authService.submitPasswordResetTicket(
-                          phone: phone,
-                          source: 'in_app',
-                        );
-
-                        if (!mounted) return;
-
-                        if (res['success'] == true) {
-                          nav.pop();
-                          final userName = res['name']?.toString() ?? '';
-                          final accountLabel = userName.isNotEmpty ? '$userName ($phone)' : phone;
-                          await AppDialog.success(
-                            context,
-                            title: 'تم تسجيل طلبك بنجاح',
-                            message: 'تم إرسال طلب استعادة كلمة المرور للحساب:\n$accountLabel\nبنجاح إلى إدارة التطبيق.\n\nسيقوم المشرف بمراجعة الطلب وتعيين كلمة المرور وإشعارك لتتمكن من تسجيل الدخول مباشرة.',
-                            buttonLabel: 'حسناً',
-                          );
-                        } else {
-                          setModalState(() => isSubmitting = false);
-                          messenger.showSnackBar(
-                            SnackBar(
-                              content: Text(res['error'] ?? 'تعذر إرسال الطلب، يرجى المحاولة لاحقاً', style: GoogleFonts.cairo(fontWeight: FontWeight.w700)),
-                              backgroundColor: AppTheme.error,
-                              behavior: SnackBarBehavior.floating,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            ),
-                          );
-                        }
-                      },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0B2A5B),
-                  foregroundColor: Colors.white,
-                  elevation: 2,
-                  padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          ],
+                        ),
                 ),
-                child: isSubmitting
-                    ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                    : Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.send_rounded, color: Color(0xFFD49B1A), size: 20),
-                          const SizedBox(width: 10),
-                          Text(
-                            'إرسال طلب استعادة كلمة المرور',
-                            style: GoogleFonts.cairo(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ],
-                      ),
-              ),
-            ],
-          ),
-        ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

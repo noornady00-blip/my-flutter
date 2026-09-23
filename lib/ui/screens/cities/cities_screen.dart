@@ -1053,19 +1053,19 @@ class _CitiesScreenState extends State<CitiesScreen> {
 
                 const SizedBox(height: 18),
 
-                ElevatedButton(
+                 ElevatedButton(
                   onPressed: loading
                       ? null
                       : () async {
-                          if (oldPassCtrl.text.isEmpty) {
+                          if (oldPassCtrl.text.trim().isEmpty) {
                             setModalState(() => error = 'يرجى إدخال كلمة المرور الحالية');
                             return;
                           }
-                          if (newPassCtrl.text.length < 6) {
+                          if (newPassCtrl.text.trim().length < 6) {
                             setModalState(() => error = 'كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل');
                             return;
                           }
-                          if (newPassCtrl.text != confirmPassCtrl.text) {
+                          if (newPassCtrl.text.trim() != confirmPassCtrl.text.trim()) {
                             setModalState(() => error = 'كلمة المرور وتأكيدها غير متطابقين');
                             return;
                           }
@@ -1075,34 +1075,37 @@ class _CitiesScreenState extends State<CitiesScreen> {
                             error = null;
                           });
 
+                          Map<String, dynamic> res;
                           try {
-                            final res = await AuthService().reauthenticateAndChangePassword(
-                              currentPassword: oldPassCtrl.text,
-                              newPassword: newPassCtrl.text,
+                            res = await AuthService().reauthenticateAndChangePassword(
+                              currentPassword: oldPassCtrl.text.trim(),
+                              newPassword: newPassCtrl.text.trim(),
                             );
-
-                            if (!mounted) return;
-                            if (res['success'] == true) {
-                              if (ctx.mounted) Navigator.pop(ctx);
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('تم تغيير كلمة المرور بنجاح!', style: GoogleFonts.cairo()),
-                                    backgroundColor: const Color(0xFF10B981),
-                                  ),
-                                );
-                              }
-                            } else {
-                              setModalState(() {
-                                loading = false;
-                                error = res['error'] ?? 'تعذر تغيير كلمة المرور';
-                              });
-                            }
                           } catch (e) {
-                            setModalState(() {
-                              loading = false;
-                              error = 'حدث خطأ غير متوقع: $e';
-                            });
+                            res = {'success': false, 'error': 'حدث خطأ غير متوقع، يرجى المحاولة مجدداً'};
+                          }
+
+                          // Always reset loading first, regardless of mount state
+                          setModalState(() {
+                            loading = false;
+                            if (res['success'] != true) {
+                              error = res['error']?.toString() ?? 'تعذر تغيير كلمة المرور';
+                            }
+                          });
+
+                          if (res['success'] == true) {
+                            if (ctx.mounted) Navigator.pop(ctx);
+                            if (mounted && context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('تم تغيير كلمة المرور بنجاح!',
+                                      style: GoogleFonts.cairo(fontWeight: FontWeight.w700)),
+                                  backgroundColor: const Color(0xFF10B981),
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                              );
+                            }
                           }
                         },
                   style: ElevatedButton.styleFrom(

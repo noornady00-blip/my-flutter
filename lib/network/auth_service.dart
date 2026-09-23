@@ -13,7 +13,10 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../firebase_options.dart';
+import 'firestore_service.dart';
 
 import '../data/models/user_model.dart';
 import '../data/models/lawyer.dart';
@@ -2035,8 +2038,136 @@ class AuthService implements AuthContract {
   Future<void> logout() => signOut();
 
   // ===========================================================================
-  // 🗑️ DELETE ACCOUNT (App Store 5.1.1(v) & GDPR)
+  // 🗑️ PERMANENT AUTH ACCOUNT DELETION (Spark & Admin Safe)
   // ===========================================================================
+
+  /// Deletes a specific user from Firebase Authentication by spinning up an isolated
+  /// secondary FirebaseApp session, authenticating with deterministic credentials,
+  /// calling currentUser.delete(), and terminating the secondary session.
+  /// This works cleanly without affecting the currently active Admin or User session.
+  @override
+  Future<bool> deleteUserAuthAccount({
+    required String phone,
+    String? role,
+    String? uid,
+    String? password,
+    String? userEmail,
+  }) async {
+    FirebaseApp? secondaryApp;
+    try {
+      final cleanDigits = PhoneUtils.normalizeDigits(phone).replaceAll(RegExp(r'[^0-9]'), '');
+      if (cleanDigits.isEmpty && (userEmail == null || userEmail.isEmpty)) return false;
+
+      final localDigits = cleanDigits.isNotEmpty ? PhoneUtils.extractLocalSudanDigits(cleanDigits) : '';
+      final unified = cleanDigits.isNotEmpty ? PhoneUtils.toUnifiedPhone(phone).replaceAll('+', '') : '';
+
+      // 1. Gather all phone digit candidates
+      final digitCandidates = <String>{
+        if (cleanDigits.isNotEmpty) cleanDigits,
+        if (localDigits.isNotEmpty) localDigits,
+        if (unified.isNotEmpty) unified,
+      };
+
+      // 2. Build email targets across all possible roles
+      final emailTargets = <String>[];
+      if (userEmail != null && userEmail.trim().isNotEmpty) {
+        emailTargets.add(userEmail.trim());
+      }
+      final rolesToTest = [
+        if (role != null && role.isNotEmpty) role,
+        'client',
+        'lawyer',
+        'admin',
+      ];
+
+      for (final digits in digitCandidates) {
+        for (final r in rolesToTest) {
+          final target = '$digits@mahameek.$r.com';
+          if (!emailTargets.contains(target)) emailTargets.add(target);
+        }
+        final general = '$digits@mahameek.com';
+        if (!emailTargets.contains(general)) emailTargets.add(general);
+      }
+
+      // 3. Build password candidates
+      final pwCandidates = <String>[];
+      for (final digits in digitCandidates) {
+        pwCandidates.add(internalAuthKey(digits));
+      }
+      if (password != null && password.trim().isNotEmpty) {
+        final norm = PhoneUtils.normalizeDigits(password.trim());
+        pwCandidates.add(norm);
+        if (norm != password.trim()) pwCandidates.add(password.trim());
+        if (norm.length < 6) pwCandidates.add(norm.padRight(6, '0'));
+      }
+
+      // Check if user has an adminResetPassword in Firestore
+      if (uid != null && uid.isNotEmpty) {
+        try {
+          final uDoc = await _db.collection('users').doc(uid).get();
+          final resetPw = uDoc.data()?['adminResetPassword']?.toString();
+          if (resetPw != null && resetPw.isNotEmpty) {
+            pwCandidates.add(resetPw.trim());
+            pwCandidates.add(PhoneUtils.normalizeDigits(resetPw.trim()));
+          }
+        } catch (_) {}
+        try {
+          final lDoc = await _db.collection('lawyers').doc(uid).get();
+          final resetPw = lDoc.data()?['adminResetPassword']?.toString();
+          if (resetPw != null && resetPw.isNotEmpty) {
+            pwCandidates.add(resetPw.trim());
+            pwCandidates.add(PhoneUtils.normalizeDigits(resetPw.trim()));
+          }
+        } catch (_) {}
+      }
+
+      // 4. Initialize secondary app
+      final suffix = cleanDigits.length > 4
+          ? cleanDigits.substring(cleanDigits.length - 4)
+          : DateTime.now().millisecondsSinceEpoch.toString().substring(8);
+      final appName = 'UserDeletion_${DateTime.now().millisecondsSinceEpoch}_$suffix';
+      secondaryApp = await Firebase.initializeApp(
+        name: appName,
+        options: Firebase.app().options,
+      );
+
+      final secondaryAuth = FirebaseAuth.instanceFor(app: secondaryApp);
+      bool deleted = false;
+
+      for (final targetEmail in emailTargets) {
+        for (final pw in pwCandidates) {
+          try {
+            final cred = await secondaryAuth.signInWithEmailAndPassword(
+              email: targetEmail,
+              password: pw,
+            );
+            if (cred.user != null) {
+              await cred.user!.delete();
+              deleted = true;
+              debugPrint('✅ [AuthService] Successfully deleted user $targetEmail from Firebase Auth');
+              break;
+            }
+          } catch (_) {}
+        }
+        if (deleted) break;
+      }
+
+      return deleted;
+    } catch (e) {
+      debugPrint('[AuthService] deleteUserAuthAccount notice: $e');
+      return false;
+    } finally {
+      if (secondaryApp != null) {
+        try {
+          await secondaryApp.delete();
+        } catch (_) {}
+      }
+    }
+  }
+
+  // ============================================================================
+  // 🗑️ DELETE OWN ACCOUNT — Guaranteed Full Purge
+  // ============================================================================
 
   @override
   Future<Map<String, dynamic>> deleteAccount(
@@ -2053,87 +2184,263 @@ class AuthService implements AuthContract {
           email.split('@').first.replaceAll(RegExp(r'[^0-9]'), '');
       final localDigits = PhoneUtils.extractLocalSudanDigits(cleanDigits);
 
-      // 1. Prepare candidates for re-authentication if requires-recent-login is triggered
-      final candidatePasswords = <String>[];
-      if (cleanDigits.isNotEmpty) {
-        candidatePasswords.add(internalAuthKey(cleanDigits));
-        if (localDigits.isNotEmpty && localDigits != cleanDigits) {
-          candidatePasswords.add(internalAuthKey(localDigits));
-        }
-      }
-      if (currentPassword != null && currentPassword.trim().isNotEmpty) {
-        final p = currentPassword.trim();
-        candidatePasswords.add(p);
-        if (p.length < 6) candidatePasswords.add(p.padRight(6, '0'));
-      }
+      // ── 1. Fetch user data BEFORE deleting anything ──────────────────────
+      final db = FirebaseFirestore.instance;
+      String? storedHash;
+      String? storedAdminReset;
+      String? userDocPhone;
+      String? profilePhotoUrl;
 
-      // 2. Attempt to delete Firebase Auth user
-      bool authUserDeleted = false;
       try {
-        await user.delete();
-        authUserDeleted = true;
-      } on FirebaseAuthException catch (e) {
-        if (e.code == 'requires-recent-login') {
-          // Re-authenticate and try deleting again
-          for (final pwd in candidatePasswords) {
-            try {
-              final cred = EmailAuthProvider.credential(
-                email: email,
-                password: pwd,
-              );
-              await user.reauthenticateWithCredential(cred);
-              await user.delete();
-              authUserDeleted = true;
-              break;
-            } catch (_) {}
-          }
-        } else {
-          debugPrint('user.delete FirebaseAuthException [${e.code}]: ${e.message}');
-        }
-      } catch (e) {
-        debugPrint('user.delete error: $e');
-      }
-
-      // 3. Delete Profile Photo from Firebase Storage
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        final photoUrl = prefs.getString('user_profile_photo_url');
-        if (photoUrl != null && photoUrl.isNotEmpty) {
-          await StorageService().deleteOldPhoto(photoUrl);
+        final userDoc = await db.collection('users').doc(uid).get();
+        if (userDoc.exists && userDoc.data() != null) {
+          storedHash = userDoc.data()?['passwordHash']?.toString();
+          storedAdminReset = userDoc.data()?['adminResetPassword']?.toString();
+          final p = userDoc.data()?['phone']?.toString();
+          if (p != null && p.trim().isNotEmpty) userDocPhone = p.trim();
+          profilePhotoUrl = userDoc.data()?['photoUrl']?.toString();
         }
       } catch (_) {}
 
-      // 4. Delete Firestore Documents
-      final db = FirebaseFirestore.instance;
-      await db.collection('users').doc(uid).delete().catchError((_) {});
-      await db.collection('lawyers').doc(uid).delete().catchError((_) {});
-      await db.collection('admins').doc(uid).delete().catchError((_) {});
+      try {
+        final lawyerDoc = await db.collection('lawyers').doc(uid).get();
+        if (lawyerDoc.exists && lawyerDoc.data() != null) {
+          storedHash ??= lawyerDoc.data()?['passwordHash']?.toString();
+          storedAdminReset ??=
+              lawyerDoc.data()?['adminResetPassword']?.toString();
+          final p = lawyerDoc.data()?['phone']?.toString();
+          if (p != null && p.trim().isNotEmpty) userDocPhone ??= p.trim();
+          profilePhotoUrl ??= lawyerDoc.data()?['photoUrl']?.toString();
+        }
+      } catch (_) {}
 
-      // 5. Clean up Phone Directory
-      if (cleanDigits.isNotEmpty) {
-        await db.collection('phone_directory').doc(cleanDigits).delete().catchError((_) {});
-        if (localDigits.isNotEmpty && localDigits != cleanDigits) {
-          await db.collection('phone_directory').doc(localDigits).delete().catchError((_) {});
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final spPhone = prefs.getString('user_phone') ?? prefs.getString('phone');
+        if (spPhone != null && spPhone.trim().isNotEmpty) {
+          userDocPhone ??= spPhone.trim();
+        }
+        profilePhotoUrl ??= prefs.getString('user_profile_photo_url');
+      } catch (_) {}
+
+      // Build complete phone candidate set for directory cleanup
+      final phoneCandidates = <String>{};
+      for (final src in [userDocPhone, cleanDigits, localDigits]) {
+        if (src != null && src.isNotEmpty) {
+          phoneCandidates.addAll(PhoneUtils.generatePhoneCandidates(src));
         }
       }
 
-      // 6. If auth user was not deleted due to any reason, try one last time
-      if (!authUserDeleted) {
+      // ── 2. Validate entered password against stored hash ─────────────────
+      if (currentPassword != null && currentPassword.trim().isNotEmpty) {
+        if (storedHash != null && storedHash.isNotEmpty) {
+          final raw = currentPassword.trim();
+          final norm = PhoneUtils.normalizeDigits(raw);
+          final matchesHash =
+              storedHash == hashPassword(norm) || storedHash == hashPassword(raw);
+          final matchesReset = storedAdminReset != null &&
+              storedAdminReset.isNotEmpty &&
+              (storedAdminReset == raw || storedAdminReset == norm);
+          if (!matchesHash && !matchesReset) {
+            return {
+              'success': false,
+              'error':
+                  'كلمة المرور غير صحيحة، يرجى التأكد من كلمة المرور والمحاولة مجدداً.',
+            };
+          }
+        }
+      }
+
+      // ── 3. Obtain fresh ID token for REST Auth deletion while still signed in ─
+      String? idToken;
+      try {
+        idToken = await user.getIdToken(true);
+      } catch (_) {}
+
+      // ── 4. Delete profile photo from Firebase Storage (while authenticated) ─
+      if (profilePhotoUrl != null && profilePhotoUrl.isNotEmpty) {
         try {
-          await user.delete();
+          await StorageService().deleteOldPhoto(profilePhotoUrl);
         } catch (_) {}
       }
 
-      // 7. Complete sign out and clear local cache
-      await signOut();
+      // ── 5. Delete all Firestore records (while authenticated as owner) ────
+      final batch = db.batch();
+      batch.delete(db.collection('users').doc(uid));
+      batch.delete(db.collection('lawyers').doc(uid));
+      batch.delete(db.collection('lawyer_requests').doc(uid));
+      batch.delete(db.collection('admins').doc(uid));
+      batch.delete(db.collection('admin_fcm_tokens').doc(uid));
+
+      for (final q in phoneCandidates) {
+        if (q.trim().isEmpty) continue;
+        batch.delete(db.collection('phone_directory').doc(q.trim()));
+      }
+
+      try {
+        await batch.commit();
+      } catch (batchErr) {
+        debugPrint('[deleteAccount] batch delete failed: $batchErr, using direct deletes');
+        await db.collection('users').doc(uid).delete().catchError((_) {});
+        await db.collection('lawyers').doc(uid).delete().catchError((_) {});
+        await db.collection('lawyer_requests').doc(uid).delete().catchError((_) {});
+        await db.collection('admins').doc(uid).delete().catchError((_) {});
+        await db.collection('admin_fcm_tokens').doc(uid).delete().catchError((_) {});
+        for (final q in phoneCandidates) {
+          if (q.trim().isEmpty) continue;
+          await db.collection('phone_directory').doc(q.trim()).delete().catchError((_) {});
+        }
+      }
+
+      // Extra purge for phone_directory by uid
+      try {
+        final dirSnap = await db
+            .collection('phone_directory')
+            .where('uid', isEqualTo: uid)
+            .get();
+        for (final doc in dirSnap.docs) {
+          await doc.reference.delete().catchError((_) {});
+        }
+      } catch (_) {}
+
+      // Clean up stray records by phone
+      for (final q in phoneCandidates) {
+        if (q.trim().isEmpty) continue;
+        try {
+          final lawSnap = await db
+              .collection('lawyers')
+              .where('phone', isEqualTo: q)
+              .get();
+          for (final doc in lawSnap.docs) {
+            await doc.reference.delete().catchError((_) {});
+          }
+        } catch (_) {}
+        try {
+          final uSnap = await db
+              .collection('users')
+              .where('phone', isEqualTo: q)
+              .get();
+          for (final doc in uSnap.docs) {
+            await doc.reference.delete().catchError((_) {});
+          }
+        } catch (_) {}
+      }
+
+      // ── 6. Delete Firebase Auth account (3 strategies) ───────────────────
+      bool authDeleted = false;
+
+      // Strategy 1: Primary app re-auth & user.delete()
+      final reAuthCandidates = <String>{};
+      for (final src in [cleanDigits, localDigits]) {
+        if (src.isNotEmpty) reAuthCandidates.add(internalAuthKey(src));
+      }
+      if (userDocPhone != null && userDocPhone.isNotEmpty) {
+        final rawU = PhoneUtils.normalizeDigits(userDocPhone).replaceAll(RegExp(r'[^0-9]'), '');
+        if (rawU.isNotEmpty) reAuthCandidates.add(internalAuthKey(rawU));
+        final locU = PhoneUtils.extractLocalSudanDigits(rawU);
+        if (locU.isNotEmpty) reAuthCandidates.add(internalAuthKey(locU));
+      }
+      for (final q in phoneCandidates) {
+        final d = q.replaceAll(RegExp(r'[^0-9]'), '');
+        if (d.isNotEmpty) reAuthCandidates.add(internalAuthKey(d));
+      }
+      if (currentPassword != null && currentPassword.trim().isNotEmpty) {
+        final rawP = currentPassword.trim();
+        final normP = PhoneUtils.normalizeDigits(rawP);
+        reAuthCandidates.add(normP);
+        reAuthCandidates.add(rawP);
+        if (normP.length < 6) reAuthCandidates.add(normP.padRight(6, '0'));
+      }
+      if (storedAdminReset != null && storedAdminReset.isNotEmpty) {
+        reAuthCandidates.add(storedAdminReset.trim());
+        reAuthCandidates.add(PhoneUtils.normalizeDigits(storedAdminReset.trim()));
+      }
+
+      try {
+        await user.delete();
+        authDeleted = true;
+        debugPrint('✅ [deleteAccount] Auth user deleted directly');
+      } on FirebaseAuthException catch (authEx) {
+        if (authEx.code == 'requires-recent-login' && email.isNotEmpty) {
+          for (final pwd in reAuthCandidates) {
+            try {
+              final cred = EmailAuthProvider.credential(email: email, password: pwd);
+              await user.reauthenticateWithCredential(cred);
+              await user.delete();
+              authDeleted = true;
+              debugPrint('✅ [deleteAccount] Auth user deleted after re-auth');
+              break;
+            } catch (_) {}
+          }
+        }
+      } catch (_) {}
+
+      // Strategy 2: Firebase Auth REST API (accounts:delete) with fresh idToken
+      if (!authDeleted && idToken != null) {
+        try {
+          final apiKey = DefaultFirebaseOptions.currentPlatform.apiKey;
+          final response = await http.post(
+            Uri.parse('https://identitytoolkit.googleapis.com/v1/accounts:delete?key=$apiKey'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'idToken': idToken}),
+          ).timeout(const Duration(seconds: 10));
+
+          if (response.statusCode == 200) {
+            authDeleted = true;
+            debugPrint('✅ [deleteAccount] Auth user deleted via REST API');
+          } else {
+            debugPrint('[deleteAccount] REST API status ${response.statusCode}: ${response.body}');
+          }
+        } catch (e) {
+          debugPrint('[deleteAccount] REST API error: $e');
+        }
+      }
+
+      // Strategy 3: Secondary App (isolated session login then delete)
+      if (!authDeleted) {
+        final targetPhone = userDocPhone ?? cleanDigits;
+        if (targetPhone.isNotEmpty) {
+          authDeleted = await deleteUserAuthAccount(
+            phone: targetPhone,
+            uid: uid,
+            password: currentPassword,
+            userEmail: email.isNotEmpty ? email : null,
+          );
+          if (authDeleted) {
+            debugPrint('✅ [deleteAccount] Auth user deleted via secondary app');
+          }
+        }
+      }
+
+      // ── 7. Invalidate local session & caches, then sign out ──────────────
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('uid');
+        await prefs.remove('role');
+        await prefs.remove('name');
+        await prefs.remove('phone');
+        await prefs.remove('user_phone');
+        await prefs.remove('status');
+        await prefs.remove('user_profile_photo');
+        await prefs.remove('user_profile_photo_url');
+      } catch (_) {}
+
+      FirestoreService.inMemoryApprovedLawyers = null;
+
+      try {
+        await _auth.signOut();
+      } catch (_) {}
 
       return {'success': true};
     } catch (e) {
-      // In case of any unexpected exception, ensure signOut is performed
+      debugPrint('[deleteAccount] unexpected error: $e');
       try {
         await signOut();
       } catch (_) {}
-      return {'success': true};
+      return {
+        'success': false,
+        'error': 'حدث خطأ أثناء حذف الحساب، يرجى المحاولة مجدداً.',
+      };
     }
   }
 

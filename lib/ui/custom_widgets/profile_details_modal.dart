@@ -5,8 +5,6 @@
 // high-resolution lightbox photo viewer, WhatsApp direct action, and call triggers.
 // ==============================================================================
 
-import 'dart:convert';
-import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -17,6 +15,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../data/models/lawyer.dart';
 import '../../data/models/user_model.dart';
 import '../../core/utils/phone_utils.dart';
+import '../../core/utils/image_utils.dart';
 
 OverlayEntry? _activeProfileToast;
 
@@ -328,32 +327,75 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
   void initState() {
     super.initState();
     _lawyer = widget.lawyer;
-    if (_lawyer.city.isEmpty || _lawyer.specialization.isEmpty) {
+    if (_lawyer.city.isEmpty ||
+        _lawyer.specialization.isEmpty ||
+        _lawyer.photoBase64 == null ||
+        _lawyer.photoBase64!.trim().isEmpty ||
+        _lawyer.photoUrl == null ||
+        _lawyer.photoUrl!.trim().isEmpty) {
       _loadFullLawyerData();
     }
   }
 
   Future<void> _loadFullLawyerData() async {
     try {
-      DocumentSnapshot<Map<String, dynamic>>? doc;
+      DocumentSnapshot<Map<String, dynamic>>? lawyerDoc;
       if (_lawyer.uid.isNotEmpty && !_lawyer.uid.startsWith('guest_')) {
-        doc = await FirebaseFirestore.instance
+        lawyerDoc = await FirebaseFirestore.instance
             .collection('lawyers')
             .doc(_lawyer.uid)
             .get();
       }
-      if ((doc == null || !doc.exists) && _lawyer.phone.isNotEmpty) {
+      if ((lawyerDoc == null || !lawyerDoc.exists) && _lawyer.phone.isNotEmpty) {
         final snap = await FirebaseFirestore.instance
             .collection('lawyers')
             .where('phone', isEqualTo: _lawyer.phone.trim())
             .limit(1)
             .get();
-        if (snap.docs.isNotEmpty) doc = snap.docs.first;
+        if (snap.docs.isNotEmpty) lawyerDoc = snap.docs.first;
       }
-      if (doc != null && doc.exists && doc.data() != null && mounted) {
-        setState(() {
-          _lawyer = LawyerModel.fromMap(doc!.data()!, doc.id);
-        });
+
+      DocumentSnapshot<Map<String, dynamic>>? userDoc;
+      final targetUid = _lawyer.uid.isNotEmpty && !_lawyer.uid.startsWith('guest_')
+          ? _lawyer.uid
+          : lawyerDoc?.id;
+      if (targetUid != null && targetUid.isNotEmpty) {
+        userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(targetUid)
+            .get();
+      }
+
+      if (mounted) {
+        final lData = lawyerDoc?.exists == true ? lawyerDoc!.data() : null;
+        final uData = userDoc?.exists == true ? userDoc!.data() : null;
+
+        if (lData != null || uData != null) {
+          final mergedMap = <String, dynamic>{
+            ...?uData,
+            ...?lData,
+          };
+          final resolvedBase64 = lData?['photoBase64']?.toString() ??
+              lData?['photo']?.toString() ??
+              uData?['photoBase64']?.toString() ??
+              uData?['photo']?.toString();
+          final resolvedUrl = lData?['photoUrl']?.toString() ??
+              uData?['photoUrl']?.toString();
+
+          if (resolvedBase64 != null && resolvedBase64.isNotEmpty) {
+            mergedMap['photoBase64'] = resolvedBase64;
+          }
+          if (resolvedUrl != null && resolvedUrl.isNotEmpty) {
+            mergedMap['photoUrl'] = resolvedUrl;
+          }
+
+          setState(() {
+            _lawyer = LawyerModel.fromMap(
+              mergedMap,
+              targetUid ?? _lawyer.uid,
+            );
+          });
+        }
       }
     } catch (_) {}
   }
@@ -857,40 +899,14 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
   }
 
   Widget _buildAvatarContent(LawyerModel lawyer) {
-    if (lawyer.photoUrl != null && lawyer.photoUrl!.isNotEmpty) {
-      return Image.network(
-        lawyer.photoUrl!,
-        width: 96,
-        height: 96,
-        fit: BoxFit.cover,
-        gaplessPlayback: true,
-        errorBuilder: (context, error, stackTrace) =>
-            _buildBase64OrFallback(lawyer),
-      );
-    }
-    return _buildBase64OrFallback(lawyer);
-  }
-
-  Widget _buildBase64OrFallback(LawyerModel lawyer) {
-    if (lawyer.photoBase64 != null && lawyer.photoBase64!.isNotEmpty) {
-      try {
-        final b64 = lawyer.photoBase64!.contains(',')
-            ? lawyer.photoBase64!.split(',').last.trim()
-            : lawyer.photoBase64!.trim();
-        return Image.memory(
-          base64Decode(b64),
-          width: 96,
-          height: 96,
-          fit: BoxFit.cover,
-          gaplessPlayback: true,
-          errorBuilder: (context, error, stackTrace) =>
-              _buildAvatarFallback(lawyer),
-        );
-      } catch (_) {
-        return _buildAvatarFallback(lawyer);
-      }
-    }
-    return _buildAvatarFallback(lawyer);
+    return AppImageUtils.buildAvatarImage(
+      photoBase64: lawyer.photoBase64,
+      photoUrl: lawyer.photoUrl,
+      width: 96,
+      height: 96,
+      fit: BoxFit.cover,
+      fallback: _buildAvatarFallback(lawyer),
+    );
   }
 
   Widget _buildAvatarFallback([LawyerModel? lawyer]) {
@@ -1130,48 +1146,12 @@ class _PhotoViewerDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget imageWidget;
-    if (photoUrl != null && photoUrl!.trim().isNotEmpty) {
-      final url = photoUrl!.trim();
-      if (url.startsWith('data:image')) {
-        try {
-          final b64 = url.split(',').last.trim();
-          imageWidget = Image.memory(
-            base64Decode(b64),
-            fit: BoxFit.contain,
-            errorBuilder: (context, error, stackTrace) =>
-                _buildBase64OrPlaceholder(),
-          );
-        } catch (_) {
-          imageWidget = _buildBase64OrPlaceholder();
-        }
-      } else if (url.startsWith('http')) {
-        imageWidget = Image.network(
-          url,
-          fit: BoxFit.contain,
-          errorBuilder: (context, error, stackTrace) =>
-              _buildBase64OrPlaceholder(),
-        );
-      } else {
-        try {
-          final f = File(url);
-          if (f.existsSync()) {
-            imageWidget = Image.file(
-              f,
-              fit: BoxFit.contain,
-              errorBuilder: (context, error, stackTrace) =>
-                  _buildBase64OrPlaceholder(),
-            );
-          } else {
-            imageWidget = _buildBase64OrPlaceholder();
-          }
-        } catch (_) {
-          imageWidget = _buildBase64OrPlaceholder();
-        }
-      }
-    } else {
-      imageWidget = _buildBase64OrPlaceholder();
-    }
+    final imageWidget = AppImageUtils.buildAvatarImage(
+      photoBase64: photoBase64,
+      photoUrl: photoUrl,
+      fit: BoxFit.contain,
+      fallback: _buildBase64OrPlaceholder(),
+    );
 
     return Dialog(
       backgroundColor: Colors.transparent,
@@ -1368,20 +1348,14 @@ class _PhotoViewerDialog extends StatelessWidget {
   }
 
   Widget _buildBase64OrPlaceholder() {
-    if (photoBase64 != null && photoBase64!.trim().isNotEmpty) {
-      try {
-        final b64 = photoBase64!.contains(',')
-            ? photoBase64!.split(',').last.trim()
-            : photoBase64!.trim();
-        return Image.memory(
-          base64Decode(b64),
-          fit: BoxFit.contain,
-          errorBuilder: (context, error, stackTrace) =>
-              _buildPlaceholder(),
-        );
-      } catch (_) {
-        return _buildPlaceholder();
-      }
+    final bytes = AppImageUtils.safeDecodeBase64(photoBase64);
+    if (bytes != null) {
+      return Image.memory(
+        bytes,
+        fit: BoxFit.contain,
+        gaplessPlayback: true,
+        errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
+      );
     }
     return _buildPlaceholder();
   }
@@ -1764,73 +1738,14 @@ class _ClientModalSheet extends StatelessWidget {
       (client.photoBase64 != null && client.photoBase64!.trim().isNotEmpty);
 
   Widget _buildAvatarContent() {
-    if (client.photoUrl != null && client.photoUrl!.trim().isNotEmpty) {
-      final url = client.photoUrl!.trim();
-      if (url.startsWith('data:image')) {
-        try {
-          final b64 = url.split(',').last.trim();
-          return Image.memory(
-            base64Decode(b64),
-            width: 96,
-            height: 96,
-            fit: BoxFit.cover,
-            gaplessPlayback: true,
-            errorBuilder: (context, error, stackTrace) =>
-                _buildBase64OrFallback(),
-          );
-        } catch (_) {
-          return _buildBase64OrFallback();
-        }
-      } else if (url.startsWith('http')) {
-        return Image.network(
-          url,
-          width: 96,
-          height: 96,
-          fit: BoxFit.cover,
-          gaplessPlayback: true,
-          errorBuilder: (context, error, stackTrace) =>
-              _buildBase64OrFallback(),
-        );
-      } else {
-        try {
-          final file = File(url);
-          if (file.existsSync()) {
-            return Image.file(
-              file,
-              width: 96,
-              height: 96,
-              fit: BoxFit.cover,
-              gaplessPlayback: true,
-              errorBuilder: (context, error, stackTrace) =>
-                  _buildBase64OrFallback(),
-            );
-          }
-        } catch (_) {}
-      }
-    }
-    return _buildBase64OrFallback();
-  }
-
-  Widget _buildBase64OrFallback() {
-    if (client.photoBase64 != null && client.photoBase64!.trim().isNotEmpty) {
-      try {
-        final b64 = client.photoBase64!.contains(',')
-            ? client.photoBase64!.split(',').last.trim()
-            : client.photoBase64!.trim();
-        return Image.memory(
-          base64Decode(b64),
-          width: 96,
-          height: 96,
-          fit: BoxFit.cover,
-          gaplessPlayback: true,
-          errorBuilder: (context, error, stackTrace) =>
-              _buildAvatarFallback(),
-        );
-      } catch (_) {
-        return _buildAvatarFallback();
-      }
-    }
-    return _buildAvatarFallback();
+    return AppImageUtils.buildAvatarImage(
+      photoBase64: client.photoBase64,
+      photoUrl: client.photoUrl,
+      width: 96,
+      height: 96,
+      fit: BoxFit.cover,
+      fallback: _buildAvatarFallback(),
+    );
   }
 
   Widget _buildAvatarFallback() {

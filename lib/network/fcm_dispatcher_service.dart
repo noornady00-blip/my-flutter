@@ -12,7 +12,6 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:googleapis_auth/auth_io.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'notification_service.dart';
 
@@ -22,7 +21,7 @@ class FcmDispatcherService {
   FcmDispatcherService._internal();
 
   final FirebaseFirestore _db = FirebaseFirestore.instance;
-  static const String _defaultProjectId = 'mahameek-47a1d';
+  static const String _defaultProjectId = 'mahameek-30c70';
 
   // In-memory caches
   Map<String, dynamic>? _cachedCredentials;
@@ -44,7 +43,7 @@ class FcmDispatcherService {
         return _cachedCredentials;
       }
     } catch (e) {
-      debugPrint('FcmDispatcherService._getCredentials error: $e');
+      debugPrint('FcmDispatcherService._getCredentials notice: $e');
     }
     return null;
   }
@@ -104,7 +103,7 @@ class FcmDispatcherService {
       }
 
       // 1. Record alert in Firestore collection for in-app history & badges
-      final alertRef = await _db.collection('admin_notifications').add({
+      await _db.collection('admin_notifications').add({
         'type': type,
         'title': title,
         'body': body,
@@ -113,34 +112,20 @@ class FcmDispatcherService {
         'read': false,
       });
 
-      // 2. If caller device happens to be an active admin, show instant local alert
-      final prefs = await SharedPreferences.getInstance();
-      final role = prefs.getString('role');
-      final isAdmin = role == 'admin' || prefs.getBool('is_admin_device') == true;
-
-      if (isAdmin) {
-        unawaited(NotificationService().showNotificationDirect(
-          title: title,
-          body: body,
-          payload: type,
-          id: alertRef.id.hashCode.abs() % 100000,
-        ));
-      }
-
-      // 3. Dispatch Remote Push Notification via FCM HTTP v1 in background
+      // 2. Dispatch exactly ONE remote Push Notification via FCM HTTP v1 Topic in background
       unawaited(_sendFcmHttpV1Message(
         title: title,
         body: body,
         data: stringPayload,
       ));
 
-      debugPrint('Admin alert successfully recorded and queued: [$type] $title');
+      debugPrint('Admin alert successfully recorded and dispatched: [$type] $title');
     } catch (e) {
       debugPrint('FcmDispatcherService.dispatchAlert error: $e');
     }
   }
 
-  /// Sends the FCM HTTP v1 request to the admin topic and active admin tokens
+  /// Sends the FCM HTTP v1 request to the admin topic
   Future<void> _sendFcmHttpV1Message({
     required String title,
     required String body,
@@ -159,7 +144,7 @@ class FcmDispatcherService {
 
       final headers = {
         'Authorization': 'Bearer $accessToken',
-        'Content-Type': 'application/json; UTF-8',
+        'Content-Type': 'application/json; charset=utf-8',
       };
 
       // Payload targeted to the admin_notifications topic (subscribed by all admin devices)
@@ -176,8 +161,10 @@ class FcmDispatcherService {
             'notification': {
               'channel_id': NotificationService.adminChannelId,
               'sound': 'default',
-              'priority': 'MAX',
+              'notification_priority': 'PRIORITY_MAX',
               'visibility': 'PUBLIC',
+              'icon': 'ic_stat_mahameek',
+              'color': '#0B2A5B',
               'default_sound': true,
               'default_vibrate_timings': true,
             },
@@ -214,59 +201,6 @@ class FcmDispatcherService {
         debugPrint('FCM HTTP v1 Topic Push sent successfully: ${response.body}');
       } else {
         debugPrint('FCM HTTP v1 Topic Push returned status ${response.statusCode}: ${response.body}');
-      }
-
-      // Also dispatch directly to individual tokens in admin_tokens as a fail-safe
-      final tokensSnap = await _db.collection('admin_tokens').limit(15).get();
-      for (final doc in tokensSnap.docs) {
-        final token = doc.data()['token']?.toString();
-        if (token != null && token.isNotEmpty) {
-          final directPayload = {
-            'message': {
-              'token': token,
-              'notification': {
-                'title': title,
-                'body': body,
-              },
-              'data': data,
-              'android': {
-                'priority': 'HIGH',
-                'notification': {
-                  'channel_id': NotificationService.adminChannelId,
-                  'sound': 'default',
-                  'priority': 'MAX',
-                  'visibility': 'PUBLIC',
-                },
-              },
-              'apns': {
-                'headers': {
-                  'apns-priority': '10',
-                  'apns-push-type': 'alert',
-                },
-                'payload': {
-                  'aps': {
-                    'alert': {
-                      'title': title,
-                      'body': body,
-                    },
-                    'sound': 'default',
-                    'badge': 1,
-                    'content-available': 1,
-                  },
-                },
-              },
-            },
-          };
-
-          unawaited(http
-              .post(
-                Uri.parse(endpoint),
-                headers: headers,
-                body: jsonEncode(directPayload),
-              )
-              .timeout(const Duration(seconds: 8))
-              .catchError((_) => http.Response('', 500)));
-        }
       }
     } catch (e) {
       debugPrint('FcmDispatcherService._sendFcmHttpV1Message error: $e');

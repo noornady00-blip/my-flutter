@@ -17,9 +17,20 @@ class LawyersListScreen extends StatefulWidget {
 class _LawyersListScreenState extends State<LawyersListScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  String _selectedSpec = 'الكل';
   final _firestoreService = FirestoreService();
   late final Stream<List<LawyerModel>> _lawyersStream;
   List<LawyerModel>? _initialLawyers;
+
+  static const List<String> _specializations = [
+    'الكل',
+    'جنائي',
+    'مدني',
+    'شرعي وتوثيق',
+    'تجاري وشركات',
+    'عقارات وأراضي',
+    'عمالي وإداري',
+  ];
 
   @override
   void initState() {
@@ -48,7 +59,8 @@ class _LawyersListScreenState extends State<LawyersListScreen> {
         l.city,
         l.phone,
       ]);
-      return isApproved && matchesQuery;
+      final matchesSpec = _selectedSpec == 'الكل' || l.specialization == _selectedSpec;
+      return isApproved && matchesQuery && matchesSpec;
     }).toList();
   }
 
@@ -59,6 +71,8 @@ class _LawyersListScreenState extends State<LawyersListScreen> {
       body: Column(
         children: [
           _buildHeader(),
+          // Specialization filter chips
+          _buildSpecializationsFilter(),
           Expanded(
             child: StreamBuilder<List<LawyerModel>>(
               stream: _lawyersStream,
@@ -80,6 +94,48 @@ class _LawyersListScreenState extends State<LawyersListScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSpecializationsFilter() {
+    return SizedBox(
+      height: 48,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        itemCount: _specializations.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final spec = _specializations[index];
+          final isSelected = _selectedSpec == spec;
+          return InkWell(
+            onTap: () => setState(() => _selectedSpec = spec),
+            borderRadius: BorderRadius.circular(20),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+              decoration: BoxDecoration(
+                color: isSelected ? AppTheme.navyDark : Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isSelected ? AppTheme.navyDark : const Color(0xFFE2E8F0),
+                ),
+              ),
+              child: Center(
+                child: Text(
+                  spec,
+                  style: GoogleFonts.cairo(
+                    fontSize: 12,
+                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                    color: isSelected ? AppTheme.gold : const Color(0xFF64748B),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }

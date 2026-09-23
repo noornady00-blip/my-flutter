@@ -461,44 +461,47 @@ class _LawyerSettingsScreenState extends State<LawyerSettingsScreen> {
                             : () async {
                                 if (!formKey.currentState!.validate()) return;
                                 setModalState(() => saving = true);
+
+                                Map<String, dynamic> res;
                                 try {
-                                  final res = await _authService.reauthenticateAndChangePassword(
-                                    currentPassword: currentPassController.text.trim(),
-                                    newPassword: newPassController.text.trim(),
+                                  res = await _authService.reauthenticateAndChangePassword(
+                                    currentPassword: PhoneUtils.normalizeDigits(currentPassController.text.trim()),
+                                    newPassword: PhoneUtils.normalizeDigits(newPassController.text.trim()),
                                   );
-                                  if (res['success'] == true) {
-                                    if (context.mounted) {
-                                      Navigator.pop(context);
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            'تم تغيير كلمة المرور بنجاح',
-                                            style: GoogleFonts.cairo(fontWeight: FontWeight.w700),
-                                          ),
-                                          backgroundColor: const Color(0xFF10B981),
-                                          behavior: SnackBarBehavior.floating,
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                        ),
-                                      );
-                                    }
-                                  } else {
-                                    setModalState(() => saving = false);
-                                    if (context.mounted) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                          content: Text(res['error'] ?? 'تعذر تغيير كلمة المرور', style: GoogleFonts.cairo()),
-                                          backgroundColor: AppTheme.error,
-                                        ),
-                                      );
-                                    }
-                                  }
                                 } catch (e) {
-                                  setModalState(() => saving = false);
+                                  res = {'success': false, 'error': 'حدث خطأ غير متوقع، يرجى المحاولة مجدداً'};
+                                }
+
+                                // Always reset saving regardless of mount state
+                                setModalState(() => saving = false);
+
+                                if (res['success'] == true) {
+                                  if (context.mounted) {
+                                    Navigator.pop(context);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          'تم تغيير كلمة المرور بنجاح',
+                                          style: GoogleFonts.cairo(fontWeight: FontWeight.w700),
+                                        ),
+                                        backgroundColor: const Color(0xFF10B981),
+                                        behavior: SnackBarBehavior.floating,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      ),
+                                    );
+                                  }
+                                } else {
+                                  // Show error inside the bottom sheet
                                   if (context.mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
-                                        content: Text('تعذر التغيير: $e', style: GoogleFonts.cairo()),
+                                        content: Text(
+                                          res['error']?.toString() ?? 'تعذر تغيير كلمة المرور',
+                                          style: GoogleFonts.cairo(),
+                                        ),
                                         backgroundColor: AppTheme.error,
+                                        behavior: SnackBarBehavior.floating,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                       ),
                                     );
                                   }

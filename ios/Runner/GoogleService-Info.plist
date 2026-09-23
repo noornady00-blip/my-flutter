@@ -3,17 +3,17 @@
 <plist version="1.0">
 <dict>
 	<key>API_KEY</key>
-	<string>AIzaSyA-zlnAN_I9ev5V5HgBJximHMFvGTEX7Ts</string>
+	<string>AIzaSyBndL3wGpz9GC6W97u0QnndKptsLFQbBKs</string>
 	<key>GCM_SENDER_ID</key>
-	<string>71340241385</string>
+	<string>527214852381</string>
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
 	<string>com.mahameek.app</string>
 	<key>PROJECT_ID</key>
-	<string>mahameek-47a1d</string>
+	<string>mahameek-30c70</string>
 	<key>STORAGE_BUCKET</key>
-	<string>mahameek-47a1d.firebasestorage.app</string>
+	<string>mahameek-30c70.firebasestorage.app</string>
 	<key>IS_ADS_ENABLED</key>
 	<false/>
 	<key>IS_ANALYTICS_ENABLED</key>
@@ -25,6 +25,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true/>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:71340241385:ios:2f8dbe309d9bd18d181b78</string>
+	<string>1:527214852381:ios:07017c37b7d26e079349f4</string>
 </dict>
 </plist>

@@ -55,3 +55,9 @@ android/key.properties
 node_modules/
 functions/node_modules/
 users.json
+functions/*.json
+functions/new_project_service_account.json
+functions/export_old_data.js
+functions/import_to_new_project.js
+functions/reset_and_setup_admin.js
+functions/clean_phone_directory.js

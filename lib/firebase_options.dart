@@ -33,46 +33,46 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyDDHGQdBbTwuVPy42Z3yyDuJvGSl67BUto',
-    appId: '1:71340241385:web:6c1f63b420641009181b78',
-    messagingSenderId: '71340241385',
-    projectId: 'mahameek-47a1d',
-    authDomain: 'mahameek-47a1d.firebaseapp.com',
-    storageBucket: 'mahameek-47a1d.firebasestorage.app',
-    measurementId: 'G-SZD6Q3QE8B',
+    apiKey: 'AIzaSyCiT_J4qrT0eLDkL8_oWVoUCuuBJU7FYpE',
+    appId: '1:527214852381:web:a1bef1aa11775e549349f4',
+    messagingSenderId: '527214852381',
+    projectId: 'mahameek-30c70',
+    authDomain: 'mahameek-30c70.firebaseapp.com',
+    storageBucket: 'mahameek-30c70.firebasestorage.app',
+    measurementId: 'G-HKF1ZBMN9P',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyDJlaWDcjrUrsghoGkSMoHYhaMfLUgrlSY',
-    appId: '1:71340241385:android:d5953a4274451639181b78',
-    messagingSenderId: '71340241385',
-    projectId: 'mahameek-47a1d',
-    storageBucket: 'mahameek-47a1d.firebasestorage.app',
+    apiKey: 'AIzaSyADXC4ls6GxJaXqGSyosY4_tw57Xe1unZM',
+    appId: '1:527214852381:android:2f8f96da08e27aac9349f4',
+    messagingSenderId: '527214852381',
+    projectId: 'mahameek-30c70',
+    storageBucket: 'mahameek-30c70.firebasestorage.app',
   );
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyA-zlnAN_I9ev5V5HgBJximHMFvGTEX7Ts',
-    appId: '1:71340241385:ios:2f8dbe309d9bd18d181b78',
-    messagingSenderId: '71340241385',
-    projectId: 'mahameek-47a1d',
-    storageBucket: 'mahameek-47a1d.firebasestorage.app',
+    apiKey: 'AIzaSyBndL3wGpz9GC6W97u0QnndKptsLFQbBKs',
+    appId: '1:527214852381:ios:07017c37b7d26e079349f4',
+    messagingSenderId: '527214852381',
+    projectId: 'mahameek-30c70',
+    storageBucket: 'mahameek-30c70.firebasestorage.app',
     iosBundleId: 'com.mahameek.app',
   );
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyA-zlnAN_I9ev5V5HgBJximHMFvGTEX7Ts',
-    appId: '1:71340241385:ios:2f8dbe309d9bd18d181b78',
-    messagingSenderId: '71340241385',
-    projectId: 'mahameek-47a1d',
-    storageBucket: 'mahameek-47a1d.firebasestorage.app',
+    apiKey: 'AIzaSyBndL3wGpz9GC6W97u0QnndKptsLFQbBKs',
+    appId: '1:527214852381:ios:07017c37b7d26e079349f4',
+    messagingSenderId: '527214852381',
+    projectId: 'mahameek-30c70',
+    storageBucket: 'mahameek-30c70.firebasestorage.app',
     iosBundleId: 'com.mahameek.app',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyDDHGQdBbTwuVPy42Z3yyDuJvGSl67BUto',
-    appId: '1:71340241385:web:1d337b9bad87e42f181b78',
-    messagingSenderId: '71340241385',
-    projectId: 'mahameek-47a1d',
-    authDomain: 'mahameek-47a1d.firebaseapp.com',
-    storageBucket: 'mahameek-47a1d.firebasestorage.app',
-    measurementId: 'G-2BZEJKTVHC',
+    apiKey: 'AIzaSyCiT_J4qrT0eLDkL8_oWVoUCuuBJU7FYpE',
+    appId: '1:527214852381:web:869bec887b1039c09349f4',
+    messagingSenderId: '527214852381',
+    projectId: 'mahameek-30c70',
+    authDomain: 'mahameek-30c70.firebaseapp.com',
+    storageBucket: 'mahameek-30c70.firebasestorage.app',
+    measurementId: 'G-8WGB5K0JGY',
   );
 }
