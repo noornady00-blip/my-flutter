@@ -1,0 +1,209 @@
+﻿name: "Build and Release APK + AAB + iOS"
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: "Version name (e.g. 1.0.1)"
+        required: false
+        default: ""
+      release_notes:
+        description: "Release notes"
+        required: false
+        default: "New release"
+  push:
+    branches:
+      - main
+      - master
+    paths-ignore:
+      - "**.md"
+      - ".gitignore"
+
+jobs:
+  build-android:
+    name: "Build Android APK + AAB"
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      build_number: ${{ steps.version.outputs.build_number }}
+    steps:
+      - name: "Checkout Repository"
+        uses: actions/checkout@v4
+
+      - name: "Set up Java 17"
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: "Set up Flutter"
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          cache: true
+
+      - name: "Install Dependencies"
+        run: flutter pub get
+
+      - name: "Extract Version"
+        id: version
+        run: |
+          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //' | cut -d'+' -f1 | xargs)
+          BUILD=$(grep '^version:' pubspec.yaml | sed 's/version: //' | cut -d'+' -f2 | xargs)
+          if [ -n "${{ github.event.inputs.version_name }}" ]; then
+            VERSION="${{ github.event.inputs.version_name }}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "build_number=$BUILD" >> $GITHUB_OUTPUT
+
+      - name: "Build Release APK"
+        run: flutter build apk --release
+
+      - name: "Build Release AAB"
+        run: flutter build appbundle --release
+
+      - name: "Rename Artifacts"
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          cp build/app/outputs/flutter-apk/app-release.apk "mahameek-v${VERSION}-release.apk"
+          cp build/app/outputs/bundle/release/app-release.aab "mahameek-v${VERSION}-release.aab"
+
+      - name: "Upload APK"
+        uses: actions/upload-artifact@v4
+        with:
+          name: mahameek-apk
+          path: "mahameek-v*-release.apk"
+          retention-days: 30
+
+      - name: "Upload AAB"
+        uses: actions/upload-artifact@v4
+        with:
+          name: mahameek-aab
+          path: "mahameek-v*-release.aab"
+          retention-days: 30
+
+  build-ios:
+    name: "Build iOS Unsigned IPA"
+    runs-on: macos-15
+    steps:
+      - name: "Checkout Repository"
+        uses: actions/checkout@v4
+
+      - name: "Set up Flutter"
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          cache: true
+
+      - name: "Install Dependencies"
+        run: flutter pub get
+
+      - name: "Extract Version"
+        id: version
+        run: |
+          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //' | cut -d'+' -f1 | xargs)
+          if [ -n "${{ github.event.inputs.version_name }}" ]; then
+            VERSION="${{ github.event.inputs.version_name }}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: "Build iOS Unsigned"
+        run: |
+          set -o pipefail
+          flutter build ios --release --no-codesign -v 2>&1 | tee flutter_build.log || (tail -n 100 flutter_build.log && exit 1)
+
+      - name: "Package into IPA"
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          mkdir -p build/ios/iphoneos/Payload
+          cp -r build/ios/iphoneos/Runner.app build/ios/iphoneos/Payload/
+          cd build/ios/iphoneos
+          zip -r -9 "mahameek-v${VERSION}-unsigned.ipa" Payload
+          cd ../../..
+          cp "build/ios/iphoneos/mahameek-v${VERSION}-unsigned.ipa" .
+
+      - name: "Upload IPA"
+        uses: actions/upload-artifact@v4
+        with:
+          name: mahameek-ios-ipa
+          path: "mahameek-v*-unsigned.ipa"
+          retention-days: 30
+
+      - name: "Upload Build Logs on Failure"
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-build-logs
+          path: flutter_build.log
+          if-no-files-found: ignore
+
+  create-release:
+    name: "Create GitHub Release"
+    needs: [build-android, build-ios]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: "Checkout Repository"
+        uses: actions/checkout@v4
+
+      - name: "Download APK"
+        uses: actions/download-artifact@v4
+        with:
+          name: mahameek-apk
+          path: release-files/
+
+      - name: "Download AAB"
+        uses: actions/download-artifact@v4
+        with:
+          name: mahameek-aab
+          path: release-files/
+
+      - name: "Download IPA"
+        uses: actions/download-artifact@v4
+        with:
+          name: mahameek-ios-ipa
+          path: release-files/
+
+      - name: "Create Git Tag"
+        run: |
+          VERSION="${{ needs.build-android.outputs.version }}"
+          BUILD="${{ needs.build-android.outputs.build_number }}"
+          TAG="v${VERSION}+${BUILD}-$(date +%Y%m%d%H%M)"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "$TAG"
+          echo "RELEASE_TAG=$TAG" >> $GITHUB_ENV
+
+      - name: "Create GitHub Release"
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: "Mahameek v${{ needs.build-android.outputs.version }}"
+          body: |
+            ## تطبيق محاميك — الإصدار ${{ needs.build-android.outputs.version }}
+
+            ${{ github.event.inputs.release_notes || 'New release' }}
+
+            ---
+
+            ### ملفات التحميل
+
+            | الملف | الوصف | الاستخدام |
+            |-------|-------|-----------|
+            | APK | نسخة Android | تثبيت مباشر على الأجهزة |
+            | AAB | نسخة Android Bundle | رفع على Google Play Store |
+            | IPA | نسخة iOS (غير موقعة) | تثبيت عبر AltStore او Sideloadly |
+
+            > ملف IPA غير موقع (unsigned) يحتاج توقيع شخصي
+
+            Built automatically via GitHub Actions
+          files: |
+            release-files/*.apk
+            release-files/*.aab
+            release-files/*.ipa
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
