@@ -19,6 +19,7 @@ import 'contact_admin_screen.dart';
 import '../../../core/utils/phone_utils.dart';
 import '../../../core/utils/navigation_utils.dart';
 import '../../../core/utils/image_utils.dart';
+import '../../../core/utils/app_error_translator.dart';
 
 class ProfileScreen extends StatefulWidget {
   final bool isStandalone;
@@ -250,7 +251,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'تعذر رفع الصورة الشخصية: $e',
+                    AppErrorTranslator.translate(
+                      e,
+                      defaultMessage: 'تعذر رفع الصورة الشخصية، يرجى المحاولة بصورة أصغر أو التحقق من اتصالك.',
+                    ),
                     style: GoogleFonts.cairo(fontWeight: FontWeight.w600, fontSize: 12.5),
                   ),
                 ),

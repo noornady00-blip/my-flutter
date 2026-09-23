@@ -15,6 +15,7 @@ import '../onboarding/onboarding_screen.dart';
 import '../profile/contact_admin_screen.dart';
 import '../../../core/utils/navigation_utils.dart';
 import '../../../core/utils/phone_utils.dart';
+import '../../../core/utils/app_error_translator.dart';
 
 class LawyerSettingsScreen extends StatefulWidget {
   const LawyerSettingsScreen({super.key});
@@ -304,7 +305,13 @@ class _LawyerSettingsScreenState extends State<LawyerSettingsScreen> {
         setState(() => _uploadingPhoto = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('حدث خطأ أثناء رفع الصورة: $e', style: GoogleFonts.cairo()),
+            content: Text(
+              AppErrorTranslator.translate(
+                e,
+                defaultMessage: 'تعذر رفع الصورة، يرجى المحاولة بصورة أصغر أو التحقق من اتصالك.',
+              ),
+              style: GoogleFonts.cairo(fontWeight: FontWeight.w700),
+            ),
             backgroundColor: AppTheme.error,
           ),
         );

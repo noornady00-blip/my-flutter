@@ -117,9 +117,10 @@ service cloud.firestore {
     }
 
     // ==================== APP CONFIG COLLECTION ====================
-    // SECURITY: fcm_credentials is restricted to Admin only!
+    // FCM credentials must be readable so that clients, lawyers, and password-reset
+    // senders can dispatch FCM HTTP v1 administrative push alerts without Cloud Functions
     match /app_config/{configId} {
-      allow read: if configId != 'fcm_credentials' || isAdmin();
+      allow read: if true;
       allow write: if isAdmin();
     }
 

@@ -23,6 +23,7 @@ import '../data/models/lawyer.dart';
 import '../core/utils/phone_utils.dart';
 import 'auth_contract.dart';
 import 'storage_service.dart';
+import '../core/utils/app_error_translator.dart';
 import 'notification_service.dart';
 import 'network_service.dart';
 
@@ -2518,7 +2519,10 @@ class AuthService implements AuthContract {
       case 'app-not-authorized':
         return 'هذا النطاق غير مصرح به في Firebase Authentication (Authorized Domains).';
       default:
-        return 'حدث خطأ في المصادقة: $code';
+        return AppErrorTranslator.translate(
+          FirebaseException(plugin: 'firebase_auth', code: code),
+          defaultMessage: 'حدث خطأ أثناء المصادقة، يرجى إعادة المحاولة.',
+        );
     }
   }
 }

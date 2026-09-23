@@ -20,6 +20,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../../network/storage_service.dart';
+import '../../../core/utils/app_error_translator.dart';
 
 /// Result object containing the cropped photo in multiple convenient formats
 class CroppedImageResult {
@@ -186,8 +188,8 @@ class _SquareImageCropperState extends State<SquareImageCropper> {
         throw Exception('تعذر التقاط مساحة الاقتصاص');
       }
 
-      // Render at pixelRatio 2.5 for crisp HD output while keeping file size optimal
-      final ui.Image image = await boundary.toImage(pixelRatio: 2.5);
+      // Render at pixelRatio 1.5 for crisp HD output while keeping file size optimal
+      final ui.Image image = await boundary.toImage(pixelRatio: 1.5);
       final ByteData? byteData =
           await image.toByteData(format: ui.ImageByteFormat.png);
 
@@ -195,19 +197,20 @@ class _SquareImageCropperState extends State<SquareImageCropper> {
         throw Exception('تعذر تحويل الصورة المقصوصة');
       }
 
-      final Uint8List croppedBytes = byteData.buffer.asUint8List();
-      final String b64String = base64Encode(croppedBytes);
+      final Uint8List rawCropped = byteData.buffer.asUint8List();
+      final Uint8List compressedBytes = StorageService.compressAvatarBytes(rawCropped);
+      final String b64String = base64Encode(compressedBytes);
 
       final xFile = XFile.fromData(
-        croppedBytes,
-        mimeType: 'image/png',
-        name: 'cropped_profile_${DateTime.now().millisecondsSinceEpoch}.png',
+        compressedBytes,
+        mimeType: 'image/jpeg',
+        name: 'cropped_profile_${DateTime.now().millisecondsSinceEpoch}.jpg',
       );
 
       if (mounted) {
         Navigator.of(context).pop(CroppedImageResult(
           file: xFile,
-          bytes: croppedBytes,
+          bytes: compressedBytes,
           base64: b64String,
         ));
       }
@@ -215,7 +218,7 @@ class _SquareImageCropperState extends State<SquareImageCropper> {
       if (mounted) {
         setState(() {
           _isProcessing = false;
-          _cropError = 'حدث خطأ أثناء حفظ واقتصاص الصورة: $e';
+          _cropError = AppErrorTranslator.translate(e, defaultMessage: 'حدث خطأ أثناء حفظ واقتصاص الصورة.');
         });
       }
     }
