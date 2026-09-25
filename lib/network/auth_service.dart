@@ -2074,7 +2074,10 @@ class AuthService implements AuthContract {
   Future<void> signOut() async {
     if (!kIsWeb) {
       try {
+        final prefs = await SharedPreferences.getInstance();
+        final currentUid = prefs.getString('uid');
         await NotificationService().clearAllSystemNotifications();
+        await NotificationService().unregisterUserDevice(uid: currentUid);
         await NotificationService().unregisterAdminDevice();
       } catch (e) {
         debugPrint('Notification cleanup error on signOut: $e');
@@ -2531,6 +2534,9 @@ class AuthService implements AuthContract {
         await prefs.setString('user_profile_photo_url', photoUrl);
       }
       if (status != null) await prefs.setString('status', status);
+
+      // Automatically register user device for push notifications (works when closed)
+      unawaited(NotificationService().registerUserDevice(uid: uid, role: role));
     } catch (_) {}
   }
 

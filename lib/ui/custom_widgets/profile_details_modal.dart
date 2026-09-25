@@ -208,6 +208,86 @@ class ProfileDetailsModal {
       ),
     );
   }
+
+  /// Opens lawyer or client profile modal automatically based on UID/role
+  static Future<void> showProfileByUid(
+    BuildContext context, {
+    required String uid,
+    String? role,
+    String? fallbackName,
+    String? fallbackPhone,
+    String? fallbackPhoto,
+    String? fallbackAccountId,
+    bool isAdmin = false,
+  }) async {
+    if (uid.isEmpty) return;
+    try {
+      final effectiveRole = role?.toLowerCase() ?? '';
+      if (effectiveRole == 'lawyer') {
+        final doc = await FirebaseFirestore.instance.collection('lawyers').doc(uid).get().timeout(const Duration(seconds: 4));
+        if (doc.exists && doc.data() != null && context.mounted) {
+          showLawyerModal(context, lawyer: LawyerModel.fromMap(doc.data()!, doc.id), isAdmin: isAdmin);
+          return;
+        }
+      } else if (effectiveRole == 'client' || effectiveRole == 'user') {
+        final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get().timeout(const Duration(seconds: 4));
+        if (doc.exists && doc.data() != null && context.mounted) {
+          showClientModal(context, client: UserModel.fromMap(doc.data()!, doc.id), isAdmin: isAdmin);
+          return;
+        }
+      }
+
+      // Fallback: check lawyers first
+      final lawyerDoc = await FirebaseFirestore.instance.collection('lawyers').doc(uid).get().timeout(const Duration(seconds: 4));
+      if (lawyerDoc.exists && lawyerDoc.data() != null && context.mounted) {
+        showLawyerModal(context, lawyer: LawyerModel.fromMap(lawyerDoc.data()!, lawyerDoc.id), isAdmin: isAdmin);
+        return;
+      }
+
+      // Check users
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(uid).get().timeout(const Duration(seconds: 4));
+      if (userDoc.exists && userDoc.data() != null && context.mounted) {
+        showClientModal(context, client: UserModel.fromMap(userDoc.data()!, userDoc.id), isAdmin: isAdmin);
+        return;
+      }
+
+      // Final fallback if document not found in Firestore
+      if (context.mounted) {
+        if (effectiveRole == 'lawyer') {
+          showLawyerModal(
+            context,
+            lawyer: LawyerModel(
+              uid: uid,
+              name: fallbackName ?? 'محامٍ ومستشار',
+              phone: fallbackPhone ?? '',
+              whatsapp: fallbackPhone ?? '',
+              city: 'السودان',
+              accountId: fallbackAccountId ?? '',
+              photoUrl: fallbackPhoto,
+              status: 'approved',
+            ),
+            isAdmin: isAdmin,
+          );
+        } else {
+          showClientModal(
+            context,
+            client: UserModel(
+              uid: uid,
+              name: fallbackName ?? 'مستخدم المنصة',
+              phone: fallbackPhone ?? '',
+              photoUrl: fallbackPhoto,
+              accountId: fallbackAccountId ?? '',
+              role: 'client',
+              createdAt: DateTime.now(),
+            ),
+            isAdmin: isAdmin,
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('[ProfileDetailsModal] showProfileByUid error: $e');
+    }
+  }
 }
 
 // -----------------------------------------------------------------------------

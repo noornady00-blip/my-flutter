@@ -7,7 +7,6 @@
 // ==============================================================================
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -19,9 +18,9 @@ import '../../../data/models/chat_message_model.dart';
 import '../../../data/models/user_model.dart';
 import '../../../data/models/lawyer.dart';
 import '../../../network/chat_service.dart';
-import '../../../core/utils/account_id_utils.dart';
 import '../../../core/utils/phone_utils.dart';
 import '../../../core/utils/image_utils.dart';
+import '../../custom_widgets/profile_details_modal.dart';
 
 class ChatScreen extends StatefulWidget {
   final ChatModel? chat;
@@ -379,96 +378,112 @@ class _ChatScreenState extends State<ChatScreen> {
               onPressed: () => Navigator.of(context).pop(),
             ),
 
-            // Avatar
-            ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: Container(
-                width: 42,
-                height: 42,
-                color: brandGold.withValues(alpha: 0.2),
-                child: otherPhoto != null && otherPhoto.isNotEmpty
-                    ? ImageUtils.buildSafeImage(
-                        photoUrl: otherPhoto,
-                        fit: BoxFit.cover,
-                      )
-                    : Center(
-                        child: Text(
-                          otherName.isNotEmpty ? otherName.substring(0, 1) : 'م',
-                          style: GoogleFonts.cairo(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-              ),
-            ),
-            const SizedBox(width: 10),
-
-            // Name and 12-digit Account ID
+            // Avatar & Name with interactive profile opening (No ID shown)
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
+              child: InkWell(
+                onTap: () {
+                  final otherUid = _activeChat!.getOtherPartyUid(_currentUserId);
+                  final targetUid = otherUid.isNotEmpty
+                      ? otherUid
+                      : (widget.lawyerUid ?? widget.clientUid ?? widget.otherUserUid ?? '');
+                  ProfileDetailsModal.showProfileByUid(
+                    context,
+                    uid: targetUid,
+                    role: otherRole,
+                    fallbackName: otherName,
+                    fallbackPhone: otherPhone,
+                    fallbackPhoto: otherPhoto,
+                    fallbackAccountId: otherAccountId,
+                    isAdmin: _currentUserRole == 'admin',
+                  );
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                  child: Row(
                     children: [
-                      Flexible(
-                        child: Text(
-                          otherName,
-                          style: GoogleFonts.cairo(
-                            fontSize: 14.5,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
+                      // Avatar
+                      Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: brandGold.withValues(alpha: 0.6), width: 1.5),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(20),
+                          child: Container(
+                            width: 40,
+                            height: 40,
+                            color: brandGold.withValues(alpha: 0.2),
+                            child: otherPhoto != null && otherPhoto.isNotEmpty
+                                ? ImageUtils.buildSafeImage(
+                                    photoUrl: otherPhoto,
+                                    fit: BoxFit.cover,
+                                  )
+                                : Center(
+                                    child: Text(
+                                      otherName.isNotEmpty ? otherName.substring(0, 1) : 'م',
+                                      style: GoogleFonts.cairo(
+                                        color: Colors.white,
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      const SizedBox(width: 6),
-                      _buildRoleBadge(otherRole),
+                      const SizedBox(width: 10),
+
+                      // Name and Subtitle
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    otherName,
+                                    style: GoogleFonts.cairo(
+                                      fontSize: 14.5,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.white,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                _buildRoleBadge(otherRole),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'اضغط لعرض الملف الشخصي',
+                                  style: GoogleFonts.cairo(
+                                    fontSize: 10.5,
+                                    color: Colors.white.withValues(alpha: 0.75),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(width: 3),
+                                Icon(
+                                  Icons.arrow_forward_ios_rounded,
+                                  size: 9,
+                                  color: Colors.white.withValues(alpha: 0.75),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
-                  const SizedBox(height: 2),
-                  // 12-digit fixed ID chip
-                  InkWell(
-                    onTap: () {
-                      if (otherAccountId.isNotEmpty) {
-                        Clipboard.setData(ClipboardData(text: otherAccountId));
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              'تم نسخ ID: $otherAccountId',
-                              style: GoogleFonts.cairo(fontSize: 13),
-                              textDirection: TextDirection.rtl,
-                            ),
-                            backgroundColor: brandNavy,
-                            duration: const Duration(seconds: 2),
-                          ),
-                        );
-                      }
-                    },
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          otherAccountId.isNotEmpty
-                              ? 'ID: ${AccountIdUtils.formatDisplay(otherAccountId)}'
-                              : 'ID موثق',
-                          style: GoogleFonts.cairo(
-                            fontSize: 11,
-                            color: brandGold,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        if (otherAccountId.isNotEmpty) ...[
-                          const SizedBox(width: 4),
-                          const Icon(Icons.copy_rounded, size: 12, color: brandGold),
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
 
@@ -657,10 +672,10 @@ class _ChatScreenState extends State<ChatScreen> {
               ? brandNavy
               : (isSpecialAdmin ? const Color(0xFFF3E8FF) : Colors.white),
           borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(16),
-            topRight: const Radius.circular(16),
-            bottomLeft: Radius.circular(isMe ? 16 : 4),
-            bottomRight: Radius.circular(isMe ? 4 : 16),
+            topLeft: const Radius.circular(18),
+            topRight: const Radius.circular(18),
+            bottomLeft: Radius.circular(isMe ? 18 : 4),
+            bottomRight: Radius.circular(isMe ? 4 : 18),
           ),
           border: Border.all(
             color: isSpecialAdmin
@@ -681,34 +696,24 @@ class _ChatScreenState extends State<ChatScreen> {
           crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Sender indicator if not me or if admin
-            if (!isMe || isSpecialAdmin) ...[
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    isSpecialAdmin ? 'إدارة المنصة (مشرف)' : message.senderName,
-                    style: GoogleFonts.cairo(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w700,
-                      color: isSpecialAdmin
-                          ? const Color(0xFF7C3AED)
-                          : (isMe ? brandGold : brandNavy),
-                    ),
+            // Sender indicator ONLY if admin
+            if (isSpecialAdmin) ...[
+              Container(
+                margin: const EdgeInsets.only(bottom: 5),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF7C3AED).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  'إدارة المنصة (مشرف) 🛡️',
+                  style: GoogleFonts.cairo(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF7C3AED),
                   ),
-                  if (message.senderAccountId.isNotEmpty) ...[
-                    const SizedBox(width: 4),
-                    Text(
-                      '#${message.senderAccountId}',
-                      style: GoogleFonts.cairo(
-                        fontSize: 10,
-                        color: isMe ? Colors.white60 : const Color(0xFF94A3B8),
-                      ),
-                    ),
-                  ],
-                ],
+                ),
               ),
-              const SizedBox(height: 3),
             ],
 
             // Message text

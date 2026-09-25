@@ -563,7 +563,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
   Widget _buildChatCard(ChatModel chat, Color brandNavy, Color headerGold) {
     final otherName = chat.getOtherPartyName(_uid!);
     final otherPhoto = chat.getOtherPartyPhoto(_uid!);
-    final otherAccountId = chat.getOtherPartyAccountId(_uid!);
     final otherRole = chat.getOtherPartyRole(_uid!);
     final unread = chat.getUnreadCount(_uid!);
 
@@ -666,18 +665,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 3),
-                  if (otherAccountId.isNotEmpty) ...[
-                    Text(
-                      'معرّف الحساب: ${AccountIdUtils.formatDisplay(otherAccountId)}',
-                      style: GoogleFonts.cairo(
-                        fontSize: 11,
-                        color: headerGold,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                  ],
+                  const SizedBox(height: 5),
                   Row(
                     children: [
                       Expanded(

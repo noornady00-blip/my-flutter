@@ -206,4 +206,105 @@ class FcmDispatcherService {
       debugPrint('FcmDispatcherService._sendFcmHttpV1Message error: $e');
     }
   }
+
+  /// Dispatches an authentic push notification for chat messages to the recipient device (works when closed)
+  Future<void> dispatchChatNotification({
+    required String recipientId,
+    required String senderName,
+    required String messageText,
+    required String chatId,
+    String? senderRole,
+    String? senderAccountId,
+  }) async {
+    if (recipientId.trim().isEmpty) return;
+
+    try {
+      final cleanRecipient = recipientId.trim();
+      final stringPayload = <String, String>{
+        'type': 'chat_message',
+        'chatId': chatId,
+        'senderName': senderName,
+        'senderRole': senderRole ?? '',
+        'senderAccountId': senderAccountId ?? '',
+        'body': messageText,
+        'title': senderName,
+        'screen': 'chat',
+        'click_action': 'FLUTTER_NOTIFICATION_CLICK',
+        'timestamp': DateTime.now().toIso8601String(),
+      };
+
+      final accessToken = await _getAccessToken();
+      if (accessToken == null) {
+        debugPrint('[FcmDispatcher] Warning: Could not obtain OAuth2 token for chat push.');
+        return;
+      }
+
+      final creds = await _getCredentials();
+      final projectId = creds?['project_id'] ?? _defaultProjectId;
+      final endpoint = 'https://fcm.googleapis.com/v1/projects/$projectId/messages:send';
+
+      final headers = {
+        'Authorization': 'Bearer $accessToken',
+        'Content-Type': 'application/json; charset=utf-8',
+      };
+
+      // Payload targeted to user personal topic (user_{uid})
+      final topicPayload = {
+        'message': {
+          'topic': 'user_$cleanRecipient',
+          'notification': {
+            'title': senderName,
+            'body': messageText,
+          },
+          'data': stringPayload,
+          'android': {
+            'priority': 'HIGH',
+            'notification': {
+              'channel_id': NotificationService.chatChannelId,
+              'sound': 'default',
+              'notification_priority': 'PRIORITY_MAX',
+              'visibility': 'PUBLIC',
+              'icon': 'ic_stat_mahameek',
+              'color': '#0B2A5B',
+              'default_sound': true,
+              'default_vibrate_timings': true,
+            },
+          },
+          'apns': {
+            'headers': {
+              'apns-priority': '10',
+              'apns-push-type': 'alert',
+            },
+            'payload': {
+              'aps': {
+                'alert': {
+                  'title': senderName,
+                  'body': messageText,
+                },
+                'sound': 'default',
+                'badge': 1,
+                'content-available': 1,
+              },
+            },
+          },
+        },
+      };
+
+      final response = await http
+          .post(
+            Uri.parse(endpoint),
+            headers: headers,
+            body: jsonEncode(topicPayload),
+          )
+          .timeout(const Duration(seconds: 8));
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        debugPrint('[FcmDispatcher] Chat Push sent to user_$cleanRecipient successfully');
+      } else {
+        debugPrint('[FcmDispatcher] Chat Push returned ${response.statusCode}: ${response.body}');
+      }
+    } catch (e) {
+      debugPrint('[FcmDispatcher] dispatchChatNotification notice: $e');
+    }
+  }
 }

@@ -13,6 +13,7 @@ import '../data/models/chat_model.dart';
 import '../data/models/chat_message_model.dart';
 import '../data/models/user_model.dart';
 import '../data/models/lawyer.dart';
+import 'fcm_dispatcher_service.dart';
 
 class ChatService {
   final FirebaseFirestore _db;
@@ -215,6 +216,18 @@ class ChatService {
 
     batch.set(chatDocRef, updateData, SetOptions(merge: true));
     await batch.commit();
+
+    // Dispatch real push notification to recipient device (works even when app is closed)
+    if (recipientId.isNotEmpty) {
+      unawaited(FcmDispatcherService().dispatchChatNotification(
+        recipientId: recipientId,
+        senderName: senderName,
+        messageText: cleanText,
+        chatId: chatId,
+        senderRole: senderRole,
+        senderAccountId: senderAccountId,
+      ));
+    }
   }
 
   /// Mark conversation as read for the active user

@@ -127,10 +127,14 @@ void main() async {
 
     if (isLoggedIn) {
       final String role = effectiveRole ?? 'client';
+      final currentUid = savedUid ?? currentUser?.uid;
+      if (currentUid != null && currentUid.isNotEmpty) {
+        unawaited(NotificationService().registerUserDevice(uid: currentUid, role: role));
+      }
       if (role == 'admin') {
         initialScreen = const AdminDashboard();
         try {
-          unawaited(NotificationService().enableAllNotifications(adminUid: savedUid ?? currentUser?.uid));
+          unawaited(NotificationService().enableAllNotifications(adminUid: currentUid));
         } catch (_) {}
       } else if (role == 'lawyer') {
         if (savedStatus == 'pending') {

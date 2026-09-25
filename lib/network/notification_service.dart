@@ -17,11 +17,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/models/admin_notification_model.dart';
+import '../data/models/chat_model.dart';
 import '../firebase_options.dart';
 import 'fcm_dispatcher_service.dart';
 import '../ui/screens/admin/admin_password_resets_screen.dart';
 import '../ui/screens/admin/admin_support_messages_screen.dart';
 import '../ui/screens/admin/admin_pending_lawyers_screen.dart';
+import '../ui/screens/chat/chat_screen.dart';
+import '../ui/screens/main_navigation_screen.dart';
 import '../ui/custom_widgets/in_app_notification_banner.dart';
 import '../core/services/keep_alive_service.dart';
 
@@ -33,19 +36,23 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform);
 
-    // Verify device is registered as admin or message is from admin topic or has admin payload
-    final prefs = await SharedPreferences.getInstance();
-    final role = prefs.getString('role');
-    final isAdminDevice = prefs.getBool('is_admin_device') ?? false;
-    final isFromAdminTopic = message.from?.contains('admin') ?? false;
+    // Verify device is registered as admin or message is a chat message
     final payloadType = message.data['type']?.toString();
+    final isChatMessage = payloadType == 'chat_message' ||
+        message.data['chatId'] != null ||
+        (message.from?.contains('user_') ?? false);
+    final isFromAdminTopic = message.from?.contains('admin') ?? false;
     final isAdminPayload = payloadType == 'password_reset' ||
         payloadType == 'support_message' ||
         payloadType == 'lawyer_registration' ||
         message.data['screen'] == 'admin_notification';
 
-    if (role != 'admin' && !isAdminDevice && !isFromAdminTopic && !isAdminPayload) {
-      debugPrint('Background message ignored: device role is $role, not admin');
+    final prefs = await SharedPreferences.getInstance();
+    final role = prefs.getString('role');
+    final isAdminDevice = prefs.getBool('is_admin_device') ?? false;
+
+    if (!isChatMessage && role != 'admin' && !isAdminDevice && !isFromAdminTopic && !isAdminPayload) {
+      debugPrint('Background message ignored: not chat and not admin (role: $role)');
       return;
     }
 
@@ -58,13 +65,17 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       return;
     }
 
-    final title = message.data['title']?.toString() ?? 'إشعار إداري جديد';
-    final body = message.data['body']?.toString() ?? 'وصلك تحديث جديد في المنصة';
-    final payload = message.data['type']?.toString() ??
-        message.data['screen']?.toString() ??
-        'admin_notification';
+    final title = message.data['title']?.toString() ??
+        message.data['senderName']?.toString() ??
+        (isChatMessage ? 'رسالة جديدة' : 'إشعار إداري جديد');
+    final body = message.data['body']?.toString() ??
+        message.data['text']?.toString() ??
+        (isChatMessage ? 'وصلتك رسالة جديدة' : 'وصلك تحديث جديد في المنصة');
+    final payload = isChatMessage
+        ? 'chat_${message.data['chatId']}'
+        : (payloadType ?? message.data['screen']?.toString() ?? 'admin_notification');
 
-    debugPrint('FCM Background data-only message handling: $title | Payload: $payload');
+    debugPrint('FCM Background message handling: $title | Payload: $payload');
 
     // Self-contained Local Notifications in background isolate
     final localNotifications = FlutterLocalNotificationsPlugin();
@@ -93,13 +104,26 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         ledColor: const Color(0xFFD49B1A),
         showBadge: true,
       );
+      final chatChannel = AndroidNotificationChannel(
+        NotificationService.chatChannelId,
+        NotificationService.chatChannelName,
+        description: NotificationService.chatChannelDesc,
+        importance: Importance.max,
+        playSound: true,
+        enableVibration: true,
+        vibrationPattern: Int64List.fromList([0, 300, 200, 300]),
+        enableLights: true,
+        ledColor: const Color(0xFFD49B1A),
+        showBadge: true,
+      );
       await androidPlugin.createNotificationChannel(urgentChannelV4);
+      await androidPlugin.createNotificationChannel(chatChannel);
     }
 
     final androidDetails = AndroidNotificationDetails(
-      NotificationService.adminChannelId,
-      NotificationService.adminChannelName,
-      channelDescription: NotificationService.adminChannelDesc,
+      isChatMessage ? NotificationService.chatChannelId : NotificationService.adminChannelId,
+      isChatMessage ? NotificationService.chatChannelName : NotificationService.adminChannelName,
+      channelDescription: isChatMessage ? NotificationService.chatChannelDesc : NotificationService.adminChannelDesc,
       icon: '@drawable/ic_stat_mahameek',
       largeIcon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
       importance: Importance.max,
@@ -117,11 +141,11 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       category: AndroidNotificationCategory.message,
       ticker: title,
       channelShowBadge: true,
-      subText: 'منصة محاميك',
+      subText: isChatMessage ? 'محادثة مباشرة' : 'منصة محاميك',
       styleInformation: BigTextStyleInformation(
         body,
         contentTitle: title,
-        summaryText: 'منصة محاميك',
+        summaryText: isChatMessage ? 'محادثة مباشرة' : 'منصة محاميك',
       ),
     );
 
@@ -173,6 +197,7 @@ class NotificationService {
   static DateTime? _lastHandledTime;
 
   // ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
   // Notification Channels & Topics
   // ---------------------------------------------------------------------------
   static const String adminChannelId = 'mahameek_urgent_alerts_v4';
@@ -181,6 +206,12 @@ class NotificationService {
       'إشعارات فورية منبثقة لطلبات استعادة كلمة المرور ورسائل الدعم';
   static const String adminTopic = 'admin_notifications';
   static const String adminAlertsTopic = 'admin_alerts';
+
+  // Chat Notifications Channel & Topic
+  static const String chatChannelId = 'mahameek_chat_alerts';
+  static const String chatChannelName = 'رسائل المحادثات المباشرة';
+  static const String chatChannelDesc = 'إشعارات الرسائل الفورية للمحادثات المباشرة';
+  static String userTopic(String uid) => 'user_$uid';
 
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FlutterLocalNotificationsPlugin _localNotifications =
@@ -230,17 +261,10 @@ class NotificationService {
     }
   }
 
-  /// Handles user click on a notification payload (Admins only)
+  /// Handles user click on a notification payload (Chat messages or Admin alerts)
   static Future<void> handleNotificationTap(String? payload) async {
     if (payload == null || payload.trim().isEmpty) return;
     final type = payload.trim();
-
-    final prefs = await SharedPreferences.getInstance();
-    final role = prefs.getString('role');
-    if (role != 'admin') {
-      debugPrint('Ignoring notification tap: device role is $role, not admin');
-      return;
-    }
 
     final now = DateTime.now();
     if (_lastHandledPayload == type && _lastHandledTime != null) {
@@ -254,6 +278,43 @@ class NotificationService {
 
     clearLaunchIntent();
     debugPrint('Notification clicked with payload: $type');
+
+    // 1. Direct handling for Chat Notifications (Clients, Lawyers & Admins)
+    if (type.startsWith('chat_') || type == 'chat') {
+      final chatId = type.startsWith('chat_') ? type.substring('chat_'.length).trim() : '';
+      Future.delayed(const Duration(milliseconds: 300), () async {
+        final nav = navigatorKey.currentState;
+        if (nav == null) return;
+
+        if (chatId.isNotEmpty) {
+          try {
+            final chatDoc = await FirebaseFirestore.instance.collection('chats').doc(chatId).get();
+            if (chatDoc.exists && chatDoc.data() != null) {
+              final chat = ChatModel.fromMap(chatDoc.data()!, chatDoc.id);
+              nav.push(MaterialPageRoute(builder: (_) => ChatScreen(chat: chat)));
+              return;
+            }
+          } catch (e) {
+            debugPrint('Failed to load chat doc from notification: $e');
+          }
+        }
+        // Fallback to chats tab
+        final prefs = await SharedPreferences.getInstance();
+        final role = prefs.getString('role');
+        nav.push(MaterialPageRoute(
+          builder: (_) => MainNavigationScreen(initialIndex: 1, role: role),
+        ));
+      });
+      return;
+    }
+
+    // 2. Admin notification checks
+    final prefs = await SharedPreferences.getInstance();
+    final role = prefs.getString('role');
+    if (role != 'admin') {
+      debugPrint('Ignoring notification tap: device role is $role, not admin');
+      return;
+    }
 
     Future.delayed(const Duration(milliseconds: 300), () {
       final nav = navigatorKey.currentState;
@@ -363,8 +424,22 @@ class NotificationService {
             showBadge: true,
           );
 
+          final chatChannel = AndroidNotificationChannel(
+            chatChannelId,
+            chatChannelName,
+            description: chatChannelDesc,
+            importance: Importance.max,
+            playSound: true,
+            enableVibration: true,
+            vibrationPattern: Int64List.fromList([0, 300, 200, 300]),
+            enableLights: true,
+            ledColor: const Color(0xFFD49B1A),
+            showBadge: true,
+          );
+
           await androidPlugin.createNotificationChannel(urgentChannelV4);
           await androidPlugin.createNotificationChannel(oldChannelUpdated);
+          await androidPlugin.createNotificationChannel(chatChannel);
           await androidPlugin.requestNotificationsPermission();
         }
       }
@@ -384,8 +459,32 @@ class NotificationService {
       // 5. Register Background Handler
       FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
-      // 6. Handle Foreground Messages (Admin Only)
+      // 6. Handle Foreground Messages (Chat & Admin)
       FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
+        final isChatMessage = message.data['type'] == 'chat_message' ||
+            message.data['chatId'] != null ||
+            (message.from?.contains('user_') ?? false);
+
+        if (isChatMessage) {
+          final chatId = message.data['chatId']?.toString();
+          final senderName = message.data['senderName']?.toString() ??
+              message.notification?.title ??
+              'رسالة جديدة';
+          final text = message.data['text']?.toString() ??
+              message.data['body']?.toString() ??
+              message.notification?.body ??
+              'وصلتك رسالة جديدة';
+
+          showNotificationDirect(
+            title: senderName,
+            body: text,
+            payload: 'chat_$chatId',
+            channelId: chatChannelId,
+            channelName: chatChannelName,
+          );
+          return;
+        }
+
         final prefs = await SharedPreferences.getInstance();
         final currentRole = prefs.getString('role');
         final isAdminDevice = prefs.getBool('is_admin_device') ?? false;
@@ -415,7 +514,9 @@ class NotificationService {
 
       // 7. Handle App Opened via Notification
       FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-        final payload = message.data['type']?.toString();
+        final payload = message.data['type'] == 'chat_message' || message.data['chatId'] != null
+            ? 'chat_${message.data['chatId']}'
+            : message.data['type']?.toString();
         handleNotificationTap(payload);
       });
 
@@ -424,7 +525,9 @@ class NotificationService {
         final initialMessage =
             await FirebaseMessaging.instance.getInitialMessage();
         if (initialMessage != null) {
-          final payload = initialMessage.data['type']?.toString();
+          final payload = initialMessage.data['type'] == 'chat_message' || initialMessage.data['chatId'] != null
+              ? 'chat_${initialMessage.data['chatId']}'
+              : initialMessage.data['type']?.toString();
           if (payload != null && payload.trim().isNotEmpty) {
             _initialLaunchPayloadHandled = true;
             handleNotificationTap(payload);
@@ -435,20 +538,26 @@ class NotificationService {
       // Cleanup subscription if not admin or auto-register if admin
       final prefs = await SharedPreferences.getInstance();
       final currentRole = prefs.getString('role');
+      final savedUid = prefs.getString('uid') ?? FirebaseAuth.instance.currentUser?.uid;
+      if (savedUid != null && savedUid.isNotEmpty) {
+        unawaited(registerUserDevice(uid: savedUid, role: currentRole));
+      }
       if (currentRole != 'admin') {
         unawaited(unregisterAdminDevice());
       } else {
-        final savedUid = prefs.getString('uid') ?? FirebaseAuth.instance.currentUser?.uid;
         unawaited(registerAdminDevice(adminUid: savedUid));
       }
 
-      // 9. Listen for FCM Token Refreshes (Auto-update for Admin)
+      // 9. Listen for FCM Token Refreshes (Auto-update for Users & Admin)
       FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
         try {
           final p = await SharedPreferences.getInstance();
           final r = p.getString('role');
+          final uid = p.getString('uid') ?? FirebaseAuth.instance.currentUser?.uid;
+          if (uid != null && uid.isNotEmpty) {
+            await registerUserDevice(uid: uid, role: r);
+          }
           if (r == 'admin') {
-            final uid = p.getString('uid') ?? FirebaseAuth.instance.currentUser?.uid;
             await _db.collection('admin_tokens').doc(newToken).set({
               'token': newToken,
               'adminUid': uid ?? 'admin',
@@ -469,6 +578,102 @@ class NotificationService {
           'NotificationService initialized successfully with Heads-up support.');
     } catch (e) {
       debugPrint('NotificationService init error: $e');
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // User Device Subscriptions (Clients, Lawyers & Admins)
+  // ---------------------------------------------------------------------------
+  /// Subscribes any user to their personal topic `user_$uid` and registers device token
+  /// so that push notifications are received even when the app is completely closed.
+  Future<void> registerUserDevice({required String uid, String? role}) async {
+    if (kIsWeb || uid.isEmpty) return;
+    try {
+      final messaging = FirebaseMessaging.instance;
+      // 1. Request push permissions
+      await messaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+        criticalAlert: true,
+        provisional: false,
+      );
+
+      // 2. iOS APNs Token check
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        String? apnsToken = await messaging.getAPNSToken();
+        int attempts = 0;
+        while (apnsToken == null && attempts < 10) {
+          await Future.delayed(const Duration(milliseconds: 500));
+          apnsToken = await messaging.getAPNSToken();
+          attempts++;
+        }
+      }
+
+      // 3. Subscribe to individual topic for this user
+      final userTopicName = userTopic(uid);
+      await messaging.subscribeToTopic(userTopicName).catchError((err) {
+        debugPrint('subscribeToTopic $userTopicName error: $err');
+      });
+
+      // 4. Save device token
+      final token = await messaging.getToken().catchError((_) => null);
+      if (token != null) {
+        final prefs = await SharedPreferences.getInstance();
+        final actualRole = role ?? prefs.getString('role') ?? 'client';
+        final collectionName = actualRole == 'lawyer' ? 'lawyers' : 'users';
+
+        // Update in user/lawyer doc
+        await _db.collection(collectionName).doc(uid).set({
+          'fcmToken': token,
+          'lastActive': FieldValue.serverTimestamp(),
+          'platform': defaultTargetPlatform.name,
+        }, SetOptions(merge: true)).catchError((e) {
+          debugPrint('Save fcmToken to $collectionName error: $e');
+        });
+
+        // Also save in a global user_tokens collection
+        await _db.collection('user_tokens').doc(uid).set({
+          'token': token,
+          'uid': uid,
+          'role': actualRole,
+          'updatedAt': FieldValue.serverTimestamp(),
+          'platform': defaultTargetPlatform.name,
+        }, SetOptions(merge: true)).catchError((e) {
+          debugPrint('Save token to user_tokens error: $e');
+        });
+      }
+
+      // If user is admin, also register admin device
+      if (role == 'admin') {
+        await registerAdminDevice(adminUid: uid);
+      }
+
+      debugPrint('User device registered for topic: $userTopicName (uid: $uid)');
+    } catch (e) {
+      debugPrint('registerUserDevice error: $e');
+    }
+  }
+
+  /// Unsubscribes user from their topic on logout
+  Future<void> unregisterUserDevice({String? uid}) async {
+    if (kIsWeb) return;
+    try {
+      final messaging = FirebaseMessaging.instance;
+      final prefs = await SharedPreferences.getInstance();
+      final targetUid = uid ?? prefs.getString('uid');
+      if (targetUid != null && targetUid.isNotEmpty) {
+        final userTopicName = userTopic(targetUid);
+        await messaging.unsubscribeFromTopic(userTopicName).catchError((_) {});
+        await _db.collection('user_tokens').doc(targetUid).delete().catchError((_) {});
+        debugPrint('Unsubscribed user device from: $userTopicName');
+      }
+      final role = prefs.getString('role');
+      if (role == 'admin') {
+        await unregisterAdminDevice();
+      }
+    } catch (e) {
+      debugPrint('unregisterUserDevice error: $e');
     }
   }
 
@@ -628,6 +833,8 @@ class NotificationService {
     required String body,
     String? payload,
     int? id,
+    String? channelId,
+    String? channelName,
   }) async {
     try {
       final now = DateTime.now();
@@ -640,6 +847,9 @@ class NotificationService {
       }
       _recentlyShownDirectNotifs[dedupeKey] = now;
 
+      final isChat = channelId == chatChannelId ||
+          (payload != null && (payload.startsWith('chat_') || payload == 'chat'));
+
       final prefs = await SharedPreferences.getInstance();
       final currentRole = prefs.getString('role');
       final isAdminDevice = prefs.getBool('is_admin_device') ?? false;
@@ -651,15 +861,20 @@ class NotificationService {
           title.contains('انضمام محام') ||
           title.contains('رسالة تواصل');
 
-      if (isAdminPayload && currentRole != 'admin' && !isAdminDevice) {
+      if (!isChat && isAdminPayload && currentRole != 'admin' && !isAdminDevice) {
         debugPrint(
             'showNotificationDirect blocked: recipient is not admin (role: $currentRole)');
         return;
       }
+
+      final effectiveChannelId = channelId ?? (isChat ? chatChannelId : adminChannelId);
+      final effectiveChannelName = channelName ?? (isChat ? chatChannelName : adminChannelName);
+      final effectiveChannelDesc = isChat ? chatChannelDesc : adminChannelDesc;
+
       final androidDetails = AndroidNotificationDetails(
-        adminChannelId,
-        adminChannelName,
-        channelDescription: adminChannelDesc,
+        effectiveChannelId,
+        effectiveChannelName,
+        channelDescription: effectiveChannelDesc,
         icon: '@drawable/ic_stat_mahameek',
         largeIcon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
         importance: Importance.max,
@@ -677,19 +892,28 @@ class NotificationService {
         category: AndroidNotificationCategory.message,
         ticker: title,
         channelShowBadge: true,
-        subText: 'منصة محاميك',
-        actions: <AndroidNotificationAction>[
-          const AndroidNotificationAction(
-            'open_action',
-            'عرض الطلب',
-            showsUserInterface: true,
-            cancelNotification: true,
-          ),
-        ],
+        subText: isChat ? 'محادثة مباشرة' : 'منصة محاميك',
+        actions: isChat
+            ? <AndroidNotificationAction>[
+                const AndroidNotificationAction(
+                  'open_chat',
+                  'عرض المحادثة',
+                  showsUserInterface: true,
+                  cancelNotification: true,
+                ),
+              ]
+            : <AndroidNotificationAction>[
+                const AndroidNotificationAction(
+                  'open_action',
+                  'عرض الطلب',
+                  showsUserInterface: true,
+                  cancelNotification: true,
+                ),
+              ],
         styleInformation: BigTextStyleInformation(
           body,
           contentTitle: title,
-          summaryText: 'منصة محاميك',
+          summaryText: isChat ? 'محادثة مباشرة' : 'منصة محاميك',
         ),
       );
 
