@@ -14,11 +14,13 @@ class FloatingNavItemData {
   final IconData icon;
   final IconData activeIcon;
   final String label;
+  final int badgeCount;
 
   const FloatingNavItemData({
     required this.icon,
     required this.activeIcon,
     required this.label,
+    this.badgeCount = 0,
   });
 }
 
@@ -166,20 +168,65 @@ class FloatingNavBar extends StatelessWidget {
                                         scale: isSelected ? 1.10 : 1.0,
                                         duration: const Duration(milliseconds: 220),
                                         curve: Curves.easeOutBack,
-                                        child: AnimatedSwitcher(
-                                          duration: const Duration(milliseconds: 200),
-                                          transitionBuilder: (child, anim) =>
-                                              FadeTransition(
-                                            opacity: anim,
-                                            child: ScaleTransition(
-                                                scale: anim, child: child),
-                                          ),
-                                          child: Icon(
-                                            isSelected ? item.activeIcon : item.icon,
-                                            key: ValueKey<bool>(isSelected),
-                                            color: isSelected ? activeColor : inactiveColor,
-                                            size: 20.5,
-                                          ),
+                                        child: Stack(
+                                          clipBehavior: Clip.none,
+                                          alignment: Alignment.center,
+                                          children: [
+                                            AnimatedSwitcher(
+                                              duration: const Duration(milliseconds: 200),
+                                              transitionBuilder: (child, anim) =>
+                                                  FadeTransition(
+                                                opacity: anim,
+                                                child: ScaleTransition(
+                                                    scale: anim, child: child),
+                                              ),
+                                              child: Icon(
+                                                isSelected ? item.activeIcon : item.icon,
+                                                key: ValueKey<bool>(isSelected),
+                                                color: isSelected ? activeColor : inactiveColor,
+                                                size: 20.5,
+                                              ),
+                                            ),
+                                            if (item.badgeCount > 0)
+                                              Positioned(
+                                                top: -6,
+                                                right: -10,
+                                                child: Container(
+                                                  padding: const EdgeInsets.symmetric(
+                                                      horizontal: 4.5, vertical: 1),
+                                                  constraints: const BoxConstraints(
+                                                      minWidth: 16, minHeight: 16),
+                                                  decoration: BoxDecoration(
+                                                    color: const Color(0xFFEF4444),
+                                                    borderRadius:
+                                                        BorderRadius.circular(10),
+                                                    border: Border.all(
+                                                        color: Colors.white, width: 1.5),
+                                                    boxShadow: [
+                                                      BoxShadow(
+                                                        color: const Color(0xFFEF4444)
+                                                            .withValues(alpha: 0.45),
+                                                        blurRadius: 4,
+                                                        offset: const Offset(0, 1.5),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  alignment: Alignment.center,
+                                                  child: Text(
+                                                    item.badgeCount > 9
+                                                        ? '+9'
+                                                        : '${item.badgeCount}',
+                                                    style: GoogleFonts.cairo(
+                                                      color: Colors.white,
+                                                      fontSize: 8.5,
+                                                      fontWeight: FontWeight.w900,
+                                                      height: 1.1,
+                                                    ),
+                                                    textAlign: TextAlign.center,
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
                                         ),
                                       ),
                                       const SizedBox(height: 2),

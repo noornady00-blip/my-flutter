@@ -183,6 +183,8 @@ class FcmDispatcherService {
                 'sound': 'default',
                 'badge': 1,
                 'content-available': 1,
+                'category': 'FLUTTER_NOTIFICATION_CLICK',
+                'mutable-content': 1,
               },
             },
           },
@@ -202,6 +204,37 @@ class FcmDispatcherService {
       } else {
         debugPrint('FCM HTTP v1 Topic Push returned status ${response.statusCode}: ${response.body}');
       }
+
+      // Also deliver directly to registered admin device tokens (ensures immediate APNs alert on iPhones)
+      try {
+        final adminTokensSnap = await _db.collection('admin_tokens').get();
+        if (adminTokensSnap.docs.isNotEmpty) {
+          for (final doc in adminTokensSnap.docs) {
+            final adminToken = doc.id;
+            if (adminToken.isNotEmpty) {
+              final directPayload = {
+                'message': {
+                  'token': adminToken,
+                  'notification': {
+                    'title': title,
+                    'body': body,
+                  },
+                  'data': data,
+                  'android': (topicPayload['message'] as Map)['android'],
+                  'apns': (topicPayload['message'] as Map)['apns'],
+                },
+              };
+              try {
+                await http.post(
+                  Uri.parse(endpoint),
+                  headers: headers,
+                  body: jsonEncode(directPayload),
+                ).timeout(const Duration(seconds: 8));
+              } catch (_) {}
+            }
+          }
+        }
+      } catch (_) {}
     } catch (e) {
       debugPrint('FcmDispatcherService._sendFcmHttpV1Message error: $e');
     }
@@ -284,25 +317,78 @@ class FcmDispatcherService {
                 'sound': 'default',
                 'badge': 1,
                 'content-available': 1,
+                'category': 'FLUTTER_NOTIFICATION_CLICK',
+                'mutable-content': 1,
               },
             },
           },
         },
       };
 
-      final response = await http
-          .post(
-            Uri.parse(endpoint),
-            headers: headers,
-            body: jsonEncode(topicPayload),
-          )
-          .timeout(const Duration(seconds: 8));
+      // 1. Post to user topic
+      try {
+        final topicRes = await http
+            .post(
+              Uri.parse(endpoint),
+              headers: headers,
+              body: jsonEncode(topicPayload),
+            )
+            .timeout(const Duration(seconds: 8));
+        if (topicRes.statusCode >= 200 && topicRes.statusCode < 300) {
+          debugPrint('[FcmDispatcher] Chat Push sent to user_$cleanRecipient successfully');
+        }
+      } catch (_) {}
 
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        debugPrint('[FcmDispatcher] Chat Push sent to user_$cleanRecipient successfully');
-      } else {
-        debugPrint('[FcmDispatcher] Chat Push returned ${response.statusCode}: ${response.body}');
-      }
+      // 2. Also send directly to recipient device token (guarantees instant APNs delivery on iPhone)
+      try {
+        String? directToken;
+        try {
+          final tokenDoc = await _db.collection('user_tokens').doc(cleanRecipient).get();
+          if (tokenDoc.exists) {
+            directToken = tokenDoc.data()?['token']?.toString();
+          }
+        } catch (_) {}
+
+        if (directToken == null || directToken.isEmpty) {
+          try {
+            final userDoc = await _db.collection('users').doc(cleanRecipient).get();
+            directToken = userDoc.data()?['fcmToken']?.toString();
+          } catch (_) {}
+        }
+        if (directToken == null || directToken.isEmpty) {
+          try {
+            final lawyerDoc = await _db.collection('lawyers').doc(cleanRecipient).get();
+            directToken = lawyerDoc.data()?['fcmToken']?.toString();
+          } catch (_) {}
+        }
+
+        if (directToken != null && directToken.isNotEmpty) {
+          final directPayload = {
+            'message': {
+              'token': directToken,
+              'notification': {
+                'title': senderName,
+                'body': messageText,
+              },
+              'data': stringPayload,
+              'android': (topicPayload['message'] as Map)['android'],
+              'apns': (topicPayload['message'] as Map)['apns'],
+            },
+          };
+          try {
+            final directRes = await http
+                .post(
+                  Uri.parse(endpoint),
+                  headers: headers,
+                  body: jsonEncode(directPayload),
+                )
+                .timeout(const Duration(seconds: 8));
+            if (directRes.statusCode >= 200 && directRes.statusCode < 300) {
+              debugPrint('[FcmDispatcher] Direct Token Push sent to $cleanRecipient on iPhone/Android successfully');
+            }
+          } catch (_) {}
+        }
+      } catch (_) {}
     } catch (e) {
       debugPrint('[FcmDispatcher] dispatchChatNotification notice: $e');
     }

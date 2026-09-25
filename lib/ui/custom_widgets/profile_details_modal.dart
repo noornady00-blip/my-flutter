@@ -526,198 +526,74 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
                   onTap: () => Navigator.of(context).pop(),
                   borderRadius: BorderRadius.circular(14),
                   child: Container(
-                    width: 38,
-                    height: 38,
+                    width: 36,
+                    height: 36,
                     decoration: BoxDecoration(
                       color: const Color(0xFFF1F5F9),
                       shape: BoxShape.circle,
                       border: Border.all(color: const Color(0xFFE2E8F0)),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.04),
-                          blurRadius: 6,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
                     ),
                     child: const Icon(
                       Icons.close_rounded,
                       color: Color(0xFF475569),
-                      size: 20,
+                      size: 19,
                     ),
                   ),
                 ),
                 Container(
-                  width: 48,
-                  height: 5,
+                  width: 44,
+                  height: 4.5,
                   decoration: BoxDecoration(
                     color: const Color(0xFFCBD5E1),
                     borderRadius: BorderRadius.circular(3),
                   ),
                 ),
-                // Quick Chat launch icon in top-bar
-                InkWell(
-                  onTap: () {
-                    final currentUser = FirebaseAuth.instance.currentUser;
-                    if (currentUser == null) {
-                      _showFloatingCopyToast(context, 'يرجى تسجيل الدخول لبدء محادثة');
-                      return;
-                    }
-                    if (currentUser.uid == lawyer.uid) {
-                      _showFloatingCopyToast(context, 'لا يمكنك بدء محادثة مع نفسك');
-                      return;
-                    }
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => ChatScreen(
-                          lawyerUid: lawyer.uid,
-                          lawyerName: lawyer.name,
-                          lawyerAccountId: lawyer.accountId,
-                          lawyerPhone: lawyer.phone,
-                          lawyerPhotoUrl: lawyer.photoUrl,
-                          lawyerPhotoBase64: lawyer.photoBase64,
-                        ),
-                      ),
-                    );
-                  },
-                  borderRadius: BorderRadius.circular(14),
-                  child: Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFECFDF5),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: const Color(0xFF6EE7B7)),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFF0F766E).withValues(alpha: 0.10),
-                          blurRadius: 6,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: const Icon(
-                      Icons.chat_bubble_outline_rounded,
-                      color: Color(0xFF0F766E),
-                      size: 20,
-                    ),
-                  ),
-                ),
+                const SizedBox(width: 36), // Balanced spacing
               ],
             ),
             const SizedBox(height: 14),
 
-            // Avatar & Lightbox Trigger
+            // Avatar & Lightbox Trigger (Clean, modern, no intrusive overlay icons)
             Center(
-              child: Tooltip(
-                message: 'اضغط لعرض الصورة بحجم كامل',
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => ProfileDetailsModal.openPhotoViewer(
-                    context,
-                    name: lawyer.name,
-                    photoBase64: lawyer.photoBase64,
-                    photoUrl: lawyer.photoUrl,
-                    subtitle: lawyer.city.trim().isNotEmpty
-                        ? 'محامٍ ومستشار قانوني - ${lawyer.city}'
-                        : 'محامٍ ومستشار قانوني',
-                  ),
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      Container(
-                        width: 104,
-                        height: 104,
-                        padding: const EdgeInsets.all(3.5),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: const Color(0xFF0B2A5B),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFF0B2A5B)
-                                   .withValues(alpha: 0.25),
-                              blurRadius: 18,
-                              offset: const Offset(0, 6),
-                            ),
-                          ],
-                        ),
-                        child: Container(
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white,
-                          ),
-                          padding: const EdgeInsets.all(2),
-                          child: ClipOval(
-                            child: _buildAvatarContent(lawyer),
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        top: 2,
-                        left: 2,
-                        child: Container(
-                          padding: const EdgeInsets.all(5),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF0B2A5B)
-                                .withValues(alpha: 0.85),
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.6),
-                              width: 1.5,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.2),
-                                blurRadius: 6,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: const Icon(
-                            Icons.fullscreen_rounded,
-                            color: Color(0xFFFFD54F),
-                            size: 15,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 6),
-
-            // Tap hint
-            Center(
-              child: InkWell(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
                 onTap: () => ProfileDetailsModal.openPhotoViewer(
                   context,
                   name: lawyer.name,
                   photoBase64: lawyer.photoBase64,
                   photoUrl: lawyer.photoUrl,
                   subtitle: lawyer.city.trim().isNotEmpty
-                      ? 'محامٍ ومستشار قانوني - ${lawyer.city}'
-                      : 'محامٍ ومستشار قانوني',
+                      ? lawyer.city
+                      : 'محامٍ مُعتمد',
                 ),
-                borderRadius: BorderRadius.circular(12),
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.zoom_in_rounded,
-                          size: 14, color: Color(0xFF94A3B8)),
-                      const SizedBox(width: 4),
-                      Text(
-                        'اضغط على الصورة للتكبير',
-                        style: GoogleFonts.cairo(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: const Color(0xFF64748B),
-                        ),
+                child: Container(
+                  width: 96,
+                  height: 96,
+                  padding: const EdgeInsets.all(3.0),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFD49B1A), Color(0xFF0B2A5B)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF0B2A5B).withValues(alpha: 0.18),
+                        blurRadius: 16,
+                        offset: const Offset(0, 5),
                       ),
                     ],
+                  ),
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white,
+                    ),
+                    padding: const EdgeInsets.all(2),
+                    child: ClipOval(
+                      child: _buildAvatarContent(lawyer),
+                    ),
                   ),
                 ),
               ),
@@ -1052,66 +928,69 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
     final whatsapp = lawyer.whatsapp;
     final targetWhatsapp = whatsapp.isNotEmpty ? whatsapp : phone;
 
-    return Column(
+    return Row(
+      textDirection: TextDirection.rtl,
       children: [
-        _ExecutiveModalActionButton(
-          title: 'محادثة فورية مباشرة',
-          iconWidget: const Icon(Icons.chat_bubble_rounded,
-              color: Colors.white, size: 19),
-          backgroundColor: const Color(0xFF0F766E),
-          borderColor: const Color(0xFF115E59),
-          shadowColor: const Color(0xFF0F766E),
-          onTap: () {
-            final currentUser = FirebaseAuth.instance.currentUser;
-            if (currentUser == null) {
-              _showCopyToast(context, 'يرجى تسجيل الدخول لبدء محادثة');
-              return;
-            }
-            if (currentUser.uid == lawyer.uid) {
-              _showCopyToast(context, 'لا يمكنك بدء محادثة مع نفسك');
-              return;
-            }
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => ChatScreen(
-                  lawyerUid: lawyer.uid,
-                  lawyerName: lawyer.name,
-                  lawyerAccountId: lawyer.accountId,
-                  lawyerPhone: lawyer.phone,
-                  lawyerPhotoUrl: lawyer.photoUrl,
-                  lawyerPhotoBase64: lawyer.photoBase64,
+        // 1. Direct Chat
+        Expanded(
+          child: _ExecutiveModalActionButton(
+            title: 'محادثة',
+            iconWidget: const Icon(Icons.chat_bubble_rounded,
+                color: Colors.white, size: 17),
+            backgroundColor: const Color(0xFF0F766E),
+            borderColor: const Color(0xFF115E59),
+            shadowColor: const Color(0xFF0F766E),
+            onTap: () {
+              final currentUser = FirebaseAuth.instance.currentUser;
+              if (currentUser == null) {
+                _showCopyToast(context, 'يرجى تسجيل الدخول لبدء محادثة');
+                return;
+              }
+              if (currentUser.uid == lawyer.uid) {
+                _showCopyToast(context, 'لا يمكنك بدء محادثة مع نفسك');
+                return;
+              }
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => ChatScreen(
+                    lawyerUid: lawyer.uid,
+                    lawyerName: lawyer.name,
+                    lawyerAccountId: lawyer.accountId,
+                    lawyerPhone: lawyer.phone,
+                    lawyerPhotoUrl: lawyer.photoUrl,
+                    lawyerPhotoBase64: lawyer.photoBase64,
+                  ),
                 ),
-              ),
-            );
-          },
+              );
+            },
+          ),
         ),
-        const SizedBox(height: 10),
-        Row(
-          textDirection: TextDirection.rtl,
-          children: [
-            Expanded(
-              child: _ExecutiveModalActionButton(
-                title: 'اتصال مباشر',
-                iconWidget: const Icon(Icons.phone_rounded,
-                    color: Color(0xFFD49B1A), size: 19),
-                backgroundColor: const Color(0xFF0B2A5B),
-                borderColor: const Color(0xFF1E2E5C),
-                shadowColor: const Color(0xFF0B2A5B),
-                onTap: () => ProfileDetailsModal.launchCall(phone),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _ExecutiveModalActionButton(
-                title: 'واتساب',
-                iconWidget: const WhatsAppIcon(size: 19, color: Colors.white),
-                backgroundColor: const Color(0xFF1E8E5A),
-                borderColor: const Color(0xFF15803D),
-                shadowColor: const Color(0xFF16A34A),
-                onTap: () => ProfileDetailsModal.launchWhatsApp(targetWhatsapp),
-              ),
-            ),
-          ],
+        const SizedBox(width: 8),
+
+        // 2. Direct Call
+        Expanded(
+          child: _ExecutiveModalActionButton(
+            title: 'اتصال',
+            iconWidget: const Icon(Icons.phone_rounded,
+                color: Color(0xFFD49B1A), size: 17),
+            backgroundColor: const Color(0xFF0B2A5B),
+            borderColor: const Color(0xFF1E2E5C),
+            shadowColor: const Color(0xFF0B2A5B),
+            onTap: () => ProfileDetailsModal.launchCall(phone),
+          ),
+        ),
+        const SizedBox(width: 8),
+
+        // 3. WhatsApp
+        Expanded(
+          child: _ExecutiveModalActionButton(
+            title: 'واتساب',
+            iconWidget: const WhatsAppIcon(size: 17, color: Colors.white),
+            backgroundColor: const Color(0xFF1E8E5A),
+            borderColor: const Color(0xFF15803D),
+            shadowColor: const Color(0xFF16A34A),
+            onTap: () => ProfileDetailsModal.launchWhatsApp(targetWhatsapp),
+          ),
         ),
       ],
     );
@@ -1226,10 +1105,11 @@ class _ExecutiveModalActionButtonState
         curve: Curves.easeOutCubic,
         transform: Matrix4.diagonal3Values(
             _isPressed ? 0.98 : 1.0, _isPressed ? 0.98 : 1.0, 1.0),
-        height: 48,
+        height: 44,
+        padding: const EdgeInsets.symmetric(horizontal: 4),
         decoration: BoxDecoration(
           color: widget.backgroundColor,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: widget.borderColor,
             width: 1.2,
@@ -1248,14 +1128,18 @@ class _ExecutiveModalActionButtonState
           textDirection: TextDirection.rtl,
           children: [
             widget.iconWidget,
-            const SizedBox(width: 8),
-            Text(
-              widget.title,
-              style: GoogleFonts.cairo(
-                fontSize: 14.5,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-                letterSpacing: -0.2,
+            const SizedBox(width: 5),
+            Flexible(
+              child: Text(
+                widget.title,
+                style: GoogleFonts.cairo(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                  letterSpacing: -0.1,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
@@ -1663,41 +1547,6 @@ class _ClientModalSheet extends StatelessWidget {
                 ),
               ),
             ),
-            if (_hasPhoto) ...[
-              const SizedBox(height: 6),
-              Center(
-                child: InkWell(
-                  onTap: () => ProfileDetailsModal.openPhotoViewer(
-                    context,
-                    name: client.name,
-                    photoBase64: client.photoBase64,
-                    photoUrl: client.photoUrl,
-                    subtitle: 'عميل مسجل في المنصة',
-                  ),
-                  borderRadius: BorderRadius.circular(10),
-                  child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.zoom_in_rounded,
-                            size: 14, color: Color(0xFF94A3B8)),
-                        const SizedBox(width: 4),
-                        Text(
-                          'اضغط على الصورة للتكبير',
-                          style: GoogleFonts.cairo(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: const Color(0xFF64748B),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
             const SizedBox(height: 12),
             Text(
               client.name,
@@ -1728,76 +1577,79 @@ class _ClientModalSheet extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 24),
-            Column(
+            const SizedBox(height: 18),
+            Row(
+              textDirection: TextDirection.rtl,
               children: [
-                _ExecutiveModalActionButton(
-                  title: 'محادثة فورية مباشرة',
-                  iconWidget: const Icon(Icons.chat_bubble_rounded,
-                      color: Colors.white, size: 19),
-                  backgroundColor: const Color(0xFF0F766E),
-                  borderColor: const Color(0xFF115E59),
-                  shadowColor: const Color(0xFF0F766E),
-                  onTap: () {
-                    final currentUser = FirebaseAuth.instance.currentUser;
-                    if (currentUser == null) {
-                      _showFloatingCopyToast(
-                          context, 'يرجى تسجيل الدخول لبدء محادثة');
-                      return;
-                    }
-                    if (currentUser.uid == client.uid) {
-                      _showFloatingCopyToast(
-                          context, 'لا يمكنك بدء محادثة مع نفسك');
-                      return;
-                    }
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => ChatScreen(
-                          clientUid: client.uid,
-                          clientName: client.name,
-                          clientAccountId: client.accountId,
-                          clientPhone: client.phone,
-                          clientPhotoUrl: client.photoUrl,
-                          clientPhotoBase64: client.photoBase64,
+                // 1. Chat
+                Expanded(
+                  child: _ExecutiveModalActionButton(
+                    title: 'محادثة',
+                    iconWidget: const Icon(Icons.chat_bubble_rounded,
+                        color: Colors.white, size: 17),
+                    backgroundColor: const Color(0xFF0F766E),
+                    borderColor: const Color(0xFF115E59),
+                    shadowColor: const Color(0xFF0F766E),
+                    onTap: () {
+                      final currentUser = FirebaseAuth.instance.currentUser;
+                      if (currentUser == null) {
+                        _showFloatingCopyToast(
+                            context, 'يرجى تسجيل الدخول لبدء محادثة');
+                        return;
+                      }
+                      if (currentUser.uid == client.uid) {
+                        _showFloatingCopyToast(
+                            context, 'لا يمكنك بدء محادثة مع نفسك');
+                        return;
+                      }
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => ChatScreen(
+                            clientUid: client.uid,
+                            clientName: client.name,
+                            clientAccountId: client.accountId,
+                            clientPhone: client.phone,
+                            clientPhotoUrl: client.photoUrl,
+                            clientPhotoBase64: client.photoBase64,
+                          ),
                         ),
-                      ),
-                    );
-                  },
+                      );
+                    },
+                  ),
                 ),
-                const SizedBox(height: 10),
-                Row(
-                  textDirection: TextDirection.rtl,
-                  children: [
-                    Expanded(
-                      child: _ExecutiveModalActionButton(
-                        title: 'اتصال هاتفي',
-                        iconWidget: const Icon(Icons.phone_rounded,
-                            color: Color(0xFFD49B1A), size: 19),
-                        backgroundColor: const Color(0xFF0B2A5B),
-                        borderColor: const Color(0xFF1E2E5C),
-                        shadowColor: const Color(0xFF0B2A5B),
-                        onTap: () =>
-                            ProfileDetailsModal.launchCall(client.phone),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _ExecutiveModalActionButton(
-                        title: 'واتساب',
-                        iconWidget:
-                            const WhatsAppIcon(size: 19, color: Colors.white),
-                        backgroundColor: const Color(0xFF1E8E5A),
-                        borderColor: const Color(0xFF15803D),
-                        shadowColor: const Color(0xFF16A34A),
-                        onTap: () =>
-                            ProfileDetailsModal.launchWhatsApp(client.phone),
-                      ),
-                    ),
-                  ],
+                const SizedBox(width: 8),
+
+                // 2. Call
+                Expanded(
+                  child: _ExecutiveModalActionButton(
+                    title: 'اتصال',
+                    iconWidget: const Icon(Icons.phone_rounded,
+                        color: Color(0xFFD49B1A), size: 17),
+                    backgroundColor: const Color(0xFF0B2A5B),
+                    borderColor: const Color(0xFF1E2E5C),
+                    shadowColor: const Color(0xFF0B2A5B),
+                    onTap: () =>
+                        ProfileDetailsModal.launchCall(client.phone),
+                  ),
+                ),
+                const SizedBox(width: 8),
+
+                // 3. WhatsApp
+                Expanded(
+                  child: _ExecutiveModalActionButton(
+                    title: 'واتساب',
+                    iconWidget:
+                        const WhatsAppIcon(size: 17, color: Colors.white),
+                    backgroundColor: const Color(0xFF1E8E5A),
+                    borderColor: const Color(0xFF15803D),
+                    shadowColor: const Color(0xFF16A34A),
+                    onTap: () =>
+                        ProfileDetailsModal.launchWhatsApp(client.phone),
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 22),
+            const SizedBox(height: 20),
             Container(
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(

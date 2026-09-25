@@ -149,6 +149,7 @@ class _ChatScreenState extends State<ChatScreen> {
       lastMessageTime: DateTime.now(),
     );
     if (mounted) setState(() {});
+    _markRead();
 
     if (authUser == null) {
       return;
@@ -507,6 +508,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 stream: _chatService.getMessagesStream(_activeChat!.id),
                 builder: (context, snapshot) {
                   final messages = snapshot.data ?? [];
+                  if (messages.any((m) => m.senderId != _currentUserId && !m.isRead)) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) => _markRead());
+                  }
 
                   if (messages.isEmpty) {
                     if (snapshot.connectionState == ConnectionState.waiting && snapshot.data == null) {
@@ -655,7 +659,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildMessageBubble(ChatMessageModel message, bool isMe) {
     const Color brandNavy = Color(0xFF0B2A5B);
-    const Color brandGold = Color(0xFFF59E0B);
     final isSpecialAdmin = message.isAdminSender;
 
     final timeStr = _formatMessageTime(message.createdAt);
@@ -744,8 +747,8 @@ class _ChatScreenState extends State<ChatScreen> {
                   const SizedBox(width: 4),
                   Icon(
                     message.isRead ? Icons.done_all_rounded : Icons.done_rounded,
-                    size: 14,
-                    color: message.isRead ? brandGold : Colors.white60,
+                    size: 15,
+                    color: message.isRead ? const Color(0xFF22C55E) : Colors.white60,
                   ),
                 ],
               ],

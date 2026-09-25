@@ -456,6 +456,13 @@ class NotificationService {
         sound: true,
       );
 
+      // Enable immediate foreground banners on iOS devices
+      await messaging.setForegroundNotificationPresentationOptions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+
       // 5. Register Background Handler
       FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 

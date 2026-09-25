@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../network/auth_service.dart';
+import '../../network/chat_service.dart';
 import '../custom_widgets/floating_nav_bar.dart';
 import '../custom_widgets/account_suspended_dialog.dart';
 import '../custom_widgets/app_drawer.dart';
@@ -193,14 +194,35 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         index: safeIndex,
         children: pages,
       ),
-      bottomNavigationBar: FloatingNavBar(
-        currentIndex: safeIndex,
-        onTap: _onTabTapped,
-        items: navItems,
-        barBackgroundColor: const Color(0xFFD49B1A), // Same as Header
-        activeBgColor: Colors.white,
-        activeColor: const Color(0xFF0B2A5B),
-        inactiveColor: const Color(0xAA0F1B3E),
+      bottomNavigationBar: StreamBuilder<int>(
+        stream: (currentUid != null && currentUid.isNotEmpty)
+            ? ChatService().getUnreadCountStream(currentUid, _role)
+            : const Stream.empty(),
+        initialData: 0,
+        builder: (context, snapshot) {
+          final unreadCount = snapshot.data ?? 0;
+          final dynamicNavItems = navItems.map((item) {
+            if (item.label == 'المحادثات') {
+              return FloatingNavItemData(
+                icon: item.icon,
+                activeIcon: item.activeIcon,
+                label: item.label,
+                badgeCount: unreadCount,
+              );
+            }
+            return item;
+          }).toList();
+
+          return FloatingNavBar(
+            currentIndex: safeIndex,
+            onTap: _onTabTapped,
+            items: dynamicNavItems,
+            barBackgroundColor: const Color(0xFFD49B1A), // Same as Header
+            activeBgColor: Colors.white,
+            activeColor: const Color(0xFF0B2A5B),
+            inactiveColor: const Color(0xAA0F1B3E),
+          );
+        },
       ),
     );
   }

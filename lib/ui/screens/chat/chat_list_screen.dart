@@ -688,7 +688,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Text(
-                            '$unread',
+                            unread > 9 ? '+9' : '$unread',
                             style: GoogleFonts.cairo(
                               color: Colors.white,
                               fontSize: 11,

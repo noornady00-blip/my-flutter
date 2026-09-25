@@ -118,64 +118,34 @@ class ExecutiveLawyerCard extends StatelessWidget {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 5),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 2.5),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF8FAFC),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: const Color(0xFFE2E8F0),
-                                width: 1.0,
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(
-                                  Icons.gavel_rounded,
-                                  size: 12.5,
-                                  color: Color(0xFFB45309),
-                                ),
-                                const SizedBox(width: 4),
-                                Flexible(
-                                  child: Text(
-                                    'محامٍ ومستشار قانوني',
-                                    style: GoogleFonts.cairo(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                      color: const Color(0xFF334155),
-                                      height: 1.2,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 5),
-                          Row(
+                          const SizedBox(height: 6),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 4,
+                            crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
-                              const Icon(
-                                Icons.location_on_rounded,
-                                color: Color(0xFFD49B1A),
-                                size: 14,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                lawyer.city.isNotEmpty
-                                    ? lawyer.city
-                                    : 'السودان',
-                                style: GoogleFonts.cairo(
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: const Color(0xFF0B2A5B),
-                                ),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(
+                                    Icons.location_on_rounded,
+                                    color: Color(0xFFD49B1A),
+                                    size: 14,
+                                  ),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    lawyer.city.isNotEmpty
+                                        ? lawyer.city
+                                        : 'السودان',
+                                    style: GoogleFonts.cairo(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: const Color(0xFF0B2A5B),
+                                    ),
+                                  ),
+                                ],
                               ),
                               if (lawyer.accountId.isNotEmpty) ...[
-                                const SizedBox(width: 10),
                                 Container(
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 6, vertical: 1.5),
@@ -360,7 +330,7 @@ class ExecutiveLawyerCard extends StatelessWidget {
             name: lawyer.name,
             photoBase64: lawyer.photoBase64,
             photoUrl: lawyer.photoUrl,
-            subtitle: 'محامٍ ومستشار قانوني',
+            subtitle: lawyer.city.trim().isNotEmpty ? lawyer.city : 'محامٍ مُعتمد',
           );
         }
       },

@@ -249,6 +249,32 @@ class ChatService {
       if (update.isNotEmpty) {
         await chatRef.update(update).catchError((_) {});
       }
+
+      // Also mark unread messages sent by the other party as read
+      try {
+        final unreadMsgsSnap = await _db
+            .collection('chats')
+            .doc(chatId)
+            .collection('messages')
+            .where('isRead', isEqualTo: false)
+            .limit(100)
+            .get();
+
+        if (unreadMsgsSnap.docs.isNotEmpty) {
+          final batch = _db.batch();
+          bool hasChanges = false;
+          for (final doc in unreadMsgsSnap.docs) {
+            final data = doc.data();
+            if (data['senderId'] != currentUserId) {
+              batch.update(doc.reference, {'isRead': true});
+              hasChanges = true;
+            }
+          }
+          if (hasChanges) {
+            await batch.commit().catchError((_) {});
+          }
+        }
+      } catch (_) {}
     } catch (e) {
       debugPrint('[ChatService] markChatAsRead notice: $e');
     }
