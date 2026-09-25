@@ -48,6 +48,15 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         message.data['screen'] == 'admin_notification';
 
     final prefs = await SharedPreferences.getInstance();
+    final currentSavedUid = prefs.getString('uid') ?? FirebaseAuth.instance.currentUser?.uid;
+    final senderId = message.data['senderId']?.toString();
+
+    // STRICT: Never deliver chat notification to the user who sent it
+    if (isChatMessage && senderId != null && senderId.isNotEmpty && currentSavedUid != null && senderId == currentSavedUid) {
+      debugPrint('Background message ignored: sender is current user ($senderId)');
+      return;
+    }
+
     final role = prefs.getString('role');
     final isAdminDevice = prefs.getBool('is_admin_device') ?? false;
 
@@ -213,6 +222,9 @@ class NotificationService {
   static const String chatChannelDesc = 'إشعارات الرسائل الفورية للمحادثات المباشرة';
   static String userTopic(String uid) => 'user_$uid';
 
+  /// Currently open chat screen conversation ID to suppress foreground popups while actively chatting
+  static String? activeChatId;
+
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
@@ -291,7 +303,18 @@ class NotificationService {
             final chatDoc = await FirebaseFirestore.instance.collection('chats').doc(chatId).get();
             if (chatDoc.exists && chatDoc.data() != null) {
               final chat = ChatModel.fromMap(chatDoc.data()!, chatDoc.id);
-              nav.push(MaterialPageRoute(builder: (_) => ChatScreen(chat: chat)));
+              final prefs = await SharedPreferences.getInstance();
+              final savedUid = prefs.getString('uid');
+              final savedRole = prefs.getString('role');
+              final savedName = prefs.getString('name');
+              nav.push(MaterialPageRoute(
+                builder: (_) => ChatScreen(
+                  chat: chat,
+                  currentUserId: savedUid,
+                  currentUserRole: savedRole,
+                  currentUserName: savedName,
+                ),
+              ));
               return;
             }
           } catch (e) {
@@ -473,7 +496,23 @@ class NotificationService {
             (message.from?.contains('user_') ?? false);
 
         if (isChatMessage) {
+          final senderId = message.data['senderId']?.toString();
           final chatId = message.data['chatId']?.toString();
+          final prefs = await SharedPreferences.getInstance();
+          final currentUid = FirebaseAuth.instance.currentUser?.uid ?? prefs.getString('uid');
+
+          // 1. STRICT: Never notify sender of their own message in foreground
+          if (senderId != null && senderId.isNotEmpty && currentUid != null && senderId == currentUid) {
+            debugPrint('[NotificationService] Suppressing self chat notification in foreground ($senderId)');
+            return;
+          }
+
+          // 2. Suppress foreground banner if user is currently inside this active chat screen
+          if (activeChatId != null && chatId != null && activeChatId == chatId) {
+            debugPrint('[NotificationService] Suppressing foreground banner: user is already active in chat $chatId');
+            return;
+          }
+
           final senderName = message.data['senderName']?.toString() ??
               message.notification?.title ??
               'رسالة جديدة';

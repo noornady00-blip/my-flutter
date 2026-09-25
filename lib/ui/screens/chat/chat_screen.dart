@@ -18,6 +18,8 @@ import '../../../data/models/chat_message_model.dart';
 import '../../../data/models/user_model.dart';
 import '../../../data/models/lawyer.dart';
 import '../../../network/chat_service.dart';
+import '../../../network/auth_service.dart';
+import '../../../network/notification_service.dart';
 import '../../../core/utils/phone_utils.dart';
 import '../../../core/utils/image_utils.dart';
 import '../../custom_widgets/profile_details_modal.dart';
@@ -90,31 +92,55 @@ class _ChatScreenState extends State<ChatScreen> {
   String _currentUserName = '';
   String _currentUserRole = 'client';
   String _currentUserAccountId = '';
+  String _detectedOtherRole = '';
   bool _isSending = false;
 
   @override
   void initState() {
     super.initState();
+    if (widget.chat != null) {
+      _activeChat = widget.chat;
+      NotificationService.activeChatId = widget.chat!.id;
+    }
     _initChat();
   }
 
+  Future<void> _fetchOtherPartyRoleIfNeeded() async {
+    if (_activeChat == null) return;
+    try {
+      final otherUid = _activeChat!.getOtherPartyUid(_currentUserId);
+      if (otherUid.isNotEmpty) {
+        final uDoc = await FirebaseFirestore.instance.collection('users').doc(otherUid).get().timeout(const Duration(seconds: 3));
+        if (uDoc.exists && uDoc.data() != null) {
+          final r = uDoc.data()!['role']?.toString();
+          if (r != null && r.isNotEmpty && mounted) {
+            setState(() => _detectedOtherRole = r);
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
   Future<void> _initChat() async {
+    final authUser = FirebaseAuth.instance.currentUser;
+    Map<String, dynamic>? session;
+    try {
+      session = await AuthService().getSavedSession();
+    } catch (_) {}
+
+    _currentUserId = widget.currentUserId ?? authUser?.uid ?? session?['uid'] ?? '';
+    _currentUserRole = widget.currentUserRole ?? session?['role'] ?? 'client';
+    _currentUserName = widget.currentUserName ?? session?['name'] ?? (authUser?.displayName ?? 'المستخدم');
+    _currentUserAccountId = widget.currentUserAccountId ?? session?['accountId'] ?? '';
+
     if (widget.chat != null) {
       _activeChat = widget.chat;
-      _currentUserId = widget.currentUserId ?? FirebaseAuth.instance.currentUser?.uid ?? '';
-      _currentUserName = widget.currentUserName ?? 'المستخدم';
-      _currentUserRole = widget.currentUserRole ?? 'client';
-      _currentUserAccountId = widget.currentUserAccountId ?? '';
+      NotificationService.activeChatId = widget.chat!.id;
       if (mounted) setState(() {});
       _markRead();
+      _fetchOtherPartyRoleIfNeeded();
       return;
     }
-
-    final authUser = FirebaseAuth.instance.currentUser;
-    _currentUserId = widget.currentUserId ?? authUser?.uid ?? '';
-    _currentUserName = widget.currentUserName ?? 'المستخدم';
-    _currentUserRole = widget.currentUserRole ?? 'client';
-    _currentUserAccountId = widget.currentUserAccountId ?? '';
 
     String targetLawyerUid = widget.lawyerUid ?? '';
     String targetClientUid = widget.clientUid ?? '';
@@ -126,28 +152,43 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }
 
-    final effectiveLawyerUid = targetLawyerUid.isNotEmpty ? targetLawyerUid : (_currentUserRole == 'lawyer' ? _currentUserId : '');
-    final effectiveClientUid = targetClientUid.isNotEmpty ? targetClientUid : (_currentUserRole != 'lawyer' ? _currentUserId : '');
+    // Determine the participant roles properly
+    String effectiveClientUid;
+    String effectiveLawyerUid;
+
+    if (targetLawyerUid.isNotEmpty) {
+      // Current user is chatting with a lawyer
+      effectiveLawyerUid = targetLawyerUid;
+      effectiveClientUid = _currentUserId;
+    } else if (targetClientUid.isNotEmpty) {
+      // Current user is chatting with a client
+      effectiveClientUid = targetClientUid;
+      effectiveLawyerUid = _currentUserId;
+    } else {
+      effectiveClientUid = _currentUserId;
+      effectiveLawyerUid = widget.otherUserUid ?? '';
+    }
 
     // Synchronous optimistic chat model: allows the chat UI to render instantly without waiting for network
     _activeChat = ChatModel(
       id: ChatService.generateChatId(effectiveClientUid, effectiveLawyerUid),
       participants: [effectiveClientUid, effectiveLawyerUid],
       clientId: effectiveClientUid,
-      clientName: widget.clientName ?? (_currentUserRole != 'lawyer' ? _currentUserName : 'عميل'),
+      clientName: widget.clientName ?? (effectiveClientUid == _currentUserId ? _currentUserName : 'عميل'),
       clientPhone: widget.clientPhone ?? '',
       clientPhoto: widget.clientPhotoUrl,
-      clientAccountId: widget.clientAccountId ?? (_currentUserRole != 'lawyer' ? _currentUserAccountId : ''),
+      clientAccountId: widget.clientAccountId ?? (effectiveClientUid == _currentUserId ? _currentUserAccountId : ''),
       lawyerId: effectiveLawyerUid,
-      lawyerName: widget.lawyerName ?? (_currentUserRole == 'lawyer' ? _currentUserName : 'محامٍ ومستشار قانوني'),
+      lawyerName: widget.lawyerName ?? (effectiveLawyerUid == _currentUserId ? _currentUserName : 'محامٍ'),
       lawyerPhone: widget.lawyerPhone ?? '',
       lawyerPhoto: widget.lawyerPhotoUrl,
-      lawyerAccountId: widget.lawyerAccountId ?? (_currentUserRole == 'lawyer' ? _currentUserAccountId : ''),
+      lawyerAccountId: widget.lawyerAccountId ?? (effectiveLawyerUid == _currentUserId ? _currentUserAccountId : ''),
       lastMessage: 'مرحباً، تم بدء المحادثة',
       lastSenderId: _currentUserId,
       lastSenderName: _currentUserName,
       lastMessageTime: DateTime.now(),
     );
+    NotificationService.activeChatId = _activeChat!.id;
     if (mounted) setState(() {});
     _markRead();
 
@@ -181,7 +222,7 @@ class _ChatScreenState extends State<ChatScreen> {
         final lData = lDoc.data() ?? {};
         lawyerModel = LawyerModel(
           uid: targetLawyerUid,
-          name: widget.lawyerName ?? lData['name']?.toString() ?? 'محامٍ ومستشار قانوني',
+          name: widget.lawyerName ?? lData['name']?.toString() ?? 'محامٍ',
           phone: widget.lawyerPhone ?? lData['phone']?.toString() ?? '',
           whatsapp: lData['whatsapp']?.toString() ?? '',
           city: lData['city']?.toString() ?? 'السودان',
@@ -203,12 +244,16 @@ class _ChatScreenState extends State<ChatScreen> {
           photoBase64: widget.clientPhotoBase64 ?? cData['photoBase64']?.toString(),
         );
 
-        final lDoc = await FirebaseFirestore.instance.collection('lawyers').doc(_currentUserId).get().timeout(const Duration(seconds: 4));
-        final lData = lDoc.data() ?? {};
+        Map<String, dynamic> lData = {};
+        try {
+          final lDoc = await FirebaseFirestore.instance.collection('lawyers').doc(_currentUserId).get().timeout(const Duration(seconds: 3));
+          lData = lDoc.data() ?? {};
+        } catch (_) {}
+
         lawyerModel = LawyerModel(
           uid: _currentUserId,
           name: _currentUserName,
-          phone: lData['phone']?.toString() ?? '',
+          phone: lData['phone']?.toString() ?? userData['phone']?.toString() ?? '',
           whatsapp: lData['whatsapp']?.toString() ?? '',
           city: lData['city']?.toString() ?? 'السودان',
           accountId: _currentUserAccountId,
@@ -225,7 +270,9 @@ class _ChatScreenState extends State<ChatScreen> {
         setState(() {
           _activeChat = chat;
         });
+        NotificationService.activeChatId = chat.id;
         _markRead();
+        _fetchOtherPartyRoleIfNeeded();
       }
     } catch (e) {
       debugPrint('[ChatScreen] Error background initializing chat: $e');
@@ -234,6 +281,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    if (NotificationService.activeChatId == _activeChat?.id) {
+      NotificationService.activeChatId = null;
+    }
     _msgCtrl.dispose();
     _scrollCtrl.dispose();
     super.dispose();
@@ -256,17 +306,45 @@ class _ChatScreenState extends State<ChatScreen> {
     _msgCtrl.clear();
 
     try {
-      String recipientId = _currentUserId == _activeChat!.clientId
-          ? _activeChat!.lawyerId
-          : _activeChat!.clientId;
-
-      if (recipientId.isEmpty) {
-        recipientId = widget.lawyerUid ?? widget.clientUid ?? widget.otherUserUid ?? '';
-      }
-
       final activeUserId = _currentUserId.isNotEmpty
           ? _currentUserId
           : (FirebaseAuth.instance.currentUser?.uid ?? '');
+
+      String recipientId = '';
+
+      // 1. Direct explicit target from widget arguments (highest priority)
+      if (widget.clientUid != null && widget.clientUid!.trim().isNotEmpty && widget.clientUid!.trim() != activeUserId) {
+        recipientId = widget.clientUid!.trim();
+      } else if (widget.lawyerUid != null && widget.lawyerUid!.trim().isNotEmpty && widget.lawyerUid!.trim() != activeUserId) {
+        recipientId = widget.lawyerUid!.trim();
+      } else if (widget.otherUserUid != null && widget.otherUserUid!.trim().isNotEmpty && widget.otherUserUid!.trim() != activeUserId) {
+        recipientId = widget.otherUserUid!.trim();
+      }
+
+      // 2. Resolve from participants in active chat
+      if (recipientId.isEmpty && _activeChat != null) {
+        final otherParticipants = _activeChat!.participants
+            .where((p) => p.trim().isNotEmpty && p.trim() != activeUserId)
+            .toList();
+        if (otherParticipants.isNotEmpty) {
+          recipientId = otherParticipants.first.trim();
+        }
+      }
+
+      // 3. Fallback to clientId/lawyerId properties
+      if (recipientId.isEmpty && _activeChat != null) {
+        if (_activeChat!.clientId.trim().isNotEmpty && _activeChat!.clientId.trim() != activeUserId) {
+          recipientId = _activeChat!.clientId.trim();
+        } else if (_activeChat!.lawyerId.trim().isNotEmpty && _activeChat!.lawyerId.trim() != activeUserId) {
+          recipientId = _activeChat!.lawyerId.trim();
+        }
+      }
+
+      // 4. Strict safety guard: never allow self notification
+      if (recipientId == activeUserId) {
+        debugPrint('[ChatScreen] Warning: recipientId matches sender ($activeUserId). Notification to self aborted.');
+        recipientId = '';
+      }
 
       await _chatService.sendMessage(
         chatId: _activeChat!.id,
@@ -362,7 +440,9 @@ class _ChatScreenState extends State<ChatScreen> {
     final otherPhoto = _activeChat!.getOtherPartyPhoto(_currentUserId);
     final otherAccountId = _activeChat!.getOtherPartyAccountId(_currentUserId);
     final otherPhone = _activeChat!.getOtherPartyPhone(_currentUserId);
-    final otherRole = _activeChat!.getOtherPartyRole(_currentUserId);
+    final otherRole = _detectedOtherRole.isNotEmpty
+        ? _detectedOtherRole
+        : (widget.otherUserRole ?? _activeChat!.getOtherPartyRole(_currentUserId));
 
     return Scaffold(
       backgroundColor: chatBg,
@@ -620,14 +700,35 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildRoleBadge(String role) {
     if (role == 'admin') {
       return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
         decoration: BoxDecoration(
-          color: const Color(0xFF7C3AED),
+          gradient: const LinearGradient(
+            colors: [Color(0xFFFEF3C7), Color(0xFFFDE68A)],
+          ),
           borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: const Color(0xFFD49B1A), width: 1.2),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFD49B1A).withValues(alpha: 0.3),
+              blurRadius: 4,
+              offset: const Offset(0, 1),
+            ),
+          ],
         ),
-        child: Text(
-          'مشرف 🛡️',
-          style: GoogleFonts.cairo(fontSize: 10, color: Colors.white, fontWeight: FontWeight.w700),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.admin_panel_settings_rounded, size: 12, color: Color(0xFF92400E)),
+            const SizedBox(width: 3),
+            Text(
+              'مشرف',
+              style: GoogleFonts.cairo(
+                fontSize: 10,
+                color: const Color(0xFF92400E),
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
         ),
       );
     }
@@ -659,7 +760,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildMessageBubble(ChatMessageModel message, bool isMe) {
     const Color brandNavy = Color(0xFF0B2A5B);
-    final isSpecialAdmin = message.isAdminSender;
+    const Color brandGold = Color(0xFFD49B1A);
+    final isSpecialAdmin = message.isAdminSender || message.senderRole == 'admin';
 
     final timeStr = _formatMessageTime(message.createdAt);
 
@@ -668,12 +770,12 @@ class _ChatScreenState extends State<ChatScreen> {
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 4),
         constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.78,
+          maxWidth: MediaQuery.of(context).size.width * 0.80,
         ),
         decoration: BoxDecoration(
           color: isMe
-              ? brandNavy
-              : (isSpecialAdmin ? const Color(0xFFF3E8FF) : Colors.white),
+              ? (isSpecialAdmin ? const Color(0xFF0A1E3F) : brandNavy)
+              : (isSpecialAdmin ? const Color(0xFFFFFBEB) : Colors.white),
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(18),
             topRight: const Radius.circular(18),
@@ -682,39 +784,61 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           border: Border.all(
             color: isSpecialAdmin
-                ? const Color(0xFFC084FC)
+                ? brandGold
                 : (isMe ? Colors.transparent : const Color(0xFFE2E8F0)),
-            width: isSpecialAdmin ? 1.5 : 1,
+            width: isSpecialAdmin ? 1.6 : 1,
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 6,
+              color: isSpecialAdmin
+                  ? brandGold.withValues(alpha: 0.15)
+                  : Colors.black.withValues(alpha: 0.04),
+              blurRadius: isSpecialAdmin ? 8 : 6,
               offset: const Offset(0, 2),
             ),
           ],
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         child: Column(
           crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Sender indicator ONLY if admin
+            // Prominent official Supervisor badge if message is from Admin
             if (isSpecialAdmin) ...[
               Container(
-                margin: const EdgeInsets.only(bottom: 5),
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                margin: const EdgeInsets.only(bottom: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF7C3AED).withValues(alpha: 0.15),
+                  gradient: isMe
+                      ? null
+                      : const LinearGradient(
+                          colors: [Color(0xFFFEF3C7), Color(0xFFFDE68A)],
+                        ),
+                  color: isMe ? brandGold.withValues(alpha: 0.25) : null,
                   borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  'إدارة المنصة (مشرف) 🛡️',
-                  style: GoogleFonts.cairo(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF7C3AED),
+                  border: Border.all(
+                    color: brandGold,
+                    width: 1.2,
                   ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.admin_panel_settings_rounded,
+                      size: 13,
+                      color: isMe ? const Color(0xFFFBBF24) : const Color(0xFF92400E),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      isMe ? 'مشرف المنصة' : 'إدارة المنصة • مشرف',
+                      style: GoogleFonts.cairo(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w800,
+                        color: isMe ? const Color(0xFFFDE68A) : const Color(0xFF92400E),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -726,6 +850,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 fontSize: 14,
                 color: isMe ? Colors.white : const Color(0xFF1E293B),
                 height: 1.45,
+                fontWeight: isSpecialAdmin && !isMe ? FontWeight.w600 : FontWeight.normal,
               ),
               textDirection: TextDirection.rtl,
             ),

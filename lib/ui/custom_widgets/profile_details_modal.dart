@@ -959,6 +959,7 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
                     lawyerPhone: lawyer.phone,
                     lawyerPhotoUrl: lawyer.photoUrl,
                     lawyerPhotoBase64: lawyer.photoBase64,
+                    currentUserRole: widget.isAdmin ? 'admin' : null,
                   ),
                 ),
               );
@@ -1611,6 +1612,7 @@ class _ClientModalSheet extends StatelessWidget {
                             clientPhone: client.phone,
                             clientPhotoUrl: client.photoUrl,
                             clientPhotoBase64: client.photoBase64,
+                            currentUserRole: isAdmin ? 'admin' : null,
                           ),
                         ),
                       );

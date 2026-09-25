@@ -603,28 +603,63 @@ class _ChatListScreenState extends State<ChatListScreen> {
         child: Row(
           children: [
             // Avatar
-            ClipRRect(
-              borderRadius: BorderRadius.circular(22),
-              child: Container(
-                width: 48,
-                height: 48,
-                color: brandNavy.withValues(alpha: 0.08),
-                child: otherPhoto != null && otherPhoto.isNotEmpty
-                    ? ImageUtils.buildSafeImage(
-                        photoUrl: otherPhoto,
-                        fit: BoxFit.cover,
-                      )
-                    : Center(
-                        child: Text(
-                          otherName.isNotEmpty ? otherName.substring(0, 1) : 'م',
-                          style: GoogleFonts.cairo(
-                            color: brandNavy,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: otherRole == 'admin' ? headerGold : Colors.transparent,
+                      width: otherRole == 'admin' ? 2 : 0,
+                    ),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(22),
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      color: otherRole == 'admin'
+                          ? headerGold.withValues(alpha: 0.12)
+                          : brandNavy.withValues(alpha: 0.08),
+                      child: otherPhoto != null && otherPhoto.isNotEmpty
+                          ? ImageUtils.buildSafeImage(
+                              photoUrl: otherPhoto,
+                              fit: BoxFit.cover,
+                            )
+                          : Center(
+                              child: otherRole == 'admin'
+                                  ? const Icon(Icons.admin_panel_settings_rounded, size: 24, color: Color(0xFFB45309))
+                                  : Text(
+                                      otherName.isNotEmpty ? otherName.substring(0, 1) : 'م',
+                                      style: GoogleFonts.cairo(
+                                        color: brandNavy,
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                            ),
+                    ),
+                  ),
+                ),
+                if (otherRole == 'admin')
+                  Positioned(
+                    bottom: -2,
+                    right: -2,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFD49B1A),
+                        shape: BoxShape.circle,
                       ),
-              ),
+                      child: const Icon(
+                        Icons.shield_rounded,
+                        size: 11,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(width: 12),
 
@@ -708,6 +743,33 @@ class _ChatListScreenState extends State<ChatListScreen> {
   }
 
   Widget _buildRolePill(String role) {
+    if (role == 'admin') {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFFFEF3C7), Color(0xFFFDE68A)],
+          ),
+          borderRadius: BorderRadius.circular(5),
+          border: Border.all(color: const Color(0xFFD49B1A), width: 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.admin_panel_settings_rounded, size: 11, color: Color(0xFF92400E)),
+            const SizedBox(width: 3),
+            Text(
+              'مشرف',
+              style: GoogleFonts.cairo(
+                fontSize: 9.5,
+                color: const Color(0xFF92400E),
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     if (role == 'lawyer') {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),

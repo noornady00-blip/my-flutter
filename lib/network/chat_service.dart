@@ -197,6 +197,7 @@ class ChatService {
       'lastMessage': cleanText,
       'lastSenderId': senderId,
       'lastSenderName': senderName,
+      'lastSenderRole': senderRole,
       'lastMessageTime': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     };
@@ -218,9 +219,10 @@ class ChatService {
     await batch.commit();
 
     // Dispatch real push notification to recipient device (works even when app is closed)
-    if (recipientId.isNotEmpty) {
+    if (recipientId.isNotEmpty && recipientId != senderId) {
       unawaited(FcmDispatcherService().dispatchChatNotification(
         recipientId: recipientId,
+        senderId: senderId,
         senderName: senderName,
         messageText: cleanText,
         chatId: chatId,

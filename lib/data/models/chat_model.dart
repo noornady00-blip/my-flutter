@@ -25,6 +25,7 @@ class ChatModel {
   final String lastMessage;
   final String lastSenderId;
   final String lastSenderName;
+  final String lastSenderRole;
   final DateTime lastMessageTime;
   final int unreadByClient;
   final int unreadByLawyer;
@@ -47,6 +48,7 @@ class ChatModel {
     this.lastMessage = '',
     this.lastSenderId = '',
     this.lastSenderName = '',
+    this.lastSenderRole = '',
     DateTime? lastMessageTime,
     this.unreadByClient = 0,
     this.unreadByLawyer = 0,
@@ -84,6 +86,7 @@ class ChatModel {
       lastMessage: map['lastMessage']?.toString() ?? '',
       lastSenderId: map['lastSenderId']?.toString() ?? '',
       lastSenderName: map['lastSenderName']?.toString() ?? '',
+      lastSenderRole: map['lastSenderRole']?.toString() ?? '',
       lastMessageTime: parseDate(map['lastMessageTime']),
       unreadByClient: (map['unreadByClient'] is num) ? (map['unreadByClient'] as num).toInt() : 0,
       unreadByLawyer: (map['unreadByLawyer'] is num) ? (map['unreadByLawyer'] as num).toInt() : 0,
@@ -109,6 +112,7 @@ class ChatModel {
       'lastMessage': lastMessage,
       'lastSenderId': lastSenderId,
       'lastSenderName': lastSenderName,
+      'lastSenderRole': lastSenderRole,
       'lastMessageTime': Timestamp.fromDate(lastMessageTime),
       'unreadByClient': unreadByClient,
       'unreadByLawyer': unreadByLawyer,
@@ -135,6 +139,9 @@ class ChatModel {
   }
 
   String getOtherPartyRole(String currentUserId) {
+    if (lastSenderRole == 'admin' && lastSenderId != currentUserId && lastSenderId.isNotEmpty) {
+      return 'admin';
+    }
     return currentUserId == clientId ? 'lawyer' : 'client';
   }
 

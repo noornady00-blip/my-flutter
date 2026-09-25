@@ -243,24 +243,33 @@ class FcmDispatcherService {
   /// Dispatches an authentic push notification for chat messages to the recipient device (works when closed)
   Future<void> dispatchChatNotification({
     required String recipientId,
+    required String senderId,
     required String senderName,
     required String messageText,
     required String chatId,
     String? senderRole,
     String? senderAccountId,
   }) async {
-    if (recipientId.trim().isEmpty) return;
+    final cleanRecipient = recipientId.trim();
+    final cleanSender = senderId.trim();
+    if (cleanRecipient.isEmpty || (cleanSender.isNotEmpty && cleanRecipient == cleanSender)) {
+      debugPrint('[FcmDispatcher] Aborted chat push: cleanRecipient is empty or equals sender ($cleanRecipient == $cleanSender)');
+      return;
+    }
 
     try {
-      final cleanRecipient = recipientId.trim();
+      final isFromAdmin = senderRole == 'admin';
+      final pushTitle = isFromAdmin ? 'مشرف: $senderName' : senderName;
+
       final stringPayload = <String, String>{
         'type': 'chat_message',
         'chatId': chatId,
+        'senderId': cleanSender,
         'senderName': senderName,
         'senderRole': senderRole ?? '',
         'senderAccountId': senderAccountId ?? '',
         'body': messageText,
-        'title': senderName,
+        'title': pushTitle,
         'screen': 'chat',
         'click_action': 'FLUTTER_NOTIFICATION_CLICK',
         'timestamp': DateTime.now().toIso8601String(),
@@ -286,7 +295,7 @@ class FcmDispatcherService {
         'message': {
           'topic': 'user_$cleanRecipient',
           'notification': {
-            'title': senderName,
+            'title': pushTitle,
             'body': messageText,
           },
           'data': stringPayload,
@@ -311,7 +320,7 @@ class FcmDispatcherService {
             'payload': {
               'aps': {
                 'alert': {
-                  'title': senderName,
+                  'title': pushTitle,
                   'body': messageText,
                 },
                 'sound': 'default',
@@ -339,35 +348,35 @@ class FcmDispatcherService {
         }
       } catch (_) {}
 
-      // 2. Also send directly to recipient device token (guarantees instant APNs delivery on iPhone)
+      // 2. Also send directly to recipient device token(s) (guarantees instant APNs delivery on iPhone & Android)
+      final Set<String> targetTokens = {};
       try {
-        String? directToken;
         try {
           final tokenDoc = await _db.collection('user_tokens').doc(cleanRecipient).get();
           if (tokenDoc.exists) {
-            directToken = tokenDoc.data()?['token']?.toString();
+            final t = tokenDoc.data()?['token']?.toString();
+            if (t != null && t.trim().isNotEmpty) targetTokens.add(t.trim());
           }
         } catch (_) {}
 
-        if (directToken == null || directToken.isEmpty) {
-          try {
-            final userDoc = await _db.collection('users').doc(cleanRecipient).get();
-            directToken = userDoc.data()?['fcmToken']?.toString();
-          } catch (_) {}
-        }
-        if (directToken == null || directToken.isEmpty) {
-          try {
-            final lawyerDoc = await _db.collection('lawyers').doc(cleanRecipient).get();
-            directToken = lawyerDoc.data()?['fcmToken']?.toString();
-          } catch (_) {}
-        }
+        try {
+          final userDoc = await _db.collection('users').doc(cleanRecipient).get();
+          final t = userDoc.data()?['fcmToken']?.toString();
+          if (t != null && t.trim().isNotEmpty) targetTokens.add(t.trim());
+        } catch (_) {}
 
-        if (directToken != null && directToken.isNotEmpty) {
+        try {
+          final lawyerDoc = await _db.collection('lawyers').doc(cleanRecipient).get();
+          final t = lawyerDoc.data()?['fcmToken']?.toString();
+          if (t != null && t.trim().isNotEmpty) targetTokens.add(t.trim());
+        } catch (_) {}
+
+        for (final directToken in targetTokens) {
           final directPayload = {
             'message': {
               'token': directToken,
               'notification': {
-                'title': senderName,
+                'title': pushTitle,
                 'body': messageText,
               },
               'data': stringPayload,
@@ -384,7 +393,7 @@ class FcmDispatcherService {
                 )
                 .timeout(const Duration(seconds: 8));
             if (directRes.statusCode >= 200 && directRes.statusCode < 300) {
-              debugPrint('[FcmDispatcher] Direct Token Push sent to $cleanRecipient on iPhone/Android successfully');
+              debugPrint('[FcmDispatcher] Direct Token Push sent to $cleanRecipient ($directToken) successfully');
             }
           } catch (_) {}
         }
