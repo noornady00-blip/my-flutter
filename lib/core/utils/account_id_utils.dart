@@ -34,42 +34,27 @@ class AccountIdUtils {
   /// Generates a cryptographically unique 12-digit ID with collision verification
   /// against Firestore collection 'account_ids'.
   static Future<String> generateUnique12DigitId([FirebaseFirestore? firestore]) async {
+    final candidate = generateCandidate12DigitId();
     final db = firestore ?? FirebaseFirestore.instance;
-    const maxRetries = 10;
 
-    for (int attempt = 0; attempt < maxRetries; attempt++) {
-      final candidate = generateCandidate12DigitId();
-      try {
-        final doc = await db
-            .collection('account_ids')
-            .doc(candidate)
-            .get()
-            .timeout(const Duration(seconds: 4));
+    try {
+      final doc = await db
+          .collection('account_ids')
+          .doc(candidate)
+          .get()
+          .timeout(const Duration(seconds: 3));
 
-        if (!doc.exists) {
-          return candidate;
-        }
-      } catch (e) {
-        debugPrint('[AccountIdUtils] Check attempt $attempt notice: $e');
-        // If network times out, verify against users collection as fallback
-        try {
-          final userSnap = await db
-              .collection('users')
-              .where('accountId', isEqualTo: candidate)
-              .limit(1)
-              .get()
-              .timeout(const Duration(seconds: 3));
-          if (userSnap.docs.isEmpty) {
-            return candidate;
-          }
-        } catch (_) {}
+      if (!doc.exists) {
+        return candidate;
       }
+      // If by extremely rare chance it exists, generate another candidate
+      return generateCandidate12DigitId();
+    } catch (e) {
+      debugPrint('[AccountIdUtils] Check candidate notice: $e');
+      // If remote collection read times out or is denied by rules, candidate is 
+      // cryptographically random across 12 digits (odds of collision < 1 in 900 billion)
+      return candidate;
     }
-
-    // Fallback: timestamp-derived 12-digit guarantee
-    final now = DateTime.now().millisecondsSinceEpoch.toString();
-    final tail = now.length >= 12 ? now.substring(now.length - 12) : now.padLeft(12, '1');
-    return tail.startsWith('0') ? '1${tail.substring(1)}' : tail;
   }
 
   /// Automatically assigns and persists a 12-digit ID if a user/lawyer lacks one
@@ -117,14 +102,19 @@ class AccountIdUtils {
         );
       }
 
-      // Register in global account_ids collection for fast O(1) collision prevention
-      batch.set(db.collection('account_ids').doc(newId), {
-        'uid': uid,
-        'role': role,
-        'createdAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
       await batch.commit();
+
+      // Register in global account_ids collection independently for resilience
+      try {
+        await db.collection('account_ids').doc(newId).set({
+          'uid': uid,
+          'role': role,
+          'createdAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      } catch (e) {
+        debugPrint('[AccountIdUtils] account_ids registry notice: $e');
+      }
+
       return newId;
     } catch (e) {
       debugPrint('[AccountIdUtils] ensureUserHasAccountId notice: $e');

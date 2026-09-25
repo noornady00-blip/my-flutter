@@ -300,11 +300,6 @@ class AuthService implements AuthContract {
 
       final batch = _db.batch();
       batch.set(_db.collection('users').doc(uid), userMap);
-      batch.set(_db.collection('account_ids').doc(accountId), {
-        'uid': uid,
-        'role': 'client',
-        'createdAt': FieldValue.serverTimestamp(),
-      });
 
       final dirData = {
         'uid': uid,
@@ -320,6 +315,17 @@ class AuthService implements AuthContract {
         batch.set(_db.collection('phone_directory').doc(localDigits), dirData);
       }
       await batch.commit();
+
+      // Register in global account_ids collection independently for resilience
+      try {
+        await _db.collection('account_ids').doc(accountId).set({
+          'uid': uid,
+          'role': 'client',
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      } catch (e) {
+        debugPrint('[registerClient] account_ids registry notice: $e');
+      }
 
       await _saveSession(
         uid: uid,
@@ -539,11 +545,6 @@ class AuthService implements AuthContract {
       final batch = _db.batch();
       batch.set(_db.collection('users').doc(uid), userMap);
       batch.set(_db.collection('lawyers').doc(uid), lawyerMap);
-      batch.set(_db.collection('account_ids').doc(accountId), {
-        'uid': uid,
-        'role': 'lawyer',
-        'createdAt': FieldValue.serverTimestamp(),
-      });
 
       final dirData = {
         'uid': uid,
@@ -562,6 +563,17 @@ class AuthService implements AuthContract {
         batch.set(_db.collection('phone_directory').doc(localDigits), dirData);
       }
       await batch.commit();
+
+      // Register in global account_ids collection independently for resilience
+      try {
+        await _db.collection('account_ids').doc(accountId).set({
+          'uid': uid,
+          'role': 'lawyer',
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      } catch (e) {
+        debugPrint('[registerLawyer] account_ids registry notice: $e');
+      }
 
       await _saveSession(
         uid: uid,

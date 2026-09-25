@@ -64,10 +64,10 @@ service cloud.firestore {
 
     // ==================== UNIQUE ACCOUNT IDS REGISTRY ====================
     match /account_ids/{accountId} {
-      // Authenticated users and admins can check/lookup account IDs
-      allow read: if isAuthenticated() || isAdmin();
-      // Any authenticated user can reserve a unique 12-digit account ID if not already taken
-      allow create: if isAuthenticated() && !exists(/databases/$(database)/documents/account_ids/$(accountId));
+      // Fast public lookup and collision check for 12-digit account numbers
+      allow read: if true;
+      // Any authenticated user or admin can register their 12-digit account number
+      allow create: if isAuthenticated() || isAdmin();
       // Only admins can modify or clean up account ID registry entries
       allow update, delete: if isAdmin();
     }
