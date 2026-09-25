@@ -475,8 +475,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
               onTap: () => Navigator.pop(context),
               borderRadius: BorderRadius.circular(12),
               child: Container(
-                width: 40,
-                height: 40,
+                width: 38,
+                height: 38,
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.28),
                   borderRadius: BorderRadius.circular(12),
@@ -489,14 +489,14 @@ class _ChatListScreenState extends State<ChatListScreen> {
                   child: Icon(
                     Icons.arrow_forward_ios_rounded,
                     color: Color(0xFF0B2A5B),
-                    size: 19,
+                    size: 18,
                   ),
                 ),
               ),
             )
           else
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.28),
                 borderRadius: BorderRadius.circular(12),
@@ -511,13 +511,13 @@ class _ChatListScreenState extends State<ChatListScreen> {
                   const Icon(
                     Icons.chat_bubble_rounded,
                     color: Color(0xFF0B2A5B),
-                    size: 18,
+                    size: 14,
                   ),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 5),
                   Text(
                     'المحادثات المباشرة',
                     style: GoogleFonts.cairo(
-                      fontSize: 13,
+                      fontSize: 12.5,
                       fontWeight: FontWeight.w800,
                       color: const Color(0xFF0B2A5B),
                     ),
@@ -897,190 +897,205 @@ class _SwipeableChatTileState extends State<_SwipeableChatTile>
     final timeStr = _formatChatTime(chat.lastMessageTime);
     final isLastMsgDeleted = chat.lastMessage == 'تم حذف هذه الرسالة';
 
-    return GestureDetector(
-      onHorizontalDragUpdate: _handleDragUpdate,
-      onHorizontalDragEnd: _handleDragEnd,
-      child: Stack(
-        children: [
-          // 🎨 Background Action Buttons (Positioned beneath the sliding card)
-          Positioned.fill(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: Row(
-                children: [
-                  // 1. Right Reveal Actions (Swipe Right in RTL: Delete & Block)
-                  if (_dragOffset > 0) ...[
-                    // Delete Button
-                    Expanded(
-                      child: InkWell(
-                        onTap: () {
-                          _snapTo(0.0);
-                          widget.onDelete();
-                        },
-                        child: Container(
-                          color: const Color(0xFFDC2626),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.delete_outline_rounded, color: Colors.white, size: 24),
-                              const SizedBox(height: 4),
-                              Text(
-                                'حذف',
-                                style: GoogleFonts.cairo(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.white,
+    return SizedBox(
+      width: double.infinity,
+      child: GestureDetector(
+        onHorizontalDragUpdate: _handleDragUpdate,
+        onHorizontalDragEnd: _handleDragEnd,
+        child: Stack(
+          clipBehavior: Clip.hardEdge,
+          children: [
+            // 🎨 Background Action Buttons (Positioned under the sliding card)
+            if (_dragOffset > 0)
+              Positioned(
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: _maxSwipeExtent,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: Row(
+                    children: [
+                      // Delete Button
+                      Expanded(
+                        child: InkWell(
+                          onTap: () {
+                            _snapTo(0.0);
+                            widget.onDelete();
+                          },
+                          child: Container(
+                            color: const Color(0xFFDC2626),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.delete_outline_rounded, color: Colors.white, size: 22),
+                                const SizedBox(height: 3),
+                                Text(
+                                  'حذف',
+                                  style: GoogleFonts.cairo(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    // Block Button
-                    Expanded(
-                      child: InkWell(
-                        onTap: () {
-                          _snapTo(0.0);
-                          widget.onBlock();
-                        },
-                        child: Container(
-                          color: const Color(0xFF334155),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.block_rounded, color: Colors.white, size: 24),
-                              const SizedBox(height: 4),
-                              Text(
-                                'حظر',
-                                style: GoogleFonts.cairo(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.white,
+                      // Block Button
+                      Expanded(
+                        child: InkWell(
+                          onTap: () {
+                            _snapTo(0.0);
+                            widget.onBlock();
+                          },
+                          child: Container(
+                            color: const Color(0xFF334155),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.block_rounded, color: Colors.white, size: 22),
+                                const SizedBox(height: 3),
+                                Text(
+                                  'حظر',
+                                  style: GoogleFonts.cairo(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                    const Spacer(flex: 2),
-                  ],
-
-                  // 2. Left Reveal Actions (Swipe Left in RTL: Mark Unread & Pin)
-                  if (_dragOffset < 0) ...[
-                    const Spacer(flex: 2),
-                    // Pin / Unpin Button
-                    Expanded(
-                      child: InkWell(
-                        onTap: () {
-                          _snapTo(0.0);
-                          widget.onTogglePin();
-                        },
-                        child: Container(
-                          color: const Color(0xFF1E293B),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                isPinned ? Icons.push_pin_outlined : Icons.push_pin_rounded,
-                                color: isPinned ? const Color(0xFFFBBF24) : Colors.white,
-                                size: 24,
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                isPinned ? 'إلغاء التثبيت' : 'تثبيت',
-                                style: GoogleFonts.cairo(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w800,
-                                  color: isPinned ? const Color(0xFFFBBF24) : Colors.white,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    // Mark Unread Button
-                    Expanded(
-                      child: InkWell(
-                        onTap: () {
-                          _snapTo(0.0);
-                          widget.onToggleUnread();
-                        },
-                        child: Container(
-                          color: const Color(0xFF10B981),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.mark_chat_unread_rounded, color: Colors.white, size: 24),
-                              const SizedBox(height: 4),
-                              Text(
-                                unread > 0 ? 'مقروءة' : 'غير مقروءة',
-                                style: GoogleFonts.cairo(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-
-          // 📄 Main Chat Card Foreground
-          Transform.translate(
-            offset: Offset(_dragOffset, 0),
-            child: Material(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              elevation: _dragOffset != 0 ? 3 : 0,
-              child: InkWell(
-                onTap: () {
-                  if (_dragOffset != 0) {
-                    _snapTo(0.0);
-                    return;
-                  }
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => ChatScreen(
-                        chat: chat,
-                        currentUserId: widget.currentUserId,
-                        currentUserName: widget.currentUserName,
-                        currentUserRole: widget.currentUserRole,
-                        currentUserAccountId: widget.currentUserAccountId,
-                      ),
-                    ),
-                  );
-                },
-                borderRadius: BorderRadius.circular(16),
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: isPinned ? const Color(0xFFFFFDF5) : Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: isPinned
-                          ? widget.headerGold.withValues(alpha: 0.75)
-                          : (unread > 0 ? widget.headerGold.withValues(alpha: 0.6) : const Color(0xFFE2E8F0)),
-                      width: isPinned || unread > 0 ? 1.5 : 1,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.03),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
                       ),
                     ],
                   ),
+                ),
+              ),
+
+            if (_dragOffset < 0)
+              Positioned(
+                right: 0,
+                top: 0,
+                bottom: 0,
+                width: _maxSwipeExtent,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
                   child: Row(
                     children: [
+                      // Pin / Unpin Button
+                      Expanded(
+                        child: InkWell(
+                          onTap: () {
+                            _snapTo(0.0);
+                            widget.onTogglePin();
+                          },
+                          child: Container(
+                            color: const Color(0xFF1E293B),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  isPinned ? Icons.push_pin_outlined : Icons.push_pin_rounded,
+                                  color: isPinned ? const Color(0xFFFBBF24) : Colors.white,
+                                  size: 22,
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  isPinned ? 'إلغاء التثبيت' : 'تثبيت',
+                                  style: GoogleFonts.cairo(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                    color: isPinned ? const Color(0xFFFBBF24) : Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      // Mark Unread Button
+                      Expanded(
+                        child: InkWell(
+                          onTap: () {
+                            _snapTo(0.0);
+                            widget.onToggleUnread();
+                          },
+                          child: Container(
+                            color: const Color(0xFF10B981),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.mark_chat_unread_rounded, color: Colors.white, size: 22),
+                                const SizedBox(height: 3),
+                                Text(
+                                  unread > 0 ? 'مقروءة' : 'غير مقروءة',
+                                  style: GoogleFonts.cairo(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            // 📄 Main Chat Card Foreground (Guaranteed 100% Full Width)
+            Transform.translate(
+              offset: Offset(_dragOffset, 0),
+              child: SizedBox(
+                width: double.infinity,
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () {
+                      if (_dragOffset != 0) {
+                        _snapTo(0.0);
+                        return;
+                      }
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => ChatScreen(
+                            chat: chat,
+                            currentUserId: widget.currentUserId,
+                            currentUserName: widget.currentUserName,
+                            currentUserRole: widget.currentUserRole,
+                            currentUserAccountId: widget.currentUserAccountId,
+                          ),
+                        ),
+                      );
+                    },
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: isPinned ? const Color(0xFFFFFDF5) : Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: isPinned
+                              ? widget.headerGold.withValues(alpha: 0.75)
+                              : (unread > 0 ? widget.headerGold.withValues(alpha: 0.6) : const Color(0xFFE2E8F0)),
+                          width: isPinned || unread > 0 ? 1.5 : 1,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: _dragOffset != 0 ? 0.08 : 0.03),
+                            blurRadius: _dragOffset != 0 ? 10 : 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
                       // Avatar
                       Stack(
                         clipBehavior: Clip.none,
@@ -1252,10 +1267,12 @@ class _SwipeableChatTileState extends State<_SwipeableChatTile>
               ),
             ),
           ),
-        ],
-      ),
-    );
-  }
+        ),
+      ],
+    ),
+  ),
+);
+}
 
   Widget _buildRolePill(String role, Color headerGold) {
     if (role == 'admin') {

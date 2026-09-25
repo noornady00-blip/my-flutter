@@ -690,6 +690,9 @@ class NotificationService {
         });
       }
 
+      // 5. Start real-time Firestore chat message listener for this user (ensures instant notifications on iOS & Android)
+      startGlobalUserChatListener(uid);
+
       // If user is admin, also register admin device
       if (role == 'admin') {
         await registerAdminDevice(adminUid: uid);
@@ -705,6 +708,7 @@ class NotificationService {
   Future<void> unregisterUserDevice({String? uid}) async {
     if (kIsWeb) return;
     try {
+      stopGlobalUserChatListener();
       final messaging = FirebaseMessaging.instance;
       final prefs = await SharedPreferences.getInstance();
       final targetUid = uid ?? prefs.getString('uid');
@@ -1021,6 +1025,95 @@ class NotificationService {
       body: body,
       data: data,
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Live Foreground & Background Stream for User Chat Messages (iOS & Android)
+  // ---------------------------------------------------------------------------
+  StreamSubscription? _userChatsLiveSubscription;
+  final Set<String> _seenChatSignatures = {};
+  bool _isInitialUserChatsSnapshot = true;
+
+  void startGlobalUserChatListener(String uid) {
+    if (kIsWeb || uid.isEmpty) return;
+    _userChatsLiveSubscription?.cancel();
+    _isInitialUserChatsSnapshot = true;
+
+    // Enable Keep-Alive to maintain network socket active
+    unawaited(KeepAliveService().enableKeepAlive());
+
+    _userChatsLiveSubscription = _db
+        .collection('chats')
+        .where('participants', arrayContains: uid)
+        .snapshots()
+        .listen((snapshot) {
+      if (_isInitialUserChatsSnapshot) {
+        _isInitialUserChatsSnapshot = false;
+        for (final doc in snapshot.docs) {
+          final data = doc.data();
+          final lastMsg = data['lastMessage']?.toString() ?? '';
+          final lastTime = (data['lastMessageTime'] as Timestamp?)?.millisecondsSinceEpoch ?? 0;
+          _seenChatSignatures.add('${doc.id}_${lastTime}_$lastMsg');
+        }
+        return;
+      }
+
+      for (final change in snapshot.docChanges) {
+        final data = change.doc.data();
+        if (data == null) continue;
+
+        final chatId = change.doc.id;
+        final lastSenderId = data['lastSenderId']?.toString() ?? '';
+        final lastMessage = data['lastMessage']?.toString() ?? '';
+        final lastMessageTime = data['lastMessageTime'] as Timestamp?;
+        final timeMs = lastMessageTime?.millisecondsSinceEpoch ?? 0;
+
+        // Strictly ignore messages sent by the current user
+        if (lastSenderId == uid || lastSenderId.isEmpty) continue;
+
+        // Skip if already processed
+        final sig = '${chatId}_${timeMs}_$lastMessage';
+        if (_seenChatSignatures.contains(sig)) continue;
+        _seenChatSignatures.add(sig);
+
+        // Skip if message was created more than 3 minutes ago
+        if (lastMessageTime != null &&
+            DateTime.now().difference(lastMessageTime.toDate()).inMinutes > 3) {
+          continue;
+        }
+
+        // Skip deleted placeholder messages
+        if (lastMessage == 'تم حذف هذه الرسالة') continue;
+
+        // Suppress if the user is already viewing this chat
+        if (activeChatId != null && activeChatId == chatId) continue;
+
+        // Determine title / sender name
+        final senderName = data['lastSenderName']?.toString() ??
+            (data['clientId'] == lastSenderId
+                ? data['clientName']?.toString()
+                : data['lawyerName']?.toString()) ??
+            'رسالة جديدة';
+
+        showNotificationDirect(
+          title: senderName,
+          body: lastMessage,
+          payload: 'chat_$chatId',
+          channelId: chatChannelId,
+          channelName: chatChannelName,
+          id: (chatId.hashCode.abs() + timeMs.hashCode.abs()) % 100000,
+        );
+      }
+    }, onError: (err) {
+      debugPrint('startGlobalUserChatListener notice: $err');
+    });
+  }
+
+  void stopGlobalUserChatListener() {
+    _userChatsLiveSubscription?.cancel();
+    _userChatsLiveSubscription = null;
+    _seenChatSignatures.clear();
+    _isInitialUserChatsSnapshot = true;
   }
 
   // ---------------------------------------------------------------------------
