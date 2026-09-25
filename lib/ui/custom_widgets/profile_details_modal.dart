@@ -220,72 +220,35 @@ class ProfileDetailsModal {
     String? fallbackAccountId,
     bool isAdmin = false,
   }) async {
-    if (uid.isEmpty) return;
-    try {
-      final effectiveRole = role?.toLowerCase() ?? '';
-      if (effectiveRole == 'lawyer') {
-        final doc = await FirebaseFirestore.instance.collection('lawyers').doc(uid).get().timeout(const Duration(seconds: 4));
-        if (doc.exists && doc.data() != null && context.mounted) {
-          showLawyerModal(context, lawyer: LawyerModel.fromMap(doc.data()!, doc.id), isAdmin: isAdmin);
-          return;
-        }
-      } else if (effectiveRole == 'client' || effectiveRole == 'user') {
-        final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get().timeout(const Duration(seconds: 4));
-        if (doc.exists && doc.data() != null && context.mounted) {
-          showClientModal(context, client: UserModel.fromMap(doc.data()!, doc.id), isAdmin: isAdmin);
-          return;
-        }
-      }
+    final effectiveRole = role?.toLowerCase() ?? '';
+    final cleanUid = uid.trim();
+    final cleanName = (fallbackName != null && fallbackName.trim().isNotEmpty)
+        ? fallbackName.trim()
+        : (effectiveRole == 'lawyer' ? 'محامٍ ومستشار' : 'مستخدم المنصة');
 
-      // Fallback: check lawyers first
-      final lawyerDoc = await FirebaseFirestore.instance.collection('lawyers').doc(uid).get().timeout(const Duration(seconds: 4));
-      if (lawyerDoc.exists && lawyerDoc.data() != null && context.mounted) {
-        showLawyerModal(context, lawyer: LawyerModel.fromMap(lawyerDoc.data()!, lawyerDoc.id), isAdmin: isAdmin);
-        return;
-      }
-
-      // Check users
-      final userDoc = await FirebaseFirestore.instance.collection('users').doc(uid).get().timeout(const Duration(seconds: 4));
-      if (userDoc.exists && userDoc.data() != null && context.mounted) {
-        showClientModal(context, client: UserModel.fromMap(userDoc.data()!, userDoc.id), isAdmin: isAdmin);
-        return;
-      }
-
-      // Final fallback if document not found in Firestore
-      if (context.mounted) {
-        if (effectiveRole == 'lawyer') {
-          showLawyerModal(
-            context,
-            lawyer: LawyerModel(
-              uid: uid,
-              name: fallbackName ?? 'محامٍ ومستشار',
-              phone: fallbackPhone ?? '',
-              whatsapp: fallbackPhone ?? '',
-              city: 'السودان',
-              accountId: fallbackAccountId ?? '',
-              photoUrl: fallbackPhoto,
-              status: 'approved',
-            ),
-            isAdmin: isAdmin,
-          );
-        } else {
-          showClientModal(
-            context,
-            client: UserModel(
-              uid: uid,
-              name: fallbackName ?? 'مستخدم المنصة',
-              phone: fallbackPhone ?? '',
-              photoUrl: fallbackPhoto,
-              accountId: fallbackAccountId ?? '',
-              role: 'client',
-              createdAt: DateTime.now(),
-            ),
-            isAdmin: isAdmin,
-          );
-        }
-      }
-    } catch (e) {
-      debugPrint('[ProfileDetailsModal] showProfileByUid error: $e');
+    if (effectiveRole == 'lawyer') {
+      final initialLawyer = LawyerModel(
+        uid: cleanUid,
+        name: cleanName,
+        phone: fallbackPhone ?? '',
+        whatsapp: fallbackPhone ?? '',
+        city: 'السودان',
+        accountId: fallbackAccountId ?? '',
+        photoUrl: fallbackPhoto,
+        status: 'approved',
+      );
+      showLawyerModal(context, lawyer: initialLawyer, isAdmin: isAdmin);
+    } else {
+      final initialClient = UserModel(
+        uid: cleanUid,
+        name: cleanName,
+        phone: fallbackPhone ?? '',
+        photoUrl: fallbackPhoto,
+        accountId: fallbackAccountId ?? '',
+        role: effectiveRole.isNotEmpty ? effectiveRole : 'client',
+        createdAt: DateTime.now(),
+      );
+      showClientModal(context, client: initialClient, isAdmin: isAdmin);
     }
   }
 }
@@ -1427,7 +1390,7 @@ class _PhotoViewerDialog extends StatelessWidget {
 // -----------------------------------------------------------------------------
 // Client Modal Sheet Widget
 // -----------------------------------------------------------------------------
-class _ClientModalSheet extends StatelessWidget {
+class _ClientModalSheet extends StatefulWidget {
   final UserModel client;
   final bool isAdmin;
   final VoidCallback? onDelete;
@@ -1438,12 +1401,60 @@ class _ClientModalSheet extends StatelessWidget {
     this.onDelete,
   });
 
+  @override
+  State<_ClientModalSheet> createState() => _ClientModalSheetState();
+}
+
+class _ClientModalSheetState extends State<_ClientModalSheet> {
+  late UserModel _client;
+
+  @override
+  void initState() {
+    super.initState();
+    _client = widget.client;
+    if (_client.accountId.isEmpty ||
+        _client.photoBase64 == null ||
+        _client.photoBase64!.trim().isEmpty ||
+        _client.photoUrl == null ||
+        _client.photoUrl!.trim().isEmpty) {
+      _loadFullClientData();
+    }
+  }
+
+  Future<void> _loadFullClientData() async {
+    try {
+      DocumentSnapshot<Map<String, dynamic>>? userDoc;
+      if (_client.uid.isNotEmpty && !_client.uid.startsWith('guest_')) {
+        userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(_client.uid)
+            .get();
+      }
+      if ((userDoc == null || !userDoc.exists) && _client.phone.isNotEmpty) {
+        final snap = await FirebaseFirestore.instance
+            .collection('users')
+            .where('phone', isEqualTo: _client.phone.trim())
+            .limit(1)
+            .get();
+        if (snap.docs.isNotEmpty) userDoc = snap.docs.first;
+      }
+
+      if (mounted && userDoc != null && userDoc.exists && userDoc.data() != null) {
+        final data = userDoc.data()!;
+        setState(() {
+          _client = UserModel.fromMap(data, userDoc!.id);
+        });
+      }
+    } catch (_) {}
+  }
+
   String _formatDate(DateTime dt) {
     return '${dt.year}/${dt.month.toString().padLeft(2, '0')}/${dt.day.toString().padLeft(2, '0')}';
   }
 
   @override
   Widget build(BuildContext context) {
+    final client = _client;
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
@@ -1612,7 +1623,7 @@ class _ClientModalSheet extends StatelessWidget {
                             clientPhone: client.phone,
                             clientPhotoUrl: client.photoUrl,
                             clientPhotoBase64: client.photoBase64,
-                            currentUserRole: isAdmin ? 'admin' : null,
+                            currentUserRole: widget.isAdmin ? 'admin' : null,
                           ),
                         ),
                       );
@@ -1787,13 +1798,13 @@ class _ClientModalSheet extends StatelessWidget {
   }
 
   bool get _hasPhoto =>
-      (client.photoUrl != null && client.photoUrl!.trim().isNotEmpty) ||
-      (client.photoBase64 != null && client.photoBase64!.trim().isNotEmpty);
+      (_client.photoUrl != null && _client.photoUrl!.trim().isNotEmpty) ||
+      (_client.photoBase64 != null && _client.photoBase64!.trim().isNotEmpty);
 
   Widget _buildAvatarContent() {
     return AppImageUtils.buildAvatarImage(
-      photoBase64: client.photoBase64,
-      photoUrl: client.photoUrl,
+      photoBase64: _client.photoBase64,
+      photoUrl: _client.photoUrl,
       width: 96,
       height: 96,
       fit: BoxFit.cover,
@@ -1802,7 +1813,7 @@ class _ClientModalSheet extends StatelessWidget {
   }
 
   Widget _buildAvatarFallback() {
-    final name = client.name.trim();
+    final name = _client.name.trim();
     if (name.isNotEmpty) {
       return Container(
         color: const Color(0xFFEFF6FF),

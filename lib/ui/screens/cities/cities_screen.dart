@@ -4,6 +4,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../custom_widgets/city_landmark_widget.dart';
 import '../../custom_widgets/app_logo_badge.dart';
+import '../../custom_widgets/awake_badge.dart';
 import '../../custom_widgets/floating_nav_bar.dart';
 import '../../custom_widgets/executive_lawyer_card.dart';
 import '../../../data/models/lawyer.dart';
@@ -209,10 +210,17 @@ class _CitiesScreenState extends State<CitiesScreen> {
       title: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Left side: Official Logo with soft, eye-pleasing white pill container
-          const AppLogoBadge(
-            height: 26,
-            withPillBackground: true,
+          // Left side: Official Logo with soft, eye-pleasing white pill container + Awake 24/7 Badge
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const AppLogoBadge(
+                height: 26,
+                withPillBackground: true,
+              ),
+              const SizedBox(width: 8),
+              const Awake247Badge(),
+            ],
           ),
 
           // Right side: Hamburger Menu Button

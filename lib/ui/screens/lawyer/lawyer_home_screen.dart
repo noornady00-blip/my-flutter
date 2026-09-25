@@ -10,6 +10,7 @@ import '../../../data/models/lawyer.dart';
 import '../../../network/auth_service.dart';
 import '../../../network/firestore_service.dart';
 import '../../custom_widgets/app_logo_badge.dart';
+import '../../custom_widgets/awake_badge.dart';
 import '../../custom_widgets/profile_details_modal.dart';
 import '../../../core/utils/phone_utils.dart';
 import '../../../core/utils/account_id_utils.dart';
@@ -417,6 +418,8 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
                   const SizedBox(width: 10),
                 ],
                 const AppLogoBadge(height: 25, withPillBackground: true),
+                const SizedBox(width: 8),
+                const Awake247Badge(),
               ],
             ),
             Flexible(

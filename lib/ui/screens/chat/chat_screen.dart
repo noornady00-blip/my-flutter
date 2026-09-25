@@ -463,18 +463,29 @@ class _ChatScreenState extends State<ChatScreen> {
             Expanded(
               child: InkWell(
                 onTap: () {
-                  final otherUid = _activeChat!.getOtherPartyUid(_currentUserId);
+                  final otherUid = _activeChat?.getOtherPartyUid(_currentUserId) ?? '';
                   final targetUid = otherUid.isNotEmpty
                       ? otherUid
                       : (widget.lawyerUid ?? widget.clientUid ?? widget.otherUserUid ?? '');
+                  final fallbackName = otherName.isNotEmpty
+                      ? otherName
+                      : (widget.clientName ?? widget.lawyerName ?? widget.otherUserName ?? 'مستخدم المنصة');
+                  final fallbackPhone = otherPhone.isNotEmpty
+                      ? otherPhone
+                      : (widget.clientPhone ?? widget.lawyerPhone ?? '');
+                  final fallbackPhoto = otherPhoto ?? widget.clientPhotoUrl ?? widget.lawyerPhotoUrl;
+                  final fallbackAccountId = otherAccountId.isNotEmpty
+                      ? otherAccountId
+                      : (widget.clientAccountId ?? widget.lawyerAccountId ?? widget.otherUserAccountId ?? '');
+
                   ProfileDetailsModal.showProfileByUid(
                     context,
                     uid: targetUid,
                     role: otherRole,
-                    fallbackName: otherName,
-                    fallbackPhone: otherPhone,
-                    fallbackPhoto: otherPhoto,
-                    fallbackAccountId: otherAccountId,
+                    fallbackName: fallbackName,
+                    fallbackPhone: fallbackPhone,
+                    fallbackPhoto: fallbackPhoto,
+                    fallbackAccountId: fallbackAccountId,
                     isAdmin: _currentUserRole == 'admin',
                   );
                 },

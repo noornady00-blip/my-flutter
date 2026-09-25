@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../network/auth_service.dart';
 import '../../network/chat_service.dart';
+import '../../core/services/keep_alive_service.dart';
 import '../custom_widgets/floating_nav_bar.dart';
 import '../custom_widgets/account_suspended_dialog.dart';
 import '../custom_widgets/app_drawer.dart';
@@ -91,6 +92,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       _fetchUserRole();
     }
     _checkSuspensionStatus();
+    KeepAliveService().enableKeepAlive(role: _role);
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
   }
 
   Future<void> _checkSuspensionStatus() async {

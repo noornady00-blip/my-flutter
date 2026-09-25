@@ -8,6 +8,7 @@ import '../../../data/models/user_model.dart';
 import '../../../network/firestore_service.dart';
 import '../../../network/auth_service.dart';
 import '../../custom_widgets/app_logo_badge.dart';
+import '../../custom_widgets/awake_badge.dart';
 import '../../custom_widgets/floating_nav_bar.dart';
 import '../../custom_widgets/profile_details_modal.dart';
 import '../../custom_widgets/glass_widgets.dart';
@@ -338,36 +339,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 withPillBackground: true,
               ),
               const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.25),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.5), width: 1),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF10B981),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'يقظ 24/7',
-                      style: GoogleFonts.cairo(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xFF0B2A5B),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              const Awake247Badge(),
             ],
           ),
           Row(

@@ -1,8 +1,8 @@
 // ==============================================================================
-// 🔋 ADMIN KEEP-ALIVE SERVICE (24/7 AWAKE ENGINE)
+// 🔋 24/7 KEEP-ALIVE SERVICE (AWAKE ENGINE)
 // ==============================================================================
-// Ensures the admin device stays awake and connected to real-time events:
-// 1. Prevents screen from dimming/sleeping while on dashboard (Wakelock).
+// Ensures devices (Admin, Lawyer, Client) stay connected to real-time events:
+// 1. Prevents screen from sleeping while interacting with vital screens (Wakelock).
 // 2. Activates silent background execution on iOS so Firestore real-time listeners
 //    and notifications trigger immediately even when screen is locked.
 // ==============================================================================
@@ -22,11 +22,14 @@ class KeepAliveService {
 
   bool _isActive = false;
   bool get isActive => _isActive;
+  String _activeRole = 'client';
+  String get activeRole => _activeRole;
 
-  /// Activates 24/7 Keep-Alive mode for Admin:
-  /// - Keeps screen awake while dashboard is open.
+  /// Activates 24/7 Keep-Alive mode for Admin, Lawyer, or Client:
+  /// - Keeps screen awake while dashboard / active screen is open.
   /// - Runs silent background keep-alive on iOS to preserve Firestore listener when locked.
-  Future<void> enableAdminKeepAlive() async {
+  Future<void> enableKeepAlive({String role = 'client'}) async {
+    _activeRole = role;
     if (_isActive) return;
     try {
       _isActive = true;
@@ -49,14 +52,17 @@ class KeepAliveService {
         }
       }
 
-      debugPrint('KeepAliveService: Admin 24/7 Keep-Alive successfully enabled.');
+      debugPrint('KeepAliveService: 24/7 Keep-Alive ($role) successfully enabled.');
     } catch (e) {
-      debugPrint('KeepAliveService.enableAdminKeepAlive error: $e');
+      debugPrint('KeepAliveService.enableKeepAlive error: $e');
     }
   }
 
+  /// Backward compatible alias for admin keep-alive
+  Future<void> enableAdminKeepAlive() => enableKeepAlive(role: 'admin');
+
   /// Disables Keep-Alive mode on logout
-  Future<void> disableAdminKeepAlive() async {
+  Future<void> disableKeepAlive() async {
     if (!_isActive) return;
     try {
       _isActive = false;
@@ -73,9 +79,12 @@ class KeepAliveService {
         } catch (_) {}
       }
 
-      debugPrint('KeepAliveService: Admin Keep-Alive disabled.');
+      debugPrint('KeepAliveService: Keep-Alive disabled.');
     } catch (e) {
-      debugPrint('KeepAliveService.disableAdminKeepAlive error: $e');
+      debugPrint('KeepAliveService.disableKeepAlive error: $e');
     }
   }
+
+  /// Backward compatible alias for admin disable
+  Future<void> disableAdminKeepAlive() => disableKeepAlive();
 }

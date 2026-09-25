@@ -12,6 +12,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../network/auth_service.dart';
 import '../../../network/storage_service.dart';
 import '../../custom_widgets/app_logo_badge.dart';
+import '../../custom_widgets/awake_badge.dart';
 import '../../custom_widgets/profile_details_modal.dart';
 import '../../custom_widgets/square_image_cropper.dart';
 import '../auth/auth_gateway_screen.dart';
@@ -931,9 +932,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
         title: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const AppLogoBadge(
-              height: 26,
-              withPillBackground: true,
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const AppLogoBadge(
+                  height: 26,
+                  withPillBackground: true,
+                ),
+                const SizedBox(width: 8),
+                const Awake247Badge(),
+              ],
             ),
             if (widget.isStandalone)
               InkWell(
