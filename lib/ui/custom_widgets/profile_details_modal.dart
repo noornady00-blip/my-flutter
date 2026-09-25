@@ -673,70 +673,38 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
             ),
             const SizedBox(height: 8),
 
-            // Role & Location Badges
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-              child: Wrap(
-                alignment: WrapAlignment.center,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEFF6FF),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFFBFDBFE)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.gavel_rounded,
-                            size: 14, color: Color(0xFF1D4ED8)),
-                        const SizedBox(width: 5),
-                        Text(
-                          'محامٍ ومستشار قانوني',
-                          style: GoogleFonts.cairo(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w700,
-                            color: const Color(0xFF1D4ED8),
-                          ),
-                        ),
-                      ],
-                    ),
+            // Location Badge (if available)
+            if (lawyer.city.trim().isNotEmpty) ...[
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
                   ),
-                  if (lawyer.city.trim().isNotEmpty)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.location_on_rounded,
+                          size: 14, color: Color(0xFFD49B1A)),
+                      const SizedBox(width: 5),
+                      Text(
+                        lawyer.city.trim(),
+                        style: GoogleFonts.cairo(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF0B2A5B),
+                        ),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.location_on_rounded,
-                              size: 14, color: Color(0xFFD49B1A)),
-                          const SizedBox(width: 5),
-                          Text(
-                            lawyer.city.trim(),
-                            style: GoogleFonts.cairo(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w700,
-                              color: const Color(0xFF0B2A5B),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                ],
+                    ],
+                  ),
+                ),
               ),
-            ),
-            const SizedBox(height: 24),
+              const SizedBox(height: 8),
+            ],
+            const SizedBox(height: 16),
 
             // Iconic Action Buttons
             _buildIconic3DActionButtons(context, lawyer),
@@ -763,12 +731,12 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
                     _buildDetailRow(
                       iconWidget: const Icon(Icons.badge_rounded,
                           color: Color(0xFFD49B1A), size: 18),
-                      label: 'المعرّف الموحد (12 رقم)',
+                      label: 'ID',
                       value: AccountIdUtils.formatForDisplay(lawyer.accountId),
                       color: const Color(0xFFD49B1A),
                       onCopy: () {
                         Clipboard.setData(ClipboardData(text: lawyer.accountId));
-                        _showCopyToast(context, 'تم نسخ المعرّف الموحد بنجاح');
+                        _showFloatingCopyToast(context, 'تم نسخ ID بنجاح');
                       },
                     ),
                     const Divider(height: 20, color: Color(0xFFE2E8F0)),
@@ -1097,14 +1065,21 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
             color: const Color(0xFF64748B),
           ),
         ),
-        const Spacer(),
-        Text(
-          isPhone ? PhoneUtils.formatForDisplay(value) : value,
-          textDirection: isPhone ? TextDirection.ltr : null,
-          style: GoogleFonts.cairo(
-            fontSize: 13.5,
-            fontWeight: FontWeight.w800,
-            color: const Color(0xFF0B2A5B),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              isPhone ? PhoneUtils.formatForDisplay(value) : value,
+              textDirection: isPhone ? TextDirection.ltr : null,
+              style: GoogleFonts.cairo(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF0B2A5B),
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ),
         if (onCopy != null) ...[
@@ -1757,13 +1732,13 @@ class _ClientModalSheet extends StatelessWidget {
                       context: context,
                       iconWidget: const Icon(Icons.badge_rounded,
                           color: Color(0xFFD49B1A), size: 18),
-                      label: 'المعرّف الموحد (12 رقم)',
+                      label: 'ID',
                       value: AccountIdUtils.formatForDisplay(client.accountId),
                       color: const Color(0xFFD49B1A),
                       onCopy: () {
                         Clipboard.setData(ClipboardData(text: client.accountId));
                         _showFloatingCopyToast(
-                            context, 'تم نسخ المعرّف الموحد بنجاح');
+                            context, 'تم نسخ ID بنجاح');
                       },
                     ),
                     const Divider(height: 20, color: Color(0xFFE2E8F0)),
@@ -1840,14 +1815,21 @@ class _ClientModalSheet extends StatelessWidget {
             color: const Color(0xFF64748B),
           ),
         ),
-        const Spacer(),
-        Text(
-          isPhone ? PhoneUtils.formatForDisplay(value) : value,
-          textDirection: isPhone ? TextDirection.ltr : null,
-          style: GoogleFonts.cairo(
-            fontSize: 13.5,
-            fontWeight: FontWeight.w800,
-            color: const Color(0xFF0B2A5B),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              isPhone ? PhoneUtils.formatForDisplay(value) : value,
+              textDirection: isPhone ? TextDirection.ltr : null,
+              style: GoogleFonts.cairo(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF0B2A5B),
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ),
         if (onCopy != null) ...[

@@ -64,20 +64,20 @@ class ChatService {
 
   /// Stream messages for a specific conversation thread (newest first for reverse ListView)
   Stream<List<ChatMessageModel>> getMessagesStream(String chatId) {
+    if (chatId.trim().isEmpty) {
+      return Stream.value(<ChatMessageModel>[]);
+    }
     return _db
         .collection('chats')
         .doc(chatId)
         .collection('messages')
-        .orderBy('createdAt', descending: true)
-        .limit(100)
         .snapshots()
         .map((snap) {
-      return snap.docs
+      final list = snap.docs
           .map((doc) => ChatMessageModel.fromMap(doc.data(), doc.id))
           .toList();
-    }).handleError((err) {
-      debugPrint('[ChatService] getMessagesStream error: $err');
-      return <ChatMessageModel>[];
+      list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return list;
     });
   }
 
@@ -192,6 +192,8 @@ class ChatService {
     // 2. Update conversation summary
     final chatDocRef = _db.collection('chats').doc(chatId);
     final updateData = <String, dynamic>{
+      'id': chatId,
+      'participants': FieldValue.arrayUnion([senderId, recipientId]),
       'lastMessage': cleanText,
       'lastSenderId': senderId,
       'lastSenderName': senderName,
@@ -199,10 +201,14 @@ class ChatService {
       'updatedAt': FieldValue.serverTimestamp(),
     };
 
-    if (senderRole == 'client') {
-      updateData['unreadByLawyer'] = FieldValue.increment(1);
-    } else if (senderRole == 'lawyer') {
+    if (senderRole == 'lawyer') {
+      updateData['lawyerId'] = senderId;
+      updateData['clientId'] = recipientId;
       updateData['unreadByClient'] = FieldValue.increment(1);
+    } else if (senderRole == 'client') {
+      updateData['clientId'] = senderId;
+      updateData['lawyerId'] = recipientId;
+      updateData['unreadByLawyer'] = FieldValue.increment(1);
     } else if (senderRole == 'admin') {
       updateData['unreadByClient'] = FieldValue.increment(1);
       updateData['unreadByLawyer'] = FieldValue.increment(1);

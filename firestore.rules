@@ -74,40 +74,28 @@ service cloud.firestore {
 
     // ==================== CHATS & DIRECT MESSAGING ====================
     match /chats/{chatId} {
-      // Chat is accessible to participants or authenticated admins
-      allow read: if isAdmin() || (isAuthenticated() && (resource == null || resource.data.participants.hasAny([request.auth.uid])));
+      // Chat is accessible to authenticated users and admins
+      allow read: if isAuthenticated();
 
-      // Initiating a chat requires being one of the participants or an admin
-      allow create: if isAuthenticated() && (request.resource.data.participants.hasAny([request.auth.uid]) || isAdmin());
-
-      // Updating a chat (lastMessage, unreadCount, etc.) is allowed for participants and admins
-      allow update: if isAuthenticated() && (resource == null || resource.data.participants.hasAny([request.auth.uid]) || isAdmin());
+      // Initiating or updating a chat is allowed for authenticated users
+      allow create, update: if isAuthenticated();
 
       // Only admins can delete an entire conversation thread
       allow delete: if isAdmin();
 
       // Subcollection for individual messages
       match /messages/{messageId} {
-        // Chat participants and admins can read messages
+        // Authenticated users can read messages
         allow read: if isAuthenticated();
 
-        // Sender must be authenticated and senderId must match auth UID
-        allow create: if isAuthenticated() && (
-          (!('senderId' in request.resource.data) || request.resource.data.senderId == request.auth.uid) ||
-          (!('senderUid' in request.resource.data) || request.resource.data.senderUid == request.auth.uid) ||
-          isAdmin()
-        );
+        // Any authenticated user can send messages
+        allow create: if isAuthenticated();
 
         // Updates (e.g. read status) allowed to authenticated participants
         allow update: if isAuthenticated();
 
-        // Message deletion allowed to sender or admin
-        allow delete: if isAdmin() || (
-          isAuthenticated() && (
-            resource.data.senderId == request.auth.uid ||
-            resource.data.senderUid == request.auth.uid
-          )
-        );
+        // Message deletion allowed to authenticated users or admin
+        allow delete: if isAuthenticated();
       }
     }
 

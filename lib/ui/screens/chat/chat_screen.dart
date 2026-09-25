@@ -9,7 +9,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart' as intl;
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -257,13 +256,21 @@ class _ChatScreenState extends State<ChatScreen> {
     _msgCtrl.clear();
 
     try {
-      final recipientId = _currentUserId == _activeChat!.clientId
+      String recipientId = _currentUserId == _activeChat!.clientId
           ? _activeChat!.lawyerId
           : _activeChat!.clientId;
 
+      if (recipientId.isEmpty) {
+        recipientId = widget.lawyerUid ?? widget.clientUid ?? widget.otherUserUid ?? '';
+      }
+
+      final activeUserId = _currentUserId.isNotEmpty
+          ? _currentUserId
+          : (FirebaseAuth.instance.currentUser?.uid ?? '');
+
       await _chatService.sendMessage(
         chatId: _activeChat!.id,
-        senderId: _currentUserId,
+        senderId: activeUserId,
         senderName: _currentUserName,
         senderRole: _currentUserRole,
         senderAccountId: _currentUserAccountId,
@@ -271,6 +278,7 @@ class _ChatScreenState extends State<ChatScreen> {
         recipientId: recipientId,
       );
     } catch (e) {
+      debugPrint('[ChatScreen] sendMessage error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -430,7 +438,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(
-                              'تم نسخ معرّف الحساب: $otherAccountId',
+                              'تم نسخ ID: $otherAccountId',
                               style: GoogleFonts.cairo(fontSize: 13),
                               textDirection: TextDirection.rtl,
                             ),
@@ -445,8 +453,8 @@ class _ChatScreenState extends State<ChatScreen> {
                       children: [
                         Text(
                           otherAccountId.isNotEmpty
-                              ? 'معرّف: ${AccountIdUtils.formatDisplay(otherAccountId)}'
-                              : 'معرّف الحساب موثق',
+                              ? 'ID: ${AccountIdUtils.formatDisplay(otherAccountId)}'
+                              : 'ID موثق',
                           style: GoogleFonts.cairo(
                             fontSize: 11,
                             color: brandGold,
@@ -480,37 +488,38 @@ class _ChatScreenState extends State<ChatScreen> {
             // Messages Stream Area
             Expanded(
               child: StreamBuilder<List<ChatMessageModel>>(
+                initialData: const <ChatMessageModel>[],
                 stream: _chatService.getMessagesStream(_activeChat!.id),
                 builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
-                    return const Center(
-                      child: CircularProgressIndicator(color: brandNavy),
-                    );
-                  }
-
-                  if (snapshot.hasError) {
-                    return Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.wifi_off_rounded, size: 40, color: Color(0xFF94A3B8)),
-                            const SizedBox(height: 10),
-                            Text(
-                              'تعذر تحميل الرسائل، يرجى التأكد من اتصالك بالإنترنت.',
-                              style: GoogleFonts.cairo(fontSize: 13.5, color: const Color(0xFF64748B)),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }
-
                   final messages = snapshot.data ?? [];
 
                   if (messages.isEmpty) {
+                    if (snapshot.connectionState == ConnectionState.waiting && snapshot.data == null) {
+                      return const Center(
+                        child: CircularProgressIndicator(color: brandNavy),
+                      );
+                    }
+
+                    if (snapshot.hasError) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.wifi_off_rounded, size: 40, color: Color(0xFF94A3B8)),
+                              const SizedBox(height: 10),
+                              Text(
+                                'تعذر تحميل الرسائل، يرجى التأكد من اتصالك بالإنترنت.',
+                                style: GoogleFonts.cairo(fontSize: 13.5, color: const Color(0xFF64748B)),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }
+
                     return Center(
                       child: Padding(
                         padding: const EdgeInsets.all(32),
@@ -578,6 +587,17 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  String _formatMessageTime(DateTime dt) {
+    try {
+      final hour = dt.hour == 0 ? 12 : (dt.hour > 12 ? dt.hour - 12 : dt.hour);
+      final minute = dt.minute.toString().padLeft(2, '0');
+      final period = dt.hour >= 12 ? 'م' : 'ص';
+      return '$hour:$minute $period';
+    } catch (_) {
+      return '';
+    }
+  }
+
   Widget _buildRoleBadge(String role) {
     if (role == 'admin') {
       return Container(
@@ -623,7 +643,7 @@ class _ChatScreenState extends State<ChatScreen> {
     const Color brandGold = Color(0xFFF59E0B);
     final isSpecialAdmin = message.isAdminSender;
 
-    final timeStr = intl.DateFormat('hh:mm a', 'ar').format(message.createdAt);
+    final timeStr = _formatMessageTime(message.createdAt);
 
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
