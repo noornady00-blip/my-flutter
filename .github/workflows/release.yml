@@ -68,12 +68,10 @@ jobs:
           # Also create a valid release keystore in android/app/ if key.properties is absent
           if [ ! -f android/key.properties ]; then
             keytool -genkey -v -keystore android/app/release.keystore -storepass mahameek2026 -alias mahameek -keypass mahameek2026 -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Mahameek,O=Mahameek,C=SA"
-            cat <<EOF > android/key.properties
-storePassword=mahameek2026
-keyPassword=mahameek2026
-keyAlias=mahameek
-storeFile=release.keystore
-EOF
+            echo "storePassword=mahameek2026" > android/key.properties
+            echo "keyPassword=mahameek2026" >> android/key.properties
+            echo "keyAlias=mahameek" >> android/key.properties
+            echo "storeFile=release.keystore" >> android/key.properties
           fi
 
       - name: "Build Release APK"
