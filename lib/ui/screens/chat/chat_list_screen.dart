@@ -7,7 +7,6 @@
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart' as intl;
 
 import '../../../data/models/chat_model.dart';
 import '../../../network/chat_service.dart';
@@ -73,12 +72,12 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
   Future<void> _loadUserSession() async {
     try {
-      final session = await _authService.getSavedSession();
       final currentFirebaseUser = _authService.currentUser;
+      final session = await _authService.getSavedSession();
 
       if (mounted) {
         setState(() {
-          _uid = widget.initialUserId ?? session['uid'] ?? currentFirebaseUser?.uid;
+          _uid = currentFirebaseUser?.uid ?? widget.initialUserId ?? session['uid'];
           _role = widget.initialRole ?? session['role'] ?? 'client';
           _name = session['name'] ?? 'المستخدم';
           _accountId = session['accountId'] ?? '';
@@ -86,7 +85,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
         });
       }
 
-      if (_uid != null && (_accountId == null || _accountId!.isEmpty)) {
+      if (_uid != null && _uid!.isNotEmpty && (_accountId == null || _accountId!.isEmpty)) {
         AccountIdUtils.ensureUserHasAccountId(
           uid: _uid!,
           role: _role ?? 'client',
@@ -542,6 +541,25 @@ class _ChatListScreenState extends State<ChatListScreen> {
     );
   }
 
+  String _formatChatTime(DateTime dt) {
+    try {
+      final now = DateTime.now();
+      final isToday = dt.year == now.year && dt.month == now.month && dt.day == now.day;
+      final hour = dt.hour == 0 ? 12 : (dt.hour > 12 ? dt.hour - 12 : dt.hour);
+      final minute = dt.minute.toString().padLeft(2, '0');
+      final period = dt.hour >= 12 ? 'م' : 'ص';
+      final timePart = '$hour:$minute $period';
+      if (isToday) {
+        return timePart;
+      }
+      final day = dt.day.toString().padLeft(2, '0');
+      final month = dt.month.toString().padLeft(2, '0');
+      return '$day/$month $timePart';
+    } catch (_) {
+      return '';
+    }
+  }
+
   Widget _buildChatCard(ChatModel chat, Color brandNavy, Color headerGold) {
     final otherName = chat.getOtherPartyName(_uid!);
     final otherPhoto = chat.getOtherPartyPhoto(_uid!);
@@ -549,7 +567,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
     final otherRole = chat.getOtherPartyRole(_uid!);
     final unread = chat.getUnreadCount(_uid!);
 
-    final timeStr = intl.DateFormat('dd/MM hh:mm a', 'ar').format(chat.lastMessageTime);
+    final timeStr = _formatChatTime(chat.lastMessageTime);
 
     return InkWell(
       onTap: () {

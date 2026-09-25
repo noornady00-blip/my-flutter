@@ -2072,28 +2072,26 @@ class AuthService implements AuthContract {
 
   @override
   Future<void> signOut() async {
+    if (!kIsWeb) {
+      try {
+        await NotificationService().clearAllSystemNotifications();
+        await NotificationService().unregisterAdminDevice();
+      } catch (e) {
+        debugPrint('Notification cleanup error on signOut: $e');
+      }
+    }
+
     try {
-      await _auth.signOut().timeout(const Duration(seconds: 2));
+      await _auth.signOut().timeout(const Duration(seconds: 4));
     } catch (e) {
       debugPrint('Auth signOut notice: $e');
     }
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('uid');
-      await prefs.remove('role');
-      await prefs.remove('name');
-      await prefs.remove('phone');
-      await prefs.remove('status');
-      await prefs.remove('user_profile_photo');
-      await prefs.remove('user_profile_photo_url');
-      await prefs.remove('user_profile_photo_path');
+      await prefs.clear();
     } catch (e) {
-      debugPrint('Session remove notice: $e');
-    }
-
-    if (!kIsWeb) {
-      unawaited(NotificationService().unregisterAdminDevice().catchError((_) {}));
+      debugPrint('Session clear notice: $e');
     }
   }
 

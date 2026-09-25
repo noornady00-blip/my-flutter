@@ -7,7 +7,6 @@
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart' as intl;
 
 import '../../../data/models/chat_model.dart';
 import '../../../network/chat_service.dart';
@@ -243,8 +242,27 @@ class _AdminChatManagementScreenState extends State<AdminChatManagementScreen> {
     );
   }
 
+  String _formatChatTime(DateTime dt) {
+    try {
+      final now = DateTime.now();
+      final isToday = dt.year == now.year && dt.month == now.month && dt.day == now.day;
+      final hour = dt.hour == 0 ? 12 : (dt.hour > 12 ? dt.hour - 12 : dt.hour);
+      final minute = dt.minute.toString().padLeft(2, '0');
+      final period = dt.hour >= 12 ? 'م' : 'ص';
+      final timePart = '$hour:$minute $period';
+      if (isToday) {
+        return timePart;
+      }
+      final day = dt.day.toString().padLeft(2, '0');
+      final month = dt.month.toString().padLeft(2, '0');
+      return '$day/$month $timePart';
+    } catch (_) {
+      return '';
+    }
+  }
+
   Widget _buildAdminChatCard(ChatModel chat, Color brandNavy, Color headerGold) {
-    final timeStr = intl.DateFormat('dd/MM hh:mm a', 'ar').format(chat.lastMessageTime);
+    final timeStr = _formatChatTime(chat.lastMessageTime);
 
     return InkWell(
       onTap: () {

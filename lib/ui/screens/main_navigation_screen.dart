@@ -136,6 +136,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   Widget build(BuildContext context) {
     final isLawyer = _role == 'lawyer';
 
+    final currentUid = FirebaseAuth.instance.currentUser?.uid;
+
     final List<Widget> pages = isLawyer
         ? [
             // Lawyer Tab 0: الرئيسية (بيانات المحامي كما تظهر للعميل مع إمكانية التعديل)
@@ -144,6 +146,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             ),
             // Lawyer Tab 1: المحادثات المباشرة مع العملاء
             ChatListScreen(
+              key: ValueKey('chat_list_lawyer_$currentUid'),
+              initialUserId: currentUid,
+              initialRole: 'lawyer',
               isEmbeddedInNav: true,
               onOpenDrawer: () => _scaffoldKey.currentState?.openDrawer(),
             ),
@@ -159,6 +164,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             ),
             // Client Tab 1: المحادثات المباشرة مع المحامين
             ChatListScreen(
+              key: ValueKey('chat_list_client_$currentUid'),
+              initialUserId: currentUid,
+              initialRole: _role,
               isEmbeddedInNav: true,
               onOpenDrawer: () => _scaffoldKey.currentState?.openDrawer(),
             ),

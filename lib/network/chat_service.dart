@@ -13,7 +13,6 @@ import '../data/models/chat_model.dart';
 import '../data/models/chat_message_model.dart';
 import '../data/models/user_model.dart';
 import '../data/models/lawyer.dart';
-import 'notification_service.dart';
 
 class ChatService {
   final FirebaseFirestore _db;
@@ -216,19 +215,6 @@ class ChatService {
 
     batch.set(chatDocRef, updateData, SetOptions(merge: true));
     await batch.commit();
-
-    // 3. Dispatch in-app / push notification alert to recipient
-    try {
-      final notifTitle = senderRole == 'admin'
-          ? 'رسالة من إدارة منصة محاميك 🛡️'
-          : 'رسالة جديدة من $senderName 💬';
-
-      NotificationService().showNotificationDirect(
-        title: notifTitle,
-        body: cleanText,
-        payload: 'chat_message',
-      );
-    } catch (_) {}
   }
 
   /// Mark conversation as read for the active user

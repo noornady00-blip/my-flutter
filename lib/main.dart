@@ -18,6 +18,8 @@ import 'ui/screens/main_navigation_screen.dart';
 import 'ui/screens/auth/lawyer_pending_screen.dart';
 import 'ui/custom_widgets/global_network_banner.dart';
 
+import 'package:intl/date_symbol_data_local.dart';
+
 // ============================================================================
 // Mahameek Application Entry Point
 // Professional, ultra-responsive initialization matching clean architecture.
@@ -26,6 +28,13 @@ import 'ui/custom_widgets/global_network_banner.dart';
 void main() async {
   // 1. Ensure Flutter bindings are initialized
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Arabic locale date formatting
+  try {
+    await initializeDateFormatting('ar', null);
+  } catch (e) {
+    debugPrint('initializeDateFormatting notice: $e');
+  }
 
   // Error handling
   FlutterError.onError = (details) {
