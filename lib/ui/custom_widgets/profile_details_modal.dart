@@ -475,7 +475,54 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
                     borderRadius: BorderRadius.circular(3),
                   ),
                 ),
-                const SizedBox(width: 38),
+                // Quick Chat launch icon in top-bar
+                InkWell(
+                  onTap: () {
+                    final currentUser = FirebaseAuth.instance.currentUser;
+                    if (currentUser == null) {
+                      _showFloatingCopyToast(context, 'يرجى تسجيل الدخول لبدء محادثة');
+                      return;
+                    }
+                    if (currentUser.uid == lawyer.uid) {
+                      _showFloatingCopyToast(context, 'لا يمكنك بدء محادثة مع نفسك');
+                      return;
+                    }
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ChatScreen(
+                          lawyerUid: lawyer.uid,
+                          lawyerName: lawyer.name,
+                          lawyerAccountId: lawyer.accountId,
+                          lawyerPhone: lawyer.phone,
+                          lawyerPhotoUrl: lawyer.photoUrl,
+                          lawyerPhotoBase64: lawyer.photoBase64,
+                        ),
+                      ),
+                    );
+                  },
+                  borderRadius: BorderRadius.circular(14),
+                  child: Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFECFDF5),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: const Color(0xFF6EE7B7)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF0F766E).withValues(alpha: 0.10),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.chat_bubble_outline_rounded,
+                      color: Color(0xFF0F766E),
+                      size: 20,
+                    ),
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 14),

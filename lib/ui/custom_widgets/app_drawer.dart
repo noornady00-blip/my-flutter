@@ -1107,7 +1107,7 @@ class _AppDrawerState extends State<AppDrawer> {
                         onTap: () {
                           if (widget.onNavigateTab != null && _isLoggedIn) {
                             Navigator.of(context).pop();
-                            widget.onNavigateTab!(2);
+                            widget.onNavigateTab!(_userRole == 'lawyer' ? 2 : 3);
                           }
                         },
                         onLongPress: () {
@@ -1241,11 +1241,19 @@ class _AppDrawerState extends State<AppDrawer> {
                       },
                     ),
                     _buildDrawerItem(
+                      icon: Icons.chat_bubble_rounded,
+                      title: 'المحادثات المباشرة',
+                      onTap: () {
+                        Navigator.pop(context);
+                        widget.onNavigateTab?.call(1);
+                      },
+                    ),
+                    _buildDrawerItem(
                       icon: Icons.search_rounded,
                       title: 'البحث',
                       onTap: () {
                         Navigator.pop(context);
-                        widget.onNavigateTab?.call(1);
+                        widget.onNavigateTab?.call(2);
                       },
                     ),
                     _buildDrawerItem(
@@ -1253,7 +1261,7 @@ class _AppDrawerState extends State<AppDrawer> {
                       title: 'حسابي',
                       onTap: () {
                         Navigator.pop(context);
-                        widget.onNavigateTab?.call(2);
+                        widget.onNavigateTab?.call(3);
                       },
                     ),
                     _buildDrawerItem(
@@ -1287,11 +1295,19 @@ class _AppDrawerState extends State<AppDrawer> {
                       },
                     ),
                     _buildDrawerItem(
+                      icon: Icons.chat_bubble_rounded,
+                      title: 'المحادثات المباشرة',
+                      onTap: () {
+                        Navigator.pop(context);
+                        widget.onNavigateTab?.call(1);
+                      },
+                    ),
+                    _buildDrawerItem(
                       icon: Icons.tune_rounded,
                       title: 'الإعدادات وحسابي',
                       onTap: () {
                         Navigator.pop(context);
-                        widget.onNavigateTab?.call(1);
+                        widget.onNavigateTab?.call(2);
                       },
                     ),
                     _buildDrawerItem(
@@ -1359,11 +1375,19 @@ class _AppDrawerState extends State<AppDrawer> {
                       },
                     ),
                     _buildDrawerItem(
+                      icon: Icons.chat_bubble_rounded,
+                      title: 'المحادثات المباشرة',
+                      onTap: () {
+                        Navigator.pop(context);
+                        widget.onNavigateTab?.call(1);
+                      },
+                    ),
+                    _buildDrawerItem(
                       icon: Icons.search_rounded,
                       title: 'البحث',
                       onTap: () {
                         Navigator.pop(context);
-                        widget.onNavigateTab?.call(1);
+                        widget.onNavigateTab?.call(2);
                       },
                     ),
                     _buildDrawerItem(

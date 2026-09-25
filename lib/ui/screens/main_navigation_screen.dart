@@ -11,6 +11,7 @@ import 'lawyers/all_lawyers_screen.dart';
 import 'profile/profile_screen.dart';
 import 'lawyer/lawyer_home_screen.dart';
 import 'lawyer/lawyer_settings_screen.dart';
+import 'chat/chat_list_screen.dart';
 import 'onboarding/onboarding_screen.dart';
 
 // ============================================================================
@@ -45,6 +46,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       label: 'الرئيسية',
     ),
     FloatingNavItemData(
+      icon: Icons.chat_bubble_outline_rounded,
+      activeIcon: Icons.chat_bubble_rounded,
+      label: 'المحادثات',
+    ),
+    FloatingNavItemData(
       icon: Icons.search_rounded,
       activeIcon: Icons.search_rounded,
       label: 'بحث',
@@ -61,6 +67,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       icon: Icons.badge_outlined,
       activeIcon: Icons.badge_rounded,
       label: 'الرئيسية',
+    ),
+    FloatingNavItemData(
+      icon: Icons.chat_bubble_outline_rounded,
+      activeIcon: Icons.chat_bubble_rounded,
+      label: 'المحادثات',
     ),
     FloatingNavItemData(
       icon: Icons.settings_outlined,
@@ -109,7 +120,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     if (role != null && role != _role && mounted) {
       setState(() {
         _role = role;
-        if (_role == 'lawyer' && _currentIndex > 1) {
+        if (_role == 'lawyer' && _currentIndex > 2) {
           _currentIndex = 0;
         }
       });
@@ -129,9 +140,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         ? [
             // Lawyer Tab 0: الرئيسية (بيانات المحامي كما تظهر للعميل مع إمكانية التعديل)
             LawyerHomeScreen(
-              onNavigateSettings: () => _onTabTapped(1),
+              onNavigateSettings: () => _onTabTapped(2),
             ),
-            // Lawyer Tab 1: الإعدادات
+            // Lawyer Tab 1: المحادثات المباشرة مع العملاء
+            ChatListScreen(
+              isEmbeddedInNav: true,
+              onOpenDrawer: () => _scaffoldKey.currentState?.openDrawer(),
+            ),
+            // Lawyer Tab 2: الإعدادات
             const LawyerSettingsScreen(),
           ]
         : [
@@ -141,11 +157,16 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               onOpenDrawer: () => _scaffoldKey.currentState?.openDrawer(),
               isEmbeddedInNav: true,
             ),
-            // Client Tab 1: بحث
+            // Client Tab 1: المحادثات المباشرة مع المحامين
+            ChatListScreen(
+              isEmbeddedInNav: true,
+              onOpenDrawer: () => _scaffoldKey.currentState?.openDrawer(),
+            ),
+            // Client Tab 2: بحث
             AllLawyersScreen(
               onOpenDrawer: () => _scaffoldKey.currentState?.openDrawer(),
             ),
-            // Client Tab 2: حسابي
+            // Client Tab 3: حسابي
             ProfileScreen(
               onOpenDrawer: () => _scaffoldKey.currentState?.openDrawer(),
             ),

@@ -15,16 +15,22 @@ import '../../../network/auth_service.dart';
 import '../../../core/utils/account_id_utils.dart';
 import '../../../core/utils/image_utils.dart';
 import '../../custom_widgets/app_logo_badge.dart';
+import '../auth/auth_gateway_screen.dart';
+import '../lawyers/all_lawyers_screen.dart';
 import 'chat_screen.dart';
 
 class ChatListScreen extends StatefulWidget {
   final String? initialUserId;
   final String? initialRole;
+  final bool isEmbeddedInNav;
+  final VoidCallback? onOpenDrawer;
 
   const ChatListScreen({
     super.key,
     this.initialUserId,
     this.initialRole,
+    this.isEmbeddedInNav = false,
+    this.onOpenDrawer,
   });
 
   @override
@@ -46,6 +52,13 @@ class _ChatListScreenState extends State<ChatListScreen> {
   @override
   void initState() {
     super.initState();
+    final authUser = _authService.currentUser;
+    _uid = widget.initialUserId ?? authUser?.uid;
+    _role = widget.initialRole ?? 'client';
+    // If user is already authenticated at mount time, avoid full-screen spinner
+    if (_uid != null) {
+      _isLoading = false;
+    }
     _loadUserSession();
     _searchCtrl.addListener(() {
       setState(() => _searchQuery = _searchCtrl.text.trim().toLowerCase());
@@ -59,26 +72,35 @@ class _ChatListScreenState extends State<ChatListScreen> {
   }
 
   Future<void> _loadUserSession() async {
-    final session = await _authService.getSavedSession();
-    final currentFirebaseUser = _authService.currentUser;
+    try {
+      final session = await _authService.getSavedSession();
+      final currentFirebaseUser = _authService.currentUser;
 
-    setState(() {
-      _uid = widget.initialUserId ?? session['uid'] ?? currentFirebaseUser?.uid;
-      _role = widget.initialRole ?? session['role'] ?? 'client';
-      _name = session['name'] ?? 'المستخدم';
-      _accountId = session['accountId'] ?? '';
-      _isLoading = false;
-    });
+      if (mounted) {
+        setState(() {
+          _uid = widget.initialUserId ?? session['uid'] ?? currentFirebaseUser?.uid;
+          _role = widget.initialRole ?? session['role'] ?? 'client';
+          _name = session['name'] ?? 'المستخدم';
+          _accountId = session['accountId'] ?? '';
+          _isLoading = false;
+        });
+      }
 
-    if (_uid != null && (_accountId == null || _accountId!.isEmpty)) {
-      AccountIdUtils.ensureUserHasAccountId(
-        uid: _uid!,
-        role: _role ?? 'client',
-      ).then((val) {
-        if (mounted && val.isNotEmpty) {
-          setState(() => _accountId = val);
-        }
-      });
+      if (_uid != null && (_accountId == null || _accountId!.isEmpty)) {
+        AccountIdUtils.ensureUserHasAccountId(
+          uid: _uid!,
+          role: _role ?? 'client',
+        ).then((val) {
+          if (mounted && val.isNotEmpty) {
+            setState(() => _accountId = val);
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('[ChatListScreen] _loadUserSession notice: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -88,7 +110,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
     const Color headerGold = Color(0xFFD49B1A);
     const Color pageBg = Color(0xFFFCFBF9);
 
-    if (_isLoading) {
+    if (_isLoading && _uid == null) {
       return const Scaffold(
         backgroundColor: pageBg,
         body: Center(
@@ -103,19 +125,114 @@ class _ChatListScreenState extends State<ChatListScreen> {
         appBar: AppBar(
           backgroundColor: headerGold,
           elevation: 0,
-          title: Text('المحادثات', style: GoogleFonts.cairo(color: brandNavy, fontWeight: FontWeight.w800)),
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
+          ),
+          automaticallyImplyLeading: false,
+          titleSpacing: 16,
+          title: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const AppLogoBadge(height: 28, withPillBackground: true),
+              Text(
+                'المحادثات المباشرة',
+                style: GoogleFonts.cairo(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: brandNavy,
+                ),
+              ),
+              if (widget.isEmbeddedInNav && widget.onOpenDrawer != null)
+                InkWell(
+                  onTap: widget.onOpenDrawer,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.28),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
+                    ),
+                    child: const Center(
+                      child: Icon(Icons.menu_rounded, color: brandNavy, size: 22),
+                    ),
+                  ),
+                )
+              else if (!widget.isEmbeddedInNav)
+                InkWell(
+                  onTap: () => Navigator.pop(context),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.28),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
+                    ),
+                    child: const Center(
+                      child: Icon(Icons.arrow_forward_ios_rounded, color: brandNavy, size: 18),
+                    ),
+                  ),
+                )
+              else
+                const SizedBox(width: 38),
+            ],
+          ),
         ),
         body: Center(
           child: Padding(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(28),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.lock_outline_rounded, size: 48, color: brandNavy),
-                const SizedBox(height: 12),
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: brandNavy.withValues(alpha: 0.07),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Center(
+                    child: Icon(Icons.chat_bubble_outline_rounded, size: 40, color: brandNavy),
+                  ),
+                ),
+                const SizedBox(height: 18),
                 Text(
-                  'يرجى تسجيل الدخول لعرض محادثاتك',
-                  style: GoogleFonts.cairo(fontSize: 15, fontWeight: FontWeight.w700, color: brandNavy),
+                  'سجّل دخولك لبدء المحادثات',
+                  style: GoogleFonts.cairo(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: brandNavy,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'تواصل مع نخبة المحامين المعتمدين وطرح استفساراتك القانونية ومتابعة قضاياك بكل سهولة وأمان.',
+                  style: GoogleFonts.cairo(fontSize: 13.5, color: const Color(0xFF64748B), height: 1.5),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 22),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const AuthGatewayScreen()),
+                    );
+                  },
+                  icon: const Icon(Icons.login_rounded, size: 18),
+                  label: Text(
+                    'تسجيل الدخول / إنشاء حساب',
+                    style: GoogleFonts.cairo(fontWeight: FontWeight.w700, fontSize: 14),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: brandNavy,
+                    foregroundColor: Colors.white,
+                    elevation: 2,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
                 ),
               ],
             ),
@@ -148,23 +265,43 @@ class _ChatListScreenState extends State<ChatListScreen> {
                     color: brandNavy,
                   ),
                 ),
-                const SizedBox(width: 8),
-                InkWell(
-                  onTap: () => Navigator.pop(context),
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.28),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
+                const SizedBox(width: 10),
+                if (widget.isEmbeddedInNav && widget.onOpenDrawer != null)
+                  InkWell(
+                    onTap: widget.onOpenDrawer,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.28),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
+                      ),
+                      child: const Center(
+                        child: Icon(Icons.menu_rounded, color: brandNavy, size: 22),
+                      ),
                     ),
-                    child: const Center(
-                      child: Icon(Icons.arrow_forward_ios_rounded, color: brandNavy, size: 18),
+                  )
+                else if (!widget.isEmbeddedInNav)
+                  InkWell(
+                    onTap: () => Navigator.pop(context),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.28),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
+                      ),
+                      child: const Center(
+                        child: Icon(Icons.arrow_forward_ios_rounded, color: brandNavy, size: 18),
+                      ),
                     ),
-                  ),
-                ),
+                  )
+                else
+                  const SizedBox(width: 38),
               ],
             ),
           ],
@@ -173,38 +310,80 @@ class _ChatListScreenState extends State<ChatListScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Search Input
+            // 🔎 Dedicated Interactive Search Area with Action Button
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
               child: Container(
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(18),
                   border: Border.all(color: const Color(0xFFE2E8F0)),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.03),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
+                      color: Colors.black.withValues(alpha: 0.04),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
                     ),
                   ],
                 ),
-                child: TextField(
-                  controller: _searchCtrl,
-                  textDirection: TextDirection.rtl,
-                  decoration: InputDecoration(
-                    hintText: 'ابحث بالاسم أو المعرّف (12 رقماً)...',
-                    hintStyle: GoogleFonts.cairo(fontSize: 13, color: const Color(0xFF94A3B8)),
-                    prefixIcon: const Icon(Icons.search_rounded, color: headerGold),
-                    suffixIcon: _searchQuery.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear_rounded, size: 18, color: Color(0xFF94A3B8)),
-                            onPressed: () => _searchCtrl.clear(),
-                          )
-                        : null,
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  ),
+                child: Row(
+                  children: [
+                    // Search Action Button
+                    Padding(
+                      padding: const EdgeInsets.only(left: 6, right: 6),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () {
+                            FocusScope.of(context).unfocus();
+                          },
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: headerGold.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: headerGold.withValues(alpha: 0.3)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.search_rounded, color: Color(0xFFB45309), size: 18),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'بحث',
+                                  style: GoogleFonts.cairo(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: const Color(0xFFB45309),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    // Search Input Field
+                    Expanded(
+                      child: TextField(
+                        controller: _searchCtrl,
+                        textDirection: TextDirection.rtl,
+                        decoration: InputDecoration(
+                          hintText: 'ابحث بالاسم، الرسالة أو معرّف الحساب (12 رقماً)...',
+                          hintStyle: GoogleFonts.cairo(fontSize: 12.5, color: const Color(0xFF94A3B8)),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 13),
+                          suffixIcon: _searchQuery.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear_rounded, size: 18, color: Color(0xFF94A3B8)),
+                                  onPressed: () => _searchCtrl.clear(),
+                                )
+                              : null,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -212,10 +391,22 @@ class _ChatListScreenState extends State<ChatListScreen> {
             // Chats Stream
             Expanded(
               child: StreamBuilder<List<ChatModel>>(
-                stream: _chatService.getChatsForUser(_uid!, _role!),
+                stream: _chatService.getChatsForUser(_uid!, _role ?? 'client'),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator(color: brandNavy));
+                    return Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const CircularProgressIndicator(color: brandNavy),
+                          const SizedBox(height: 12),
+                          Text(
+                            'جارٍ جلب المحادثات...',
+                            style: GoogleFonts.cairo(fontSize: 13, color: const Color(0xFF64748B)),
+                          ),
+                        ],
+                      ),
+                    );
                   }
 
                   if (snapshot.hasError) {
@@ -265,8 +456,10 @@ class _ChatListScreenState extends State<ChatListScreen> {
                                 color: brandNavy.withValues(alpha: 0.05),
                                 shape: BoxShape.circle,
                               ),
-                              child: const Icon(
-                                Icons.chat_bubble_outline_rounded,
+                              child: Icon(
+                                _searchQuery.isNotEmpty
+                                    ? Icons.search_off_rounded
+                                    : Icons.chat_bubble_outline_rounded,
                                 size: 42,
                                 color: brandNavy,
                               ),
@@ -275,7 +468,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                             Text(
                               _searchQuery.isNotEmpty ? 'لا توجد نتائج بحث' : 'لا توجد محادثات حتى الآن',
                               style: GoogleFonts.cairo(
-                                fontSize: 15,
+                                fontSize: 16,
                                 fontWeight: FontWeight.w800,
                                 color: brandNavy,
                               ),
@@ -283,11 +476,47 @@ class _ChatListScreenState extends State<ChatListScreen> {
                             const SizedBox(height: 6),
                             Text(
                               _searchQuery.isNotEmpty
-                                  ? 'تأكد من كتابة الاسم أو المعرّف بشكل صحيح.'
-                                  : 'عند بدء التواصل مع محامٍ ستظهر محادثاتك هنا مباشرة.',
+                                  ? 'تأكد من كتابة الاسم أو رقم الحساب بشكل صحيح.'
+                                  : 'تواصل مع نخبة المحامين المعتمدين وستظهر محادثاتك هنا فوراً.',
                               style: GoogleFonts.cairo(fontSize: 13, color: const Color(0xFF64748B)),
                               textAlign: TextAlign.center,
                             ),
+                            const SizedBox(height: 16),
+                            if (_searchQuery.isNotEmpty)
+                              OutlinedButton.icon(
+                                onPressed: () => _searchCtrl.clear(),
+                                icon: const Icon(Icons.clear_rounded, size: 16),
+                                label: Text(
+                                  'مسح البحث',
+                                  style: GoogleFonts.cairo(fontWeight: FontWeight.w700, fontSize: 13),
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: brandNavy,
+                                  side: const BorderSide(color: Color(0xFFCBD5E1)),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                              )
+                            else if (_role != 'lawyer')
+                              ElevatedButton.icon(
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(builder: (_) => const AllLawyersScreen()),
+                                  );
+                                },
+                                icon: const Icon(Icons.people_alt_rounded, size: 16),
+                                label: Text(
+                                  'تصفح المحامين وبدء استشارة',
+                                  style: GoogleFonts.cairo(fontWeight: FontWeight.w700, fontSize: 13),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: brandNavy,
+                                  foregroundColor: Colors.white,
+                                  elevation: 1,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                                ),
+                              ),
                           ],
                         ),
                       ),

@@ -32,41 +32,33 @@ class ChatService {
 
   /// Stream all conversations relevant to the current user (Client, Lawyer, or Admin)
   Stream<List<ChatModel>> getChatsForUser(String uid, String role) {
-    Query query = _db.collection('chats');
-
     if (role == 'admin') {
-      // Admins can see all chats
-      query = query.orderBy('updatedAt', descending: true);
-    } else if (role == 'lawyer') {
-      // Lawyer sees chats where they are the lawyer
-      query = query
-          .where('participants', arrayContains: uid)
-          .orderBy('updatedAt', descending: true);
-    } else {
-      // Client sees chats where they are the client
-      query = query
-          .where('participants', arrayContains: uid)
-          .orderBy('updatedAt', descending: true);
-    }
-
-    return query.snapshots().map((snapshot) {
-      return snapshot.docs
-          .map((doc) => ChatModel.fromMap(doc.data() as Map<String, dynamic>, doc.id))
-          .toList();
-    }).handleError((err) {
-      debugPrint('[ChatService] getChatsForUser fallback query triggered: $err');
-      // Fallback query without compound ordering in case composite index is building
-      return _db
-          .collection('chats')
-          .where('participants', arrayContains: uid)
-          .snapshots()
-          .map((snapshot) {
+      return _db.collection('chats').snapshots().map((snapshot) {
         final list = snapshot.docs
             .map((doc) => ChatModel.fromMap(doc.data(), doc.id))
             .toList();
         list.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
         return list;
+      }).handleError((err) {
+        debugPrint('[ChatService] admin getChatsForUser error: $err');
+        return <ChatModel>[];
       });
+    }
+
+    // Index-free single-field query: works instantly out of the box without requiring manual composite indexes
+    return _db
+        .collection('chats')
+        .where('participants', arrayContains: uid)
+        .snapshots()
+        .map((snapshot) {
+      final list = snapshot.docs
+          .map((doc) => ChatModel.fromMap(doc.data(), doc.id))
+          .toList();
+      list.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      return list;
+    }).handleError((err) {
+      debugPrint('[ChatService] getChatsForUser error: $err');
+      return <ChatModel>[];
     });
   }
 
@@ -83,6 +75,9 @@ class ChatService {
       return snap.docs
           .map((doc) => ChatMessageModel.fromMap(doc.data(), doc.id))
           .toList();
+    }).handleError((err) {
+      debugPrint('[ChatService] getMessagesStream error: $err');
+      return <ChatMessageModel>[];
     });
   }
 
@@ -119,48 +114,48 @@ class ChatService {
     final chatId = generateChatId(client.uid, lawyer.uid);
     final chatDocRef = _db.collection('chats').doc(chatId);
 
+    final fallbackChat = ChatModel(
+      id: chatId,
+      participants: [client.uid, lawyer.uid],
+      clientId: client.uid,
+      clientName: client.name.isNotEmpty ? client.name : 'عميل',
+      clientPhone: client.phone,
+      clientPhoto: client.photoUrl,
+      clientAccountId: client.accountId,
+      lawyerId: lawyer.uid,
+      lawyerName: lawyer.name.isNotEmpty ? lawyer.name : 'محامٍ',
+      lawyerPhone: lawyer.phone,
+      lawyerPhoto: lawyer.photoUrl,
+      lawyerAccountId: lawyer.accountId,
+      lastMessage: 'مرحباً، تم بدء المحادثة',
+      lastSenderId: client.uid,
+      lastSenderName: client.name,
+      lastMessageTime: DateTime.now(),
+      unreadByClient: 0,
+      unreadByLawyer: 0,
+    );
+
     try {
-      final doc = await chatDocRef.get();
+      final doc = await chatDocRef.get().timeout(const Duration(seconds: 4));
       if (doc.exists && doc.data() != null) {
         final existing = ChatModel.fromMap(doc.data()!, doc.id);
         // Refresh account IDs if they were empty
         if ((existing.clientAccountId.isEmpty && client.accountId.isNotEmpty) ||
             (existing.lawyerAccountId.isEmpty && lawyer.accountId.isNotEmpty)) {
-          await chatDocRef.update({
+          unawaited(chatDocRef.update({
             if (client.accountId.isNotEmpty) 'clientAccountId': client.accountId,
             if (lawyer.accountId.isNotEmpty) 'lawyerAccountId': lawyer.accountId,
-          }).catchError((_) {});
+          }).catchError((_) {}));
         }
         return existing;
       }
 
-      // Create new chat document
-      final newChat = ChatModel(
-        id: chatId,
-        participants: [client.uid, lawyer.uid],
-        clientId: client.uid,
-        clientName: client.name.isNotEmpty ? client.name : 'عميل',
-        clientPhone: client.phone,
-        clientPhoto: client.photoUrl,
-        clientAccountId: client.accountId,
-        lawyerId: lawyer.uid,
-        lawyerName: lawyer.name.isNotEmpty ? lawyer.name : 'محامٍ',
-        lawyerPhone: lawyer.phone,
-        lawyerPhoto: lawyer.photoUrl,
-        lawyerAccountId: lawyer.accountId,
-        lastMessage: 'مرحباً، تم بدء المحادثة',
-        lastSenderId: client.uid,
-        lastSenderName: client.name,
-        lastMessageTime: DateTime.now(),
-        unreadByClient: 0,
-        unreadByLawyer: 0,
-      );
-
-      await chatDocRef.set(newChat.toMap());
-      return newChat;
+      await chatDocRef.set(fallbackChat.toMap(), SetOptions(merge: true));
+      return fallbackChat;
     } catch (e) {
-      debugPrint('[ChatService] getOrCreateChat error: $e');
-      rethrow;
+      debugPrint('[ChatService] getOrCreateChat notice: $e');
+      // Always return valid ChatModel so UI never freezes or spins indefinitely
+      return fallbackChat;
     }
   }
 

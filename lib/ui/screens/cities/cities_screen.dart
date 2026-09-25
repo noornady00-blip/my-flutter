@@ -886,6 +886,11 @@ class _CitiesScreenState extends State<CitiesScreen> {
           label: 'الرئيسية',
         ),
         FloatingNavItemData(
+          icon: Icons.chat_bubble_outline_rounded,
+          activeIcon: Icons.chat_bubble_rounded,
+          label: 'المحادثات',
+        ),
+        FloatingNavItemData(
           icon: Icons.search_rounded,
           activeIcon: Icons.search_rounded,
           label: 'بحث',

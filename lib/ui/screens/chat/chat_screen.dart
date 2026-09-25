@@ -92,7 +92,6 @@ class _ChatScreenState extends State<ChatScreen> {
   String _currentUserName = '';
   String _currentUserRole = 'client';
   String _currentUserAccountId = '';
-  bool _isLoading = true;
   bool _isSending = false;
 
   @override
@@ -108,49 +107,63 @@ class _ChatScreenState extends State<ChatScreen> {
       _currentUserName = widget.currentUserName ?? 'المستخدم';
       _currentUserRole = widget.currentUserRole ?? 'client';
       _currentUserAccountId = widget.currentUserAccountId ?? '';
-      _isLoading = false;
       if (mounted) setState(() {});
       _markRead();
       return;
     }
 
     final authUser = FirebaseAuth.instance.currentUser;
-    if (authUser == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('يرجى تسجيل الدخول أولاً', style: GoogleFonts.cairo()),
-            backgroundColor: const Color(0xFFDC2626),
-          ),
-        );
-        Navigator.pop(context);
+    _currentUserId = widget.currentUserId ?? authUser?.uid ?? '';
+    _currentUserName = widget.currentUserName ?? 'المستخدم';
+    _currentUserRole = widget.currentUserRole ?? 'client';
+    _currentUserAccountId = widget.currentUserAccountId ?? '';
+
+    String targetLawyerUid = widget.lawyerUid ?? '';
+    String targetClientUid = widget.clientUid ?? '';
+    if (targetLawyerUid.isEmpty && targetClientUid.isEmpty) {
+      if (widget.otherUserRole == 'lawyer') {
+        targetLawyerUid = widget.otherUserUid ?? '';
+      } else {
+        targetClientUid = widget.otherUserUid ?? '';
       }
+    }
+
+    final effectiveLawyerUid = targetLawyerUid.isNotEmpty ? targetLawyerUid : (_currentUserRole == 'lawyer' ? _currentUserId : '');
+    final effectiveClientUid = targetClientUid.isNotEmpty ? targetClientUid : (_currentUserRole != 'lawyer' ? _currentUserId : '');
+
+    // Synchronous optimistic chat model: allows the chat UI to render instantly without waiting for network
+    _activeChat = ChatModel(
+      id: ChatService.generateChatId(effectiveClientUid, effectiveLawyerUid),
+      participants: [effectiveClientUid, effectiveLawyerUid],
+      clientId: effectiveClientUid,
+      clientName: widget.clientName ?? (_currentUserRole != 'lawyer' ? _currentUserName : 'عميل'),
+      clientPhone: widget.clientPhone ?? '',
+      clientPhoto: widget.clientPhotoUrl,
+      clientAccountId: widget.clientAccountId ?? (_currentUserRole != 'lawyer' ? _currentUserAccountId : ''),
+      lawyerId: effectiveLawyerUid,
+      lawyerName: widget.lawyerName ?? (_currentUserRole == 'lawyer' ? _currentUserName : 'محامٍ ومستشار قانوني'),
+      lawyerPhone: widget.lawyerPhone ?? '',
+      lawyerPhoto: widget.lawyerPhotoUrl,
+      lawyerAccountId: widget.lawyerAccountId ?? (_currentUserRole == 'lawyer' ? _currentUserAccountId : ''),
+      lastMessage: 'مرحباً، تم بدء المحادثة',
+      lastSenderId: _currentUserId,
+      lastSenderName: _currentUserName,
+      lastMessageTime: DateTime.now(),
+    );
+    if (mounted) setState(() {});
+
+    if (authUser == null) {
       return;
     }
 
-    _currentUserId = widget.currentUserId ?? authUser.uid;
-
     try {
-      final userDoc = await FirebaseFirestore.instance.collection('users').doc(_currentUserId).get();
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(_currentUserId).get().timeout(const Duration(seconds: 4));
       final userData = userDoc.data() ?? {};
-      _currentUserName = widget.currentUserName ?? userData['name']?.toString() ?? 'المستخدم';
-      _currentUserRole = widget.currentUserRole ?? userData['role']?.toString() ?? 'client';
-      _currentUserAccountId = widget.currentUserAccountId ?? userData['accountId']?.toString() ?? '';
-
-      if (_currentUserRole == 'lawyer' && _currentUserAccountId.isEmpty) {
-        final lawyerDoc = await FirebaseFirestore.instance.collection('lawyers').doc(_currentUserId).get();
-        _currentUserAccountId = lawyerDoc.data()?['accountId']?.toString() ?? '';
+      if (_currentUserName == 'المستخدم') {
+        _currentUserName = userData['name']?.toString() ?? 'المستخدم';
       }
-
-      String targetLawyerUid = widget.lawyerUid ?? '';
-      String targetClientUid = widget.clientUid ?? '';
-
-      if (targetLawyerUid.isEmpty && targetClientUid.isEmpty) {
-        if (widget.otherUserRole == 'lawyer') {
-          targetLawyerUid = widget.otherUserUid ?? '';
-        } else {
-          targetClientUid = widget.otherUserUid ?? '';
-        }
+      if (_currentUserAccountId.isEmpty) {
+        _currentUserAccountId = userData['accountId']?.toString() ?? '';
       }
 
       UserModel clientModel;
@@ -165,11 +178,11 @@ class _ChatScreenState extends State<ChatScreen> {
           accountId: _currentUserAccountId,
         );
 
-        final lDoc = await FirebaseFirestore.instance.collection('lawyers').doc(targetLawyerUid).get();
+        final lDoc = await FirebaseFirestore.instance.collection('lawyers').doc(targetLawyerUid).get().timeout(const Duration(seconds: 4));
         final lData = lDoc.data() ?? {};
         lawyerModel = LawyerModel(
           uid: targetLawyerUid,
-          name: widget.lawyerName ?? lData['name']?.toString() ?? 'محامٍ',
+          name: widget.lawyerName ?? lData['name']?.toString() ?? 'محامٍ ومستشار قانوني',
           phone: widget.lawyerPhone ?? lData['phone']?.toString() ?? '',
           whatsapp: lData['whatsapp']?.toString() ?? '',
           city: lData['city']?.toString() ?? 'السودان',
@@ -179,7 +192,7 @@ class _ChatScreenState extends State<ChatScreen> {
           status: 'approved',
         );
       } else {
-        final cDoc = await FirebaseFirestore.instance.collection('users').doc(targetClientUid).get();
+        final cDoc = await FirebaseFirestore.instance.collection('users').doc(targetClientUid).get().timeout(const Duration(seconds: 4));
         final cData = cDoc.data() ?? {};
         clientModel = UserModel(
           uid: targetClientUid,
@@ -191,7 +204,7 @@ class _ChatScreenState extends State<ChatScreen> {
           photoBase64: widget.clientPhotoBase64 ?? cData['photoBase64']?.toString(),
         );
 
-        final lDoc = await FirebaseFirestore.instance.collection('lawyers').doc(_currentUserId).get();
+        final lDoc = await FirebaseFirestore.instance.collection('lawyers').doc(_currentUserId).get().timeout(const Duration(seconds: 4));
         final lData = lDoc.data() ?? {};
         lawyerModel = LawyerModel(
           uid: _currentUserId,
@@ -212,15 +225,11 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) {
         setState(() {
           _activeChat = chat;
-          _isLoading = false;
         });
         _markRead();
       }
     } catch (e) {
-      debugPrint('[ChatScreen] Error initializing chat: $e');
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      debugPrint('[ChatScreen] Error background initializing chat: $e');
     }
   }
 
@@ -296,7 +305,7 @@ class _ChatScreenState extends State<ChatScreen> {
     const Color brandGold = Color(0xFFD49B1A);
     const Color chatBg = Color(0xFFF8FAFC);
 
-    if (_isLoading || _activeChat == null) {
+    if (_activeChat == null) {
       return Scaffold(
         backgroundColor: chatBg,
         appBar: AppBar(
@@ -312,8 +321,31 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           centerTitle: true,
         ),
-        body: const Center(
-          child: CircularProgressIndicator(color: brandNavy),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.chat_bubble_outline_rounded, size: 48, color: Color(0xFF94A3B8)),
+                const SizedBox(height: 12),
+                Text(
+                  'تعذر فتح المحادثة، يرجى المحاولة مجدداً',
+                  style: GoogleFonts.cairo(fontSize: 15, fontWeight: FontWeight.w700, color: const Color(0xFF475569)),
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: brandNavy,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: Text('رجوع', style: GoogleFonts.cairo(fontWeight: FontWeight.w700)),
+                ),
+              ],
+            ),
+          ),
         ),
       );
     }
