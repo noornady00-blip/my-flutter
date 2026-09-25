@@ -2,7 +2,8 @@
 // 💬 CHAT SERVICE & REALTIME FIRESTORE REPOSITORY
 // ==============================================================================
 // Manages real-time 1-on-1 conversations between Clients and Lawyers,
-// with Admin oversight, 12-digit fixed account IDs, replies, deletions, and push.
+// with Admin oversight, 12-digit fixed account IDs, replies, deletions,
+// pinning, blocking, and push notifications.
 // ==============================================================================
 
 import 'dart:async';
@@ -36,8 +37,15 @@ class ChatService {
       return _db.collection('chats').snapshots().map((snapshot) {
         final list = snapshot.docs
             .map((doc) => ChatModel.fromMap(doc.data(), doc.id))
+            .where((chat) => !chat.isDeletedBy(uid))
             .toList();
-        list.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        list.sort((a, b) {
+          final aPinned = a.isPinnedBy(uid);
+          final bPinned = b.isPinnedBy(uid);
+          if (aPinned && !bPinned) return -1;
+          if (!aPinned && bPinned) return 1;
+          return b.updatedAt.compareTo(a.updatedAt);
+        });
         return list;
       }).handleError((err) {
         debugPrint('[ChatService] admin getChatsForUser error: $err');
@@ -53,8 +61,15 @@ class ChatService {
         .map((snapshot) {
       final list = snapshot.docs
           .map((doc) => ChatModel.fromMap(doc.data(), doc.id))
+          .where((chat) => !chat.isDeletedBy(uid))
           .toList();
-      list.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      list.sort((a, b) {
+        final aPinned = a.isPinnedBy(uid);
+        final bPinned = b.isPinnedBy(uid);
+        if (aPinned && !bPinned) return -1;
+        if (!aPinned && bPinned) return 1;
+        return b.updatedAt.compareTo(a.updatedAt);
+      });
       return list;
     }).handleError((err) {
       debugPrint('[ChatService] getChatsForUser error: $err');
@@ -109,6 +124,34 @@ class ChatService {
     }).handleError((_) => 0);
   }
 
+  /// Stream blocked user UIDs for a specific user
+  Stream<List<String>> getBlockedUsersStream(String currentUserId) {
+    if (currentUserId.isEmpty) return Stream.value([]);
+    return _db.collection('users').doc(currentUserId).snapshots().map((snap) {
+      if (!snap.exists || snap.data() == null) return <String>[];
+      final raw = snap.data()!['blockedUsers'];
+      if (raw is List) {
+        return raw.map((e) => e.toString()).toList();
+      }
+      return <String>[];
+    }).handleError((_) => <String>[]);
+  }
+
+  /// Get current blocked user UIDs list
+  Future<List<String>> getBlockedUsers(String currentUserId) async {
+    if (currentUserId.isEmpty) return [];
+    try {
+      final snap = await _db.collection('users').doc(currentUserId).get();
+      if (snap.exists && snap.data() != null) {
+        final raw = snap.data()!['blockedUsers'];
+        if (raw is List) {
+          return raw.map((e) => e.toString()).toList();
+        }
+      }
+    } catch (_) {}
+    return [];
+  }
+
   // ---------------------------------------------------------------------------
   // 🚀 ACTIONS
   // ---------------------------------------------------------------------------
@@ -140,6 +183,8 @@ class ChatService {
       lastMessageTime: DateTime.now(),
       unreadByClient: 0,
       unreadByLawyer: 0,
+      pinnedBy: const [],
+      deletedBy: const [],
     );
 
     try {
@@ -161,7 +206,6 @@ class ChatService {
       return fallbackChat;
     } catch (e) {
       debugPrint('[ChatService] getOrCreateChat notice: $e');
-      // Always return valid ChatModel so UI never freezes or spins indefinitely
       return fallbackChat;
     }
   }
@@ -204,11 +248,12 @@ class ChatService {
     };
     batch.set(msgDocRef, messageData);
 
-    // 2. Update conversation summary
+    // 2. Update conversation summary and remove from deletedBy if either party sent a message
     final chatDocRef = _db.collection('chats').doc(chatId);
     final updateData = <String, dynamic>{
       'id': chatId,
       'participants': FieldValue.arrayUnion([senderId, recipientId]),
+      'deletedBy': FieldValue.arrayRemove([senderId, recipientId]),
       'lastMessage': cleanText,
       'lastSenderId': senderId,
       'lastSenderName': senderName,
@@ -248,11 +293,13 @@ class ChatService {
   }
 
   /// Delete message for everyone (within 1 minute)
+  /// Synchronizes the parent conversation summary so it displays "تم حذف هذه الرسالة" outside and clears unread badges.
   Future<void> deleteMessageForEveryone({
     required String chatId,
     required String messageId,
   }) async {
     try {
+      // 1. Mark message as deleted
       await _db
           .collection('chats')
           .doc(chatId)
@@ -262,6 +309,35 @@ class ChatService {
         'isDeletedForEveryone': true,
         'text': 'تم حذف هذه الرسالة',
       });
+
+      // 2. Fetch latest message to see if this was the latest message
+      final lastMsgSnap = await _db
+          .collection('chats')
+          .doc(chatId)
+          .collection('messages')
+          .orderBy('createdAt', descending: true)
+          .limit(1)
+          .get();
+
+      if (lastMsgSnap.docs.isNotEmpty) {
+        final latestDoc = lastMsgSnap.docs.first;
+        final isDeleted = latestDoc.data()['isDeletedForEveryone'] == true;
+        final latestText = isDeleted
+            ? 'تم حذف هذه الرسالة'
+            : (latestDoc.data()['text']?.toString() ?? 'تم حذف هذه الرسالة');
+
+        await _db.collection('chats').doc(chatId).update({
+          'lastMessage': latestText,
+          'unreadByClient': 0,
+          'unreadByLawyer': 0,
+        });
+      } else {
+        await _db.collection('chats').doc(chatId).update({
+          'lastMessage': 'تم حذف هذه الرسالة',
+          'unreadByClient': 0,
+          'unreadByLawyer': 0,
+        });
+      }
     } catch (e) {
       debugPrint('[ChatService] deleteMessageForEveryone error: $e');
     }
@@ -282,8 +358,99 @@ class ChatService {
           .update({
         'deletedFor': FieldValue.arrayUnion([currentUserId]),
       });
+
+      // Clear any stuck unread count on the parent chat
+      final chatDoc = await _db.collection('chats').doc(chatId).get();
+      if (chatDoc.exists) {
+        final data = chatDoc.data() ?? {};
+        final isLawyer = (data['lawyerId'] == currentUserId);
+        if (isLawyer) {
+          await _db.collection('chats').doc(chatId).update({'unreadByLawyer': 0});
+        } else {
+          await _db.collection('chats').doc(chatId).update({'unreadByClient': 0});
+        }
+      }
     } catch (e) {
       debugPrint('[ChatService] deleteMessageForMe error: $e');
+    }
+  }
+
+  /// Toggle pin status for a chat
+  Future<void> togglePinChat({
+    required String chatId,
+    required String currentUserId,
+    required bool pin,
+  }) async {
+    try {
+      await _db.collection('chats').doc(chatId).update({
+        'pinnedBy': pin
+            ? FieldValue.arrayUnion([currentUserId])
+            : FieldValue.arrayRemove([currentUserId]),
+      });
+    } catch (e) {
+      debugPrint('[ChatService] togglePinChat error: $e');
+    }
+  }
+
+  /// Toggle unread status for a chat
+  Future<void> toggleUnreadChat({
+    required String chatId,
+    required String currentUserId,
+    required String role,
+    required bool markUnread,
+  }) async {
+    try {
+      final field = role == 'lawyer' ? 'unreadByLawyer' : 'unreadByClient';
+      await _db.collection('chats').doc(chatId).update({
+        field: markUnread ? 1 : 0,
+      });
+    } catch (e) {
+      debugPrint('[ChatService] toggleUnreadChat error: $e');
+    }
+  }
+
+  /// Delete conversation for the active user only (removes from their list)
+  Future<void> deleteChatForUser({
+    required String chatId,
+    required String currentUserId,
+  }) async {
+    try {
+      await _db.collection('chats').doc(chatId).update({
+        'deletedBy': FieldValue.arrayUnion([currentUserId]),
+        'pinnedBy': FieldValue.arrayRemove([currentUserId]),
+      });
+    } catch (e) {
+      debugPrint('[ChatService] deleteChatForUser error: $e');
+    }
+  }
+
+  /// Block a user
+  Future<void> blockUser({
+    required String currentUserId,
+    required String targetUserId,
+  }) async {
+    if (currentUserId.isEmpty || targetUserId.isEmpty) return;
+    try {
+      await _db.collection('users').doc(currentUserId).set({
+        'blockedUsers': FieldValue.arrayUnion([targetUserId]),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('[ChatService] blockUser error: $e');
+    }
+  }
+
+  /// Unblock a user
+  Future<void> unblockUser({
+    required String currentUserId,
+    required String targetUserId,
+  }) async {
+    if (currentUserId.isEmpty || targetUserId.isEmpty) return;
+    try {
+      await _db.collection('users').doc(currentUserId).update({
+        'blockedUsers': FieldValue.arrayRemove([targetUserId]),
+      });
+    } catch (e) {
+      debugPrint('[ChatService] unblockUser error: $e');
     }
   }
 

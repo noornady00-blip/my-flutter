@@ -23,6 +23,7 @@ import '../../../core/utils/image_utils.dart';
 import '../../../core/utils/app_error_translator.dart';
 import '../../../core/utils/account_id_utils.dart';
 import '../chat/chat_list_screen.dart';
+import 'blocked_users_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final bool isStandalone;
@@ -1042,6 +1043,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 iconColor: const Color(0xFFF59E0B),
                 onTap: _showChangePasswordDialog,
               ),
+              if (_isLoggedIn && _userUid != null && _userUid!.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                _buildActionCard(
+                  icon: Icons.person_off_rounded,
+                  title: 'الجهات المحظورة',
+                  subtitle: 'إدارة وفك الحظر عن الحسابات وجهات الاتصال',
+                  iconColor: const Color(0xFFDC2626),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => BlockedUsersScreen(currentUserId: _userUid!),
+                      ),
+                    );
+                  },
+                ),
+              ],
               const SizedBox(height: 22),
 
               // 3. Support & Assistance Section

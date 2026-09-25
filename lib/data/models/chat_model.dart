@@ -2,7 +2,8 @@
 // 💬 CHAT CONVERSATION DATA MODEL
 // ==============================================================================
 // Represents a conversation thread between a Client and a Lawyer (accessible
-// to authorized Admins) with participant details, 12-digit account IDs, and status.
+// to authorized Admins) with participant details, 12-digit account IDs, pinning,
+// deletion, and real-time read/unread status.
 // ==============================================================================
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -29,6 +30,8 @@ class ChatModel {
   final DateTime lastMessageTime;
   final int unreadByClient;
   final int unreadByLawyer;
+  final List<String> pinnedBy;
+  final List<String> deletedBy;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -52,6 +55,8 @@ class ChatModel {
     DateTime? lastMessageTime,
     this.unreadByClient = 0,
     this.unreadByLawyer = 0,
+    this.pinnedBy = const [],
+    this.deletedBy = const [],
     DateTime? createdAt,
     DateTime? updatedAt,
   })  : lastMessageTime = lastMessageTime ?? DateTime.now(),
@@ -69,6 +74,16 @@ class ChatModel {
     final List<String> parsedParticipants = rawParticipants is List
         ? rawParticipants.map((e) => e.toString()).toList()
         : [map['clientId']?.toString() ?? '', map['lawyerId']?.toString() ?? ''];
+
+    final rawPinnedBy = map['pinnedBy'];
+    final List<String> parsedPinnedBy = rawPinnedBy is List
+        ? rawPinnedBy.map((e) => e.toString()).toList()
+        : [];
+
+    final rawDeletedBy = map['deletedBy'];
+    final List<String> parsedDeletedBy = rawDeletedBy is List
+        ? rawDeletedBy.map((e) => e.toString()).toList()
+        : [];
 
     return ChatModel(
       id: id,
@@ -90,6 +105,8 @@ class ChatModel {
       lastMessageTime: parseDate(map['lastMessageTime']),
       unreadByClient: (map['unreadByClient'] is num) ? (map['unreadByClient'] as num).toInt() : 0,
       unreadByLawyer: (map['unreadByLawyer'] is num) ? (map['unreadByLawyer'] as num).toInt() : 0,
+      pinnedBy: parsedPinnedBy,
+      deletedBy: parsedDeletedBy,
       createdAt: parseDate(map['createdAt']),
       updatedAt: parseDate(map['updatedAt']),
     );
@@ -116,10 +133,15 @@ class ChatModel {
       'lastMessageTime': Timestamp.fromDate(lastMessageTime),
       'unreadByClient': unreadByClient,
       'unreadByLawyer': unreadByLawyer,
+      'pinnedBy': pinnedBy,
+      'deletedBy': deletedBy,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
     };
   }
+
+  bool isPinnedBy(String uid) => pinnedBy.contains(uid);
+  bool isDeletedBy(String uid) => deletedBy.contains(uid);
 
   /// Helper to get the other party's name and details based on current user UID
   String getOtherPartyName(String currentUserId) {

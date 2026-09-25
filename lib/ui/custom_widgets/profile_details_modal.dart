@@ -370,6 +370,7 @@ class _LawyerModalSheet extends StatefulWidget {
 
 class _LawyerModalSheetState extends State<_LawyerModalSheet> {
   bool _isActionLoading = false;
+  bool _isBlockedByMe = false;
   late LawyerModel _lawyer;
 
   @override
@@ -383,6 +384,23 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
         _lawyer.photoUrl!.trim().isEmpty) {
       _loadFullLawyerData();
     }
+    _checkIfBlocked();
+  }
+
+  Future<void> _checkIfBlocked() async {
+    try {
+      final currentUid = FirebaseAuth.instance.currentUser?.uid;
+      if (currentUid != null && currentUid.isNotEmpty) {
+        final targetUid = _lawyer.uid;
+        if (targetUid.isNotEmpty) {
+          final userDoc = await FirebaseFirestore.instance.collection('users').doc(currentUid).get();
+          final raw = userDoc.data()?['blockedUsers'];
+          if (raw is List && raw.map((e) => e.toString()).contains(targetUid)) {
+            if (mounted) setState(() => _isBlockedByMe = true);
+          }
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> _loadFullLawyerData() async {
@@ -538,14 +556,22 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
                   padding: const EdgeInsets.all(3.0),
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFD49B1A), Color(0xFF0B2A5B)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
+                    gradient: _isBlockedByMe
+                        ? const LinearGradient(
+                            colors: [Color(0xFFEF4444), Color(0xFF991B1B)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          )
+                        : const LinearGradient(
+                            colors: [Color(0xFFD49B1A), Color(0xFF0B2A5B)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFF0B2A5B).withValues(alpha: 0.18),
+                        color: _isBlockedByMe
+                            ? const Color(0xFFEF4444).withValues(alpha: 0.25)
+                            : const Color(0xFF0B2A5B).withValues(alpha: 0.18),
                         blurRadius: 16,
                         offset: const Offset(0, 5),
                       ),
@@ -583,7 +609,7 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
                     textAlign: TextAlign.center,
                   ),
                 ),
-                if (isApproved) ...[
+                if (isApproved && !_isBlockedByMe) ...[
                   const SizedBox(width: 6),
                   const Icon(
                     Icons.verified_rounded,
@@ -596,7 +622,7 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
             const SizedBox(height: 8),
 
             // Location Badge (if available)
-            if (lawyer.city.trim().isNotEmpty) ...[
+            if (lawyer.city.trim().isNotEmpty && !_isBlockedByMe) ...[
               Center(
                 child: Container(
                   padding: const EdgeInsets.symmetric(
@@ -626,11 +652,79 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
               ),
               const SizedBox(height: 8),
             ],
-            const SizedBox(height: 16),
 
-            // Iconic Action Buttons
-            _buildIconic3DActionButtons(context, lawyer),
-            const SizedBox(height: 22),
+            // Suspended / Blocked Alert Banner
+            if (_isBlockedByMe) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEF2F2),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFFECACA), width: 1.2),
+                ),
+                child: Row(
+                  textDirection: TextDirection.rtl,
+                  children: [
+                    const Icon(Icons.block_rounded, color: Color(0xFFDC2626), size: 22),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'هذا الحساب موقوف',
+                            style: GoogleFonts.cairo(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: const Color(0xFFDC2626),
+                            ),
+                          ),
+                          Text(
+                            'تم حظر هذا الحساب من قبلك، وحجبت بيانات التواصل الخاصة به.',
+                            style: GoogleFonts.cairo(
+                              fontSize: 11.5,
+                              color: const Color(0xFF991B1B),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    ElevatedButton.icon(
+                      onPressed: () async {
+                        final cUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+                        if (cUid.isNotEmpty) {
+                          await FirebaseFirestore.instance.collection('users').doc(cUid).update({
+                            'blockedUsers': FieldValue.arrayRemove([lawyer.uid]),
+                          });
+                          if (!mounted) return;
+                          setState(() => _isBlockedByMe = false);
+                          _showFloatingCopyToast(this.context, 'تم فك الحظر بنجاح');
+                        }
+                      },
+                      icon: const Icon(Icons.lock_open_rounded, size: 14),
+                      label: Text(
+                        'فك الحظر',
+                        style: GoogleFonts.cairo(fontSize: 11.5, fontWeight: FontWeight.w800),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0B2A5B),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        elevation: 0,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ] else ...[
+              const SizedBox(height: 16),
+              // Iconic Action Buttons (Only when NOT blocked)
+              _buildIconic3DActionButtons(context, lawyer),
+              const SizedBox(height: 22),
+            ],
 
             // Detailed Info Cards
             Container(
@@ -649,6 +743,7 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
               ),
               child: Column(
                 children: [
+                  // ID (ALWAYS VISIBLE & ONLY SENSITIVE ITEM SHOWN WHEN BLOCKED)
                   if (lawyer.accountId.isNotEmpty) ...[
                     _buildDetailRow(
                       iconWidget: const Icon(Icons.badge_rounded,
@@ -663,56 +758,73 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
                     ),
                     const Divider(height: 20, color: Color(0xFFE2E8F0)),
                   ],
-                  _buildDetailRow(
-                    iconWidget: const Icon(Icons.phone_android_rounded,
-                        color: Color(0xFF3B82F6), size: 18),
-                    label: 'رقم الهاتف',
-                    value: lawyer.phone,
-                    isPhone: true,
-                    color: const Color(0xFF3B82F6),
-                    onCopy: () {
-                      Clipboard.setData(ClipboardData(text: lawyer.phone));
-                      _showCopyToast(context, 'تم نسخ رقم الهاتف بنجاح');
-                    },
-                  ),
-                  const Divider(height: 20, color: Color(0xFFE2E8F0)),
-                  _buildDetailRow(
-                    iconWidget: const WhatsAppIcon(
-                        size: 18, color: Color(0xFF10B981)),
-                    label: 'رقم الواتساب',
-                    value: lawyer.whatsapp.isNotEmpty
-                        ? lawyer.whatsapp
-                        : lawyer.phone,
-                    isPhone: true,
-                    color: const Color(0xFF10B981),
-                    onCopy: () {
-                      final val = lawyer.whatsapp.isNotEmpty
+
+                  // Phone & WhatsApp ONLY SHOWN WHEN NOT BLOCKED
+                  if (!_isBlockedByMe) ...[
+                    _buildDetailRow(
+                      iconWidget: const Icon(Icons.phone_android_rounded,
+                          color: Color(0xFF3B82F6), size: 18),
+                      label: 'رقم الهاتف',
+                      value: lawyer.phone,
+                      isPhone: true,
+                      color: const Color(0xFF3B82F6),
+                      onCopy: () {
+                        Clipboard.setData(ClipboardData(text: lawyer.phone));
+                        _showCopyToast(context, 'تم نسخ رقم الهاتف بنجاح');
+                      },
+                    ),
+                    const Divider(height: 20, color: Color(0xFFE2E8F0)),
+                    _buildDetailRow(
+                      iconWidget: const WhatsAppIcon(
+                          size: 18, color: Color(0xFF10B981)),
+                      label: 'رقم الواتساب',
+                      value: lawyer.whatsapp.isNotEmpty
                           ? lawyer.whatsapp
-                          : lawyer.phone;
-                      Clipboard.setData(ClipboardData(text: val));
-                      _showCopyToast(context, 'تم نسخ رقم الواتساب بنجاح');
-                    },
-                  ),
-                  const Divider(height: 20, color: Color(0xFFE2E8F0)),
+                          : lawyer.phone,
+                      isPhone: true,
+                      color: const Color(0xFF10B981),
+                      onCopy: () {
+                        final val = lawyer.whatsapp.isNotEmpty
+                            ? lawyer.whatsapp
+                            : lawyer.phone;
+                        Clipboard.setData(ClipboardData(text: val));
+                        _showCopyToast(context, 'تم نسخ رقم الواتساب بنجاح');
+                      },
+                    ),
+                    const Divider(height: 20, color: Color(0xFFE2E8F0)),
+                  ],
+
                   _buildDetailRow(
                     iconWidget: Icon(
-                      Icons.verified_user_rounded,
-                      color: isApproved
-                          ? const Color(0xFF10B981)
-                          : (isPending
-                              ? const Color(0xFFF59E0B)
-                              : const Color(0xFFEF4444)),
+                      _isBlockedByMe
+                          ? Icons.block_rounded
+                          : (isApproved
+                              ? Icons.verified_user_rounded
+                              : (isPending
+                                  ? Icons.pending_rounded
+                                  : Icons.error_rounded)),
+                      color: _isBlockedByMe
+                          ? const Color(0xFFDC2626)
+                          : (isApproved
+                              ? const Color(0xFF10B981)
+                              : (isPending
+                                  ? const Color(0xFFF59E0B)
+                                  : const Color(0xFFEF4444))),
                       size: 18,
                     ),
                     label: 'حالة الحساب',
-                    value: isApproved
-                        ? 'حساب موثق ومفعل'
-                        : (isPending ? 'قيد مراجعة الإدارة' : 'مرفوض'),
-                    color: isApproved
-                        ? const Color(0xFF10B981)
-                        : (isPending
-                            ? const Color(0xFFF59E0B)
-                            : const Color(0xFFEF4444)),
+                    value: _isBlockedByMe
+                        ? 'هذا الحساب موقوف'
+                        : (isApproved
+                            ? 'حساب موثق ومفعل'
+                            : (isPending ? 'قيد مراجعة الإدارة' : 'مرفوض')),
+                    color: _isBlockedByMe
+                        ? const Color(0xFFDC2626)
+                        : (isApproved
+                            ? const Color(0xFF10B981)
+                            : (isPending
+                                ? const Color(0xFFF59E0B)
+                                : const Color(0xFFEF4444))),
                   ),
                   const Divider(height: 20, color: Color(0xFFE2E8F0)),
                   _buildDetailRow(
@@ -1410,6 +1522,7 @@ class _ClientModalSheet extends StatefulWidget {
 
 class _ClientModalSheetState extends State<_ClientModalSheet> {
   late UserModel _client;
+  bool _isBlockedByMe = false;
 
   @override
   void initState() {
@@ -1422,6 +1535,23 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
         _client.photoUrl!.trim().isEmpty) {
       _loadFullClientData();
     }
+    _checkIfBlocked();
+  }
+
+  Future<void> _checkIfBlocked() async {
+    try {
+      final currentUid = FirebaseAuth.instance.currentUser?.uid;
+      if (currentUid != null && currentUid.isNotEmpty) {
+        final targetUid = _client.uid;
+        if (targetUid.isNotEmpty) {
+          final userDoc = await FirebaseFirestore.instance.collection('users').doc(currentUid).get();
+          final raw = userDoc.data()?['blockedUsers'];
+          if (raw is List && raw.map((e) => e.toString()).contains(targetUid)) {
+            if (mounted) setState(() => _isBlockedByMe = true);
+          }
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> _loadFullClientData() async {
@@ -1540,17 +1670,25 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
                     padding: const EdgeInsets.all(3.5),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      gradient: isAdminRole
+                      gradient: _isBlockedByMe
                           ? const LinearGradient(
-                              colors: [Color(0xFFD49B1A), Color(0xFF0B2A5B)],
+                              colors: [Color(0xFFEF4444), Color(0xFF991B1B)],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             )
-                          : null,
-                      color: isAdminRole ? null : const Color(0xFF0B2A5B),
+                          : (isAdminRole
+                              ? const LinearGradient(
+                                  colors: [Color(0xFFD49B1A), Color(0xFF0B2A5B)],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                )
+                              : null),
+                      color: (_isBlockedByMe || isAdminRole) ? null : const Color(0xFF0B2A5B),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF0B2A5B).withValues(alpha: 0.25),
+                          color: _isBlockedByMe
+                              ? const Color(0xFFEF4444).withValues(alpha: 0.25)
+                              : const Color(0xFF0B2A5B).withValues(alpha: 0.25),
                           blurRadius: 16,
                           offset: const Offset(0, 5),
                         ),
@@ -1581,117 +1719,188 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 6),
-            Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-                decoration: BoxDecoration(
-                  gradient: isAdminRole
-                      ? const LinearGradient(
-                          colors: [Color(0xFFFEF3C7), Color(0xFFFDE68A)],
-                        )
-                      : null,
-                  color: isAdminRole ? null : const Color(0xFFEFF6FF),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: isAdminRole ? const Color(0xFFD49B1A) : const Color(0xFFBFDBFE),
+            if (!_isBlockedByMe)
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                  decoration: BoxDecoration(
+                    gradient: isAdminRole
+                        ? const LinearGradient(
+                            colors: [Color(0xFFFEF3C7), Color(0xFFFDE68A)],
+                          )
+                        : null,
+                    color: isAdminRole ? null : const Color(0xFFEFF6FF),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isAdminRole ? const Color(0xFFD49B1A) : const Color(0xFFBFDBFE),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (isAdminRole) ...[
+                        const Icon(Icons.shield_rounded, size: 15, color: Color(0xFF92400E)),
+                        const SizedBox(width: 5),
+                      ],
+                      Text(
+                        isAdminRole ? 'مشرف المنصة • إدارة محاميك' : 'عميل مسجل في المنصة',
+                        style: GoogleFonts.cairo(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: isAdminRole ? const Color(0xFF92400E) : const Color(0xFF2563EB),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+              ),
+
+            // Suspended / Blocked Alert Banner
+            if (_isBlockedByMe) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEF2F2),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFFECACA), width: 1.2),
+                ),
                 child: Row(
-                  mainAxisSize: MainAxisSize.min,
+                  textDirection: TextDirection.rtl,
                   children: [
-                    if (isAdminRole) ...[
-                      const Icon(Icons.shield_rounded, size: 15, color: Color(0xFF92400E)),
-                      const SizedBox(width: 5),
-                    ],
-                    Text(
-                      isAdminRole ? 'مشرف المنصة • إدارة محاميك' : 'عميل مسجل في المنصة',
-                      style: GoogleFonts.cairo(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
-                        color: isAdminRole ? const Color(0xFF92400E) : const Color(0xFF2563EB),
+                    const Icon(Icons.block_rounded, color: Color(0xFFDC2626), size: 22),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'هذا الحساب موقوف',
+                            style: GoogleFonts.cairo(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: const Color(0xFFDC2626),
+                            ),
+                          ),
+                          Text(
+                            'تم حظر هذا الحساب من قبلك، وحجبت بيانات التواصل الخاصة به.',
+                            style: GoogleFonts.cairo(
+                              fontSize: 11.5,
+                              color: const Color(0xFF991B1B),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    ElevatedButton.icon(
+                      onPressed: () async {
+                        final cUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+                        if (cUid.isNotEmpty) {
+                          await FirebaseFirestore.instance.collection('users').doc(cUid).update({
+                            'blockedUsers': FieldValue.arrayRemove([client.uid]),
+                          });
+                          if (!mounted) return;
+                          setState(() => _isBlockedByMe = false);
+                          _showFloatingCopyToast(this.context, 'تم فك الحظر بنجاح');
+                        }
+                      },
+                      icon: const Icon(Icons.lock_open_rounded, size: 14),
+                      label: Text(
+                        'فك الحظر',
+                        style: GoogleFonts.cairo(fontSize: 11.5, fontWeight: FontWeight.w800),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0B2A5B),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        elevation: 0,
                       ),
                     ),
                   ],
                 ),
               ),
-            ),
-            const SizedBox(height: 18),
-            Row(
-              textDirection: TextDirection.rtl,
-              children: [
-                // 1. Chat
-                Expanded(
-                  child: _ExecutiveModalActionButton(
-                    title: 'محادثة',
-                    iconWidget: const Icon(Icons.chat_bubble_rounded,
-                        color: Colors.white, size: 17),
-                    backgroundColor: const Color(0xFF0F766E),
-                    borderColor: const Color(0xFF115E59),
-                    shadowColor: const Color(0xFF0F766E),
-                    onTap: () {
-                      final currentUser = FirebaseAuth.instance.currentUser;
-                      if (currentUser == null) {
-                        _showFloatingCopyToast(
-                            context, 'يرجى تسجيل الدخول لبدء محادثة');
-                        return;
-                      }
-                      if (currentUser.uid == client.uid) {
-                        _showFloatingCopyToast(
-                            context, 'لا يمكنك بدء محادثة مع نفسك');
-                        return;
-                      }
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => ChatScreen(
-                            clientUid: client.uid,
-                            clientName: client.name,
-                            clientAccountId: client.accountId,
-                            clientPhone: client.phone,
-                            clientPhotoUrl: client.photoUrl,
-                            clientPhotoBase64: client.photoBase64,
-                            currentUserRole: widget.isAdmin ? 'admin' : null,
+              const SizedBox(height: 16),
+            ] else ...[
+              const SizedBox(height: 18),
+              Row(
+                textDirection: TextDirection.rtl,
+                children: [
+                  // 1. Chat
+                  Expanded(
+                    child: _ExecutiveModalActionButton(
+                      title: 'محادثة',
+                      iconWidget: const Icon(Icons.chat_bubble_rounded,
+                          color: Colors.white, size: 17),
+                      backgroundColor: const Color(0xFF0F766E),
+                      borderColor: const Color(0xFF115E59),
+                      shadowColor: const Color(0xFF0F766E),
+                      onTap: () {
+                        final currentUser = FirebaseAuth.instance.currentUser;
+                        if (currentUser == null) {
+                          _showFloatingCopyToast(
+                              context, 'يرجى تسجيل الدخول لبدء محادثة');
+                          return;
+                        }
+                        if (currentUser.uid == client.uid) {
+                          _showFloatingCopyToast(
+                              context, 'لا يمكنك بدء محادثة مع نفسك');
+                          return;
+                        }
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => ChatScreen(
+                              clientUid: client.uid,
+                              clientName: client.name,
+                              clientAccountId: client.accountId,
+                              clientPhone: client.phone,
+                              clientPhotoUrl: client.photoUrl,
+                              clientPhotoBase64: client.photoBase64,
+                              currentUserRole: widget.isAdmin ? 'admin' : null,
+                            ),
                           ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-
-                if (!isAdminRole) ...[
-                  const SizedBox(width: 8),
-
-                  // 2. Call (Clients/Lawyers only)
-                  Expanded(
-                    child: _ExecutiveModalActionButton(
-                      title: 'اتصال',
-                      iconWidget: const Icon(Icons.phone_rounded,
-                          color: Color(0xFFD49B1A), size: 17),
-                      backgroundColor: const Color(0xFF0B2A5B),
-                      borderColor: const Color(0xFF1E2E5C),
-                      shadowColor: const Color(0xFF0B2A5B),
-                      onTap: () =>
-                          ProfileDetailsModal.launchCall(client.phone),
+                        );
+                      },
                     ),
                   ),
-                  const SizedBox(width: 8),
 
-                  // 3. WhatsApp (Clients/Lawyers only)
-                  Expanded(
-                    child: _ExecutiveModalActionButton(
-                      title: 'واتساب',
-                      iconWidget:
-                          const WhatsAppIcon(size: 17, color: Colors.white),
-                      backgroundColor: const Color(0xFF1E8E5A),
-                      borderColor: const Color(0xFF15803D),
-                      shadowColor: const Color(0xFF16A34A),
-                      onTap: () =>
-                          ProfileDetailsModal.launchWhatsApp(client.phone),
+                  if (!isAdminRole) ...[
+                    const SizedBox(width: 8),
+
+                    // 2. Call (Clients/Lawyers only)
+                    Expanded(
+                      child: _ExecutiveModalActionButton(
+                        title: 'اتصال',
+                        iconWidget: const Icon(Icons.phone_rounded,
+                            color: Color(0xFFD49B1A), size: 17),
+                        backgroundColor: const Color(0xFF0B2A5B),
+                        borderColor: const Color(0xFF1E2E5C),
+                        shadowColor: const Color(0xFF0B2A5B),
+                        onTap: () =>
+                            ProfileDetailsModal.launchCall(client.phone),
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 8),
+
+                    // 3. WhatsApp (Clients/Lawyers only)
+                    Expanded(
+                      child: _ExecutiveModalActionButton(
+                        title: 'واتساب',
+                        iconWidget:
+                            const WhatsAppIcon(size: 17, color: Colors.white),
+                        backgroundColor: const Color(0xFF1E8E5A),
+                        borderColor: const Color(0xFF15803D),
+                        shadowColor: const Color(0xFF16A34A),
+                        onTap: () =>
+                            ProfileDetailsModal.launchWhatsApp(client.phone),
+                      ),
+                    ),
+                  ],
                 ],
-              ],
-            ),
-            const SizedBox(height: 20),
+              ),
+              const SizedBox(height: 20),
+            ],
+
             Container(
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
@@ -1701,6 +1910,7 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
               ),
               child: Column(
                 children: [
+                  // ID (ALWAYS VISIBLE & ONLY SENSITIVE ITEM SHOWN WHEN BLOCKED)
                   if (client.accountId.isNotEmpty) ...[
                     _buildDetailRow(
                       context: context,
@@ -1717,7 +1927,9 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
                     ),
                     const Divider(height: 20, color: Color(0xFFE2E8F0)),
                   ],
-                  if (!isAdminRole && client.phone.isNotEmpty) ...[
+
+                  // Phone only when NOT blocked
+                  if (!_isBlockedByMe && !isAdminRole && client.phone.isNotEmpty) ...[
                     _buildDetailRow(
                       context: context,
                       iconWidget: const Icon(Icons.phone_android_rounded,
@@ -1734,6 +1946,7 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
                     ),
                     const Divider(height: 20, color: Color(0xFFE2E8F0)),
                   ],
+
                   _buildDetailRow(
                     context: context,
                     iconWidget: const Icon(Icons.calendar_today_rounded,
@@ -1746,12 +1959,20 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
                   _buildDetailRow(
                     context: context,
                     iconWidget: Icon(
-                        isAdminRole ? Icons.shield_rounded : Icons.check_circle_outline_rounded,
-                        color: isAdminRole ? const Color(0xFFD49B1A) : const Color(0xFF10B981),
+                        _isBlockedByMe
+                            ? Icons.block_rounded
+                            : (isAdminRole ? Icons.shield_rounded : Icons.check_circle_outline_rounded),
+                        color: _isBlockedByMe
+                            ? const Color(0xFFDC2626)
+                            : (isAdminRole ? const Color(0xFFD49B1A) : const Color(0xFF10B981)),
                         size: 18),
                     label: 'حالة الحساب',
-                    value: isAdminRole ? 'مشرف رسمي معتمد' : 'حساب نشط',
-                    color: isAdminRole ? const Color(0xFFD49B1A) : const Color(0xFF10B981),
+                    value: _isBlockedByMe
+                        ? 'هذا الحساب موقوف'
+                        : (isAdminRole ? 'مشرف رسمي معتمد' : 'حساب نشط'),
+                    color: _isBlockedByMe
+                        ? const Color(0xFFDC2626)
+                        : (isAdminRole ? const Color(0xFFD49B1A) : const Color(0xFF10B981)),
                   ),
                 ],
               ),
