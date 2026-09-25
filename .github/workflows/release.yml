@@ -1,4 +1,4 @@
-﻿name: "Build and Release APK + AAB + iOS"
+name: "Build and Release APK + AAB + iOS"
 
 on:
   workflow_dispatch:
@@ -55,6 +55,26 @@ jobs:
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "build_number=$BUILD" >> $GITHUB_OUTPUT
+
+      - name: "Set up Keystore for Release Build"
+        run: |
+          mkdir -p ~/.android ~/.config/.android
+          if [ ! -f ~/.android/debug.keystore ]; then
+            keytool -genkey -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          if [ ! -f ~/.config/.android/debug.keystore ]; then
+            cp ~/.android/debug.keystore ~/.config/.android/debug.keystore
+          fi
+          # Also create a valid release keystore in android/app/ if key.properties is absent
+          if [ ! -f android/key.properties ]; then
+            keytool -genkey -v -keystore android/app/release.keystore -storepass mahameek2026 -alias mahameek -keypass mahameek2026 -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Mahameek,O=Mahameek,C=SA"
+            cat <<EOF > android/key.properties
+storePassword=mahameek2026
+keyPassword=mahameek2026
+keyAlias=mahameek
+storeFile=release.keystore
+EOF
+          fi
 
       - name: "Build Release APK"
         run: flutter build apk --release
@@ -165,21 +185,18 @@ jobs:
           name: mahameek-ios-ipa
           path: release-files/
 
-      - name: "Create Git Tag"
+      - name: "Generate Release Tag"
+        id: create_tag
         run: |
           VERSION="${{ needs.build-android.outputs.version }}"
           BUILD="${{ needs.build-android.outputs.build_number }}"
           TAG="v${VERSION}+${BUILD}-$(date +%Y%m%d%H%M)"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "$TAG"
-          git push origin "$TAG"
-          echo "RELEASE_TAG=$TAG" >> $GITHUB_ENV
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
 
       - name: "Create GitHub Release"
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.RELEASE_TAG }}
+          tag_name: ${{ steps.create_tag.outputs.tag }}
           name: "Mahameek v${{ needs.build-android.outputs.version }}"
           body: |
             ## تطبيق محاميك — الإصدار ${{ needs.build-android.outputs.version }}

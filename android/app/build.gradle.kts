@@ -41,17 +41,43 @@ android {
             val storeFileProp = keystoreProperties["storeFile"] as String?
             val storePasswordProp = keystoreProperties["storePassword"] as String?
 
-            if (keyAliasProp != null && storeFileProp != null && file(storeFileProp).exists()) {
+            val keystoreFile = if (storeFileProp != null) {
+                val f1 = file(storeFileProp)
+                val f2 = rootProject.file(storeFileProp)
+                if (f1.exists()) f1 else if (f2.exists()) f2 else null
+            } else null
+
+            if (keyAliasProp != null && keystoreFile != null) {
                 keyAlias = keyAliasProp
                 keyPassword = keyPasswordProp
-                storeFile = file(storeFileProp)
+                storeFile = keystoreFile
                 storePassword = storePasswordProp
             } else {
-                // Fallback to debug keystore for development / CI before release key is configured
-                keyAlias = signingConfigs.getByName("debug").keyAlias
-                keyPassword = signingConfigs.getByName("debug").keyPassword
-                storeFile = signingConfigs.getByName("debug").storeFile
-                storePassword = signingConfigs.getByName("debug").storePassword
+                // Fallback to debug signing config for CI / development if release key is absent
+                val debugConfig = signingConfigs.getByName("debug")
+                val debugFile = debugConfig.storeFile ?: file(System.getProperty("user.home") + "/.android/debug.keystore")
+                if (!debugFile.exists()) {
+                    debugFile.parentFile?.mkdirs()
+                    try {
+                        ProcessBuilder(
+                            "keytool", "-genkey", "-v",
+                            "-keystore", debugFile.absolutePath,
+                            "-storepass", "android",
+                            "-alias", "androiddebugkey",
+                            "-keypass", "android",
+                            "-keyalg", "RSA",
+                            "-keysize", "2048",
+                            "-validity", "10000",
+                            "-dname", "CN=Android Debug,O=Android,C=US"
+                        ).redirectErrorStream(true).start().waitFor()
+                    } catch (e: Exception) {
+                        println("Note: could not auto-create debug keystore: ${e.message}")
+                    }
+                }
+                keyAlias = debugConfig.keyAlias
+                keyPassword = debugConfig.keyPassword
+                storeFile = debugFile
+                storePassword = debugConfig.storePassword
             }
         }
     }
