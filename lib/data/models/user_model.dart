@@ -13,6 +13,7 @@ class UserModel {
   final String phone;
   final String role; // 'client' | 'lawyer' | 'admin'
   final String status; // 'active' | 'suspended'
+  final String accountId; // 12-digit fixed unique identifier
   final String? photoUrl;
   final String? photoBase64;
   final DateTime createdAt;
@@ -23,6 +24,7 @@ class UserModel {
     required this.phone,
     required this.role,
     this.status = 'active',
+    this.accountId = '',
     this.photoUrl,
     this.photoBase64,
     DateTime? createdAt,
@@ -47,6 +49,7 @@ class UserModel {
       phone: map['phone']?.toString() ?? '',
       role: map['role']?.toString() ?? 'client',
       status: map['status']?.toString() ?? 'active',
+      accountId: map['accountId']?.toString() ?? map['memberId']?.toString() ?? '',
       photoUrl: map['photoUrl']?.toString() ??
           (map['photo'] != null && map['photo'].toString().startsWith('http')
               ? map['photo'].toString()
@@ -74,6 +77,7 @@ class UserModel {
       'phone': phone,
       'role': role,
       'status': status,
+      if (accountId.isNotEmpty) 'accountId': accountId,
       if (photoUrl != null) 'photoUrl': photoUrl,
       if (photoBase64 != null) 'photoBase64': photoBase64,
       'createdAt': Timestamp.fromDate(createdAt),
@@ -87,6 +91,7 @@ class UserModel {
       'phone': phone,
       'role': role,
       'status': status,
+      if (accountId.isNotEmpty) 'accountId': accountId,
       if (photoUrl != null) 'photoUrl': photoUrl,
       if (photoBase64 != null) 'photoBase64': photoBase64,
       'createdAt': createdAt.toIso8601String(),
@@ -100,6 +105,7 @@ class UserModel {
       phone: map['phone']?.toString() ?? '',
       role: map['role']?.toString() ?? 'client',
       status: map['status']?.toString() ?? 'active',
+      accountId: map['accountId']?.toString() ?? map['memberId']?.toString() ?? '',
       photoUrl: map['photoUrl']?.toString(),
       photoBase64: map['photoBase64']?.toString(),
       createdAt: map['createdAt'] != null
@@ -117,6 +123,7 @@ class UserModel {
     String? phone,
     String? role,
     String? status,
+    String? accountId,
     String? photoUrl,
     String? photoBase64,
     DateTime? createdAt,
@@ -127,6 +134,7 @@ class UserModel {
       phone: phone ?? this.phone,
       role: role ?? this.role,
       status: status ?? this.status,
+      accountId: accountId ?? this.accountId,
       photoUrl: photoUrl ?? this.photoUrl,
       photoBase64: photoBase64 ?? this.photoBase64,
       createdAt: createdAt ?? this.createdAt,

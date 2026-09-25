@@ -12,8 +12,12 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:firebase_auth/firebase_auth.dart';
+
 import '../../data/models/lawyer.dart';
 import '../../core/utils/phone_utils.dart';
+import '../../core/utils/account_id_utils.dart';
+import '../screens/chat/chat_screen.dart';
 import 'profile_details_modal.dart';
 
 /// Ultra-Premium Executive Lawyer Card Widget.
@@ -137,9 +141,7 @@ class ExecutiveLawyerCard extends StatelessWidget {
                                 const SizedBox(width: 4),
                                 Flexible(
                                   child: Text(
-                                    lawyer.specialization.isNotEmpty
-                                        ? lawyer.specialization
-                                        : 'محامي ومستشار قانوني',
+                                    'محامٍ ومستشار قانوني',
                                     style: GoogleFonts.cairo(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w700,
@@ -172,6 +174,41 @@ class ExecutiveLawyerCard extends StatelessWidget {
                                   color: const Color(0xFF0B2A5B),
                                 ),
                               ),
+                              if (lawyer.accountId.isNotEmpty) ...[
+                                const SizedBox(width: 10),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 1.5),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF0B2A5B).withValues(alpha: 0.05),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(
+                                      color: const Color(0xFF0B2A5B).withValues(alpha: 0.12),
+                                      width: 0.8,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.badge_outlined,
+                                        size: 11,
+                                        color: Color(0xFF0B2A5B),
+                                      ),
+                                      const SizedBox(width: 3),
+                                      Text(
+                                        AccountIdUtils.format(lawyer.accountId),
+                                        style: GoogleFonts.cairo(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                          color: const Color(0xFF0B2A5B),
+                                          letterSpacing: 0.5,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                         ],
@@ -213,21 +250,63 @@ class ExecutiveLawyerCard extends StatelessWidget {
             ),
           ),
           const Divider(height: 1, color: Color(0xFFF1F5F9)),
-          // Dual Action Buttons (Call & WhatsApp)
+          // Triple Action Buttons (Call, WhatsApp, In-App Chat)
           Padding(
             padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             child: Directionality(
               textDirection: TextDirection.rtl,
               child: Row(
                 children: [
                   Expanded(
                     child: _buildExecutiveActionButton(
+                      label: 'محادثة',
+                      iconWidget: const Icon(
+                        Icons.chat_bubble_outline_rounded,
+                        color: Colors.white,
+                        size: 15,
+                      ),
+                      backgroundColor: const Color(0xFFD49B1A),
+                      borderColor: const Color(0xFFB8820B),
+                      shadowColor: const Color(0xFFD49B1A),
+                      onTap: () {
+                        final currentUid = FirebaseAuth.instance.currentUser?.uid;
+                        if (currentUid == null) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'يرجى تسجيل الدخول لبدء محادثة مع المحامي',
+                                style: GoogleFonts.cairo(fontWeight: FontWeight.w600),
+                                textDirection: TextDirection.rtl,
+                              ),
+                              backgroundColor: const Color(0xFF0B2A5B),
+                            ),
+                          );
+                          return;
+                        }
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => ChatScreen(
+                              lawyerUid: lawyer.uid,
+                              lawyerName: lawyer.name,
+                              lawyerAccountId: lawyer.accountId,
+                              lawyerPhone: lawyer.phone,
+                              lawyerPhotoUrl: lawyer.photoUrl,
+                              lawyerPhotoBase64: lawyer.photoBase64,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: _buildExecutiveActionButton(
                       label: 'اتصال',
                       iconWidget: const Icon(
                         Icons.phone_in_talk_rounded,
                         color: Color(0xFFD49B1A),
-                        size: 16,
+                        size: 15,
                       ),
                       backgroundColor: const Color(0xFF0B2A5B),
                       borderColor: const Color(0xFF1E2E5C),
@@ -235,12 +314,12 @@ class ExecutiveLawyerCard extends StatelessWidget {
                       onTap: () => _callPhone(lawyer.phone),
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 6),
                   Expanded(
                     child: _buildExecutiveActionButton(
                       label: 'واتساب',
                       iconWidget: const WhatsAppIcon(
-                          size: 16, color: Colors.white),
+                          size: 15, color: Colors.white),
                       backgroundColor: const Color(0xFF16A34A),
                       borderColor: const Color(0xFF15803D),
                       shadowColor: const Color(0xFF16A34A),
@@ -281,7 +360,7 @@ class ExecutiveLawyerCard extends StatelessWidget {
             name: lawyer.name,
             photoBase64: lawyer.photoBase64,
             photoUrl: lawyer.photoUrl,
-            subtitle: lawyer.specialization,
+            subtitle: 'محامٍ ومستشار قانوني',
           );
         }
       },

@@ -631,7 +631,7 @@ class _AdminPasswordResetsScreenState extends State<AdminPasswordResetsScreen> {
                     r.name,
                     r.cleanPhone,
                     r.notes,
-                    r.specialization,
+                    r.role,
                     r.city,
                   ]);
                 }).toList();

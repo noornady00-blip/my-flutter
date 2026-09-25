@@ -37,7 +37,7 @@ abstract class AuthContract {
     required String phone,
     required String whatsapp,
     required String city,
-    required String specialization,
+    String? specialization,
     required String password,
     String? photoUrl,
     String? photoBase64,

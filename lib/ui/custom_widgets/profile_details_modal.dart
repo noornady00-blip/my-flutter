@@ -11,11 +11,14 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../data/models/lawyer.dart';
 import '../../data/models/user_model.dart';
 import '../../core/utils/phone_utils.dart';
 import '../../core/utils/image_utils.dart';
+import '../../core/utils/account_id_utils.dart';
+import '../screens/chat/chat_screen.dart';
 
 OverlayEntry? _activeProfileToast;
 
@@ -328,7 +331,6 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
     super.initState();
     _lawyer = widget.lawyer;
     if (_lawyer.city.isEmpty ||
-        _lawyer.specialization.isEmpty ||
         _lawyer.photoBase64 == null ||
         _lawyer.photoBase64!.trim().isEmpty ||
         _lawyer.photoUrl == null ||
@@ -489,7 +491,9 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
                     name: lawyer.name,
                     photoBase64: lawyer.photoBase64,
                     photoUrl: lawyer.photoUrl,
-                    subtitle: '${lawyer.specialization} - ${lawyer.city}',
+                    subtitle: lawyer.city.trim().isNotEmpty
+                        ? 'محامٍ ومستشار قانوني - ${lawyer.city}'
+                        : 'محامٍ ومستشار قانوني',
                   ),
                   child: Stack(
                     clipBehavior: Clip.none,
@@ -504,7 +508,7 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
                           boxShadow: [
                             BoxShadow(
                               color: const Color(0xFF0B2A5B)
-                                  .withValues(alpha: 0.25),
+                                   .withValues(alpha: 0.25),
                               blurRadius: 18,
                               offset: const Offset(0, 6),
                             ),
@@ -564,7 +568,9 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
                   name: lawyer.name,
                   photoBase64: lawyer.photoBase64,
                   photoUrl: lawyer.photoUrl,
-                  subtitle: '${lawyer.specialization} - ${lawyer.city}',
+                  subtitle: lawyer.city.trim().isNotEmpty
+                      ? 'محامٍ ومستشار قانوني - ${lawyer.city}'
+                      : 'محامٍ ومستشار قانوني',
                 ),
                 borderRadius: BorderRadius.circular(12),
                 child: Padding(
@@ -620,96 +626,73 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
             ),
             const SizedBox(height: 8),
 
-            // Specialization & Location Badges
-            if (lawyer.specialization.trim().isNotEmpty ||
-                lawyer.city.trim().isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 6),
-                child: Wrap(
-                  alignment: WrapAlignment.center,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    if (lawyer.specialization.trim().isNotEmpty)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFFBEB),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFFFDE68A)),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFFF59E0B)
-                                  .withValues(alpha: 0.08),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
+            // Role & Location Badges
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: Wrap(
+                alignment: WrapAlignment.center,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFBFDBFE)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.gavel_rounded,
+                            size: 14, color: Color(0xFF1D4ED8)),
+                        const SizedBox(width: 5),
+                        Text(
+                          'محامٍ ومستشار قانوني',
+                          style: GoogleFonts.cairo(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF1D4ED8),
+                          ),
                         ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.work_rounded,
-                                size: 14, color: Color(0xFFD97706)),
-                            const SizedBox(width: 5),
-                            Flexible(
-                              child: Text(
-                                lawyer.specialization.trim(),
-                                style: GoogleFonts.cairo(
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: const Color(0xFFB45309),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
+                      ],
+                    ),
+                  ),
+                  if (lawyer.city.trim().isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
                       ),
-                    if (lawyer.city.trim().isNotEmpty)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFFE2E8F0)),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.03),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.location_on_rounded,
+                              size: 14, color: Color(0xFFD49B1A)),
+                          const SizedBox(width: 5),
+                          Text(
+                            lawyer.city.trim(),
+                            style: GoogleFonts.cairo(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF0B2A5B),
                             ),
-                          ],
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.location_on_rounded,
-                                size: 14, color: Color(0xFFD49B1A)),
-                            const SizedBox(width: 5),
-                            Flexible(
-                              child: Text(
-                                lawyer.city.trim(),
-                                style: GoogleFonts.cairo(
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: const Color(0xFF0B2A5B),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                  ],
-                ),
+                    ),
+                ],
               ),
+            ),
             const SizedBox(height: 24),
 
             // Iconic Action Buttons
-            _buildIconic3DActionButtons(
-                context, lawyer.phone, lawyer.whatsapp),
+            _buildIconic3DActionButtons(context, lawyer),
             const SizedBox(height: 22),
 
             // Detailed Info Cards
@@ -729,6 +712,20 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
               ),
               child: Column(
                 children: [
+                  if (lawyer.accountId.isNotEmpty) ...[
+                    _buildDetailRow(
+                      iconWidget: const Icon(Icons.badge_rounded,
+                          color: Color(0xFFD49B1A), size: 18),
+                      label: 'المعرّف الموحد (12 رقم)',
+                      value: AccountIdUtils.formatForDisplay(lawyer.accountId),
+                      color: const Color(0xFFD49B1A),
+                      onCopy: () {
+                        Clipboard.setData(ClipboardData(text: lawyer.accountId));
+                        _showCopyToast(context, 'تم نسخ المعرّف الموحد بنجاح');
+                      },
+                    ),
+                    const Divider(height: 20, color: Color(0xFFE2E8F0)),
+                  ],
                   _buildDetailRow(
                     iconWidget: const Icon(Icons.phone_android_rounded,
                         color: Color(0xFF3B82F6), size: 18),
@@ -955,33 +952,71 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
   }
 
   Widget _buildIconic3DActionButtons(
-      BuildContext context, String phone, String whatsapp) {
+      BuildContext context, LawyerModel lawyer) {
+    final phone = lawyer.phone;
+    final whatsapp = lawyer.whatsapp;
     final targetWhatsapp = whatsapp.isNotEmpty ? whatsapp : phone;
 
-    return Row(
-      textDirection: TextDirection.rtl,
+    return Column(
       children: [
-        Expanded(
-          child: _ExecutiveModalActionButton(
-            title: 'اتصال مباشر',
-            iconWidget: const Icon(Icons.phone_rounded,
-                color: Color(0xFFD49B1A), size: 19),
-            backgroundColor: const Color(0xFF0B2A5B),
-            borderColor: const Color(0xFF1E2E5C),
-            shadowColor: const Color(0xFF0B2A5B),
-            onTap: () => ProfileDetailsModal.launchCall(phone),
-          ),
+        _ExecutiveModalActionButton(
+          title: 'محادثة فورية مباشرة',
+          iconWidget: const Icon(Icons.chat_bubble_rounded,
+              color: Colors.white, size: 19),
+          backgroundColor: const Color(0xFF0F766E),
+          borderColor: const Color(0xFF115E59),
+          shadowColor: const Color(0xFF0F766E),
+          onTap: () {
+            final currentUser = FirebaseAuth.instance.currentUser;
+            if (currentUser == null) {
+              _showCopyToast(context, 'يرجى تسجيل الدخول لبدء محادثة');
+              return;
+            }
+            if (currentUser.uid == lawyer.uid) {
+              _showCopyToast(context, 'لا يمكنك بدء محادثة مع نفسك');
+              return;
+            }
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => ChatScreen(
+                  lawyerUid: lawyer.uid,
+                  lawyerName: lawyer.name,
+                  lawyerAccountId: lawyer.accountId,
+                  lawyerPhone: lawyer.phone,
+                  lawyerPhotoUrl: lawyer.photoUrl,
+                  lawyerPhotoBase64: lawyer.photoBase64,
+                ),
+              ),
+            );
+          },
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _ExecutiveModalActionButton(
-            title: 'واتساب',
-            iconWidget: const WhatsAppIcon(size: 19, color: Colors.white),
-            backgroundColor: const Color(0xFF1E8E5A),
-            borderColor: const Color(0xFF15803D),
-            shadowColor: const Color(0xFF16A34A),
-            onTap: () => ProfileDetailsModal.launchWhatsApp(targetWhatsapp),
-          ),
+        const SizedBox(height: 10),
+        Row(
+          textDirection: TextDirection.rtl,
+          children: [
+            Expanded(
+              child: _ExecutiveModalActionButton(
+                title: 'اتصال مباشر',
+                iconWidget: const Icon(Icons.phone_rounded,
+                    color: Color(0xFFD49B1A), size: 19),
+                backgroundColor: const Color(0xFF0B2A5B),
+                borderColor: const Color(0xFF1E2E5C),
+                shadowColor: const Color(0xFF0B2A5B),
+                onTap: () => ProfileDetailsModal.launchCall(phone),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _ExecutiveModalActionButton(
+                title: 'واتساب',
+                iconWidget: const WhatsAppIcon(size: 19, color: Colors.white),
+                backgroundColor: const Color(0xFF1E8E5A),
+                borderColor: const Color(0xFF15803D),
+                shadowColor: const Color(0xFF16A34A),
+                onTap: () => ProfileDetailsModal.launchWhatsApp(targetWhatsapp),
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -1592,32 +1627,71 @@ class _ClientModalSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 24),
-            Row(
-              textDirection: TextDirection.rtl,
+            Column(
               children: [
-                Expanded(
-                  child: _ExecutiveModalActionButton(
-                    title: 'اتصال هاتفي',
-                    iconWidget: const Icon(Icons.phone_rounded,
-                        color: Color(0xFFD49B1A), size: 19),
-                    backgroundColor: const Color(0xFF0B2A5B),
-                    borderColor: const Color(0xFF1E2E5C),
-                    shadowColor: const Color(0xFF0B2A5B),
-                    onTap: () => ProfileDetailsModal.launchCall(client.phone),
-                  ),
+                _ExecutiveModalActionButton(
+                  title: 'محادثة فورية مباشرة',
+                  iconWidget: const Icon(Icons.chat_bubble_rounded,
+                      color: Colors.white, size: 19),
+                  backgroundColor: const Color(0xFF0F766E),
+                  borderColor: const Color(0xFF115E59),
+                  shadowColor: const Color(0xFF0F766E),
+                  onTap: () {
+                    final currentUser = FirebaseAuth.instance.currentUser;
+                    if (currentUser == null) {
+                      _showFloatingCopyToast(
+                          context, 'يرجى تسجيل الدخول لبدء محادثة');
+                      return;
+                    }
+                    if (currentUser.uid == client.uid) {
+                      _showFloatingCopyToast(
+                          context, 'لا يمكنك بدء محادثة مع نفسك');
+                      return;
+                    }
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ChatScreen(
+                          clientUid: client.uid,
+                          clientName: client.name,
+                          clientAccountId: client.accountId,
+                          clientPhone: client.phone,
+                          clientPhotoUrl: client.photoUrl,
+                          clientPhotoBase64: client.photoBase64,
+                        ),
+                      ),
+                    );
+                  },
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _ExecutiveModalActionButton(
-                    title: 'واتساب',
-                    iconWidget:
-                        const WhatsAppIcon(size: 19, color: Colors.white),
-                    backgroundColor: const Color(0xFF1E8E5A),
-                    borderColor: const Color(0xFF15803D),
-                    shadowColor: const Color(0xFF16A34A),
-                    onTap: () =>
-                        ProfileDetailsModal.launchWhatsApp(client.phone),
-                  ),
+                const SizedBox(height: 10),
+                Row(
+                  textDirection: TextDirection.rtl,
+                  children: [
+                    Expanded(
+                      child: _ExecutiveModalActionButton(
+                        title: 'اتصال هاتفي',
+                        iconWidget: const Icon(Icons.phone_rounded,
+                            color: Color(0xFFD49B1A), size: 19),
+                        backgroundColor: const Color(0xFF0B2A5B),
+                        borderColor: const Color(0xFF1E2E5C),
+                        shadowColor: const Color(0xFF0B2A5B),
+                        onTap: () =>
+                            ProfileDetailsModal.launchCall(client.phone),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _ExecutiveModalActionButton(
+                        title: 'واتساب',
+                        iconWidget:
+                            const WhatsAppIcon(size: 19, color: Colors.white),
+                        backgroundColor: const Color(0xFF1E8E5A),
+                        borderColor: const Color(0xFF15803D),
+                        shadowColor: const Color(0xFF16A34A),
+                        onTap: () =>
+                            ProfileDetailsModal.launchWhatsApp(client.phone),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -1631,6 +1705,22 @@ class _ClientModalSheet extends StatelessWidget {
               ),
               child: Column(
                 children: [
+                  if (client.accountId.isNotEmpty) ...[
+                    _buildDetailRow(
+                      context: context,
+                      iconWidget: const Icon(Icons.badge_rounded,
+                          color: Color(0xFFD49B1A), size: 18),
+                      label: 'المعرّف الموحد (12 رقم)',
+                      value: AccountIdUtils.formatForDisplay(client.accountId),
+                      color: const Color(0xFFD49B1A),
+                      onCopy: () {
+                        Clipboard.setData(ClipboardData(text: client.accountId));
+                        _showFloatingCopyToast(
+                            context, 'تم نسخ المعرّف الموحد بنجاح');
+                      },
+                    ),
+                    const Divider(height: 20, color: Color(0xFFE2E8F0)),
+                  ],
                   _buildDetailRow(
                     context: context,
                     iconWidget: const Icon(Icons.phone_android_rounded,

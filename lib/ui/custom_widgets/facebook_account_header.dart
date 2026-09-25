@@ -274,9 +274,8 @@ class _FacebookAccountHeaderState extends State<FacebookAccountHeader> {
     String sub = widget.subtitle ?? '';
     if (sub.isEmpty) {
       if (isLawyer) {
-        final spec = data?['specialization']?.toString() ?? 'محامي ومستشار';
         final city = data?['city']?.toString() ?? '';
-        sub = city.isNotEmpty ? '$spec • $city' : spec;
+        sub = city.isNotEmpty ? 'محامٍ ومستشار • $city' : 'محامٍ ومستشار قانوني';
       } else if (isClient) {
         sub = 'عميل مسجل بالمنصة';
       }

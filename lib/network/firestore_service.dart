@@ -557,6 +557,65 @@ class FirestoreService implements DatabaseContract {
   }
 
   // ===========================================================================
+  // 🛡️ ADMIN MANAGEMENT
+  // ===========================================================================
+
+  @override
+  Stream<List<UserModel>> getAllAdmins() {
+    return _db
+        .collection('users')
+        .where('role', isEqualTo: 'admin')
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => UserModel.fromMap(doc.data(), doc.id))
+            .toList());
+  }
+
+  @override
+  Future<void> suspendAdmin(String uid) async {
+    final batch = _db.batch();
+    batch.update(_db.collection('users').doc(uid), {'status': 'suspended'});
+    batch.update(_db.collection('admins').doc(uid), {'status': 'suspended'});
+    await batch.commit();
+  }
+
+  @override
+  Future<void> activateAdmin(String uid) async {
+    final batch = _db.batch();
+    batch.update(_db.collection('users').doc(uid), {'status': 'active'});
+    batch.update(_db.collection('admins').doc(uid), {'status': 'active'});
+    await batch.commit();
+  }
+
+  @override
+  Future<void> deleteAdmin(String uid) async {
+    try {
+      final userDoc = await _db.collection('users').doc(uid).get();
+      final phone = userDoc.data()?['phone']?.toString();
+      final accountId = userDoc.data()?['accountId']?.toString();
+
+      final batch = _db.batch();
+      batch.delete(_db.collection('users').doc(uid));
+      batch.delete(_db.collection('admins').doc(uid));
+      if (accountId != null && accountId.isNotEmpty) {
+        batch.delete(_db.collection('account_ids').doc(accountId));
+      }
+      if (phone != null && phone.isNotEmpty) {
+        final unified = PhoneUtils.toUnifiedPhone(phone);
+        batch.delete(_db.collection('phone_directory').doc(unified));
+        final candidates = PhoneUtils.generatePhoneCandidates(phone);
+        for (final cand in candidates) {
+          batch.delete(_db.collection('phone_directory').doc(cand));
+        }
+      }
+      await batch.commit();
+    } catch (e) {
+      debugPrint('[FirestoreService] deleteAdmin error: $e');
+      rethrow;
+    }
+  }
+
+  // ===========================================================================
   // 🔑 PASSWORD RESET TICKETS
   // ===========================================================================
 

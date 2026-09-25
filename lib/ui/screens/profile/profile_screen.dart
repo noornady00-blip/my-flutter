@@ -20,6 +20,8 @@ import '../../../core/utils/phone_utils.dart';
 import '../../../core/utils/navigation_utils.dart';
 import '../../../core/utils/image_utils.dart';
 import '../../../core/utils/app_error_translator.dart';
+import '../../../core/utils/account_id_utils.dart';
+import '../chat/chat_list_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final bool isStandalone;
@@ -38,6 +40,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String _userPhone = 'لا يوجد رقم مسجل';
   String _userRole = 'client';
   String? _userUid;
+  String? _accountId;
   bool _isLoggedIn = false;
   int _avatarIndex = 0;
   String? _photoUrl;
@@ -71,6 +74,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final savedPhotoUrl = prefs.getString('user_profile_photo_url');
     final savedPhoto = prefs.getString('user_profile_photo');
     final savedPhotoPath = prefs.getString('user_profile_photo_path');
+    final savedAccountId = prefs.getString('user_account_id');
 
     setState(() {
       _avatarIndex = savedAvatar;
@@ -83,15 +87,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _userName = session['name']!;
         _userPhone = session['phone'] ?? (currentUser?.email ?? 'غير محدد');
         _userRole = session['role'] ?? 'client';
+        _accountId = session['accountId'] ?? savedAccountId;
         _isLoggedIn = true;
       } else if (currentUser != null) {
         _userUid = currentUser.uid;
         _userName = currentUser.displayName ?? 'عميل محاميك';
         _userPhone = currentUser.email?.replaceAll('@mahameek.client.com', '').replaceAll('@mahameek.lawyer.com', '') ?? 'غير محدد';
+        _accountId = savedAccountId;
         _isLoggedIn = true;
       } else {
         _userName = 'عميل محاميك';
         _userPhone = 'سجل دخولك للاستفادة من كافة الخدمات';
+        _accountId = null;
         _isLoggedIn = false;
       }
     });
@@ -99,6 +106,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (_userUid != null) {
       try {
         final doc = await FirebaseFirestore.instance.collection('users').doc(_userUid).get();
+        String? cloudAccountId = doc.data()?['accountId'] as String?;
         if (doc.exists) {
           final cloudUrl = doc.data()?['photoUrl'] as String?;
           final cloudPhoto = doc.data()?['photoBase64'] as String?;
@@ -117,6 +125,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
             });
             if (cloudUrl != null) await prefs.setString('user_profile_photo_url', cloudUrl);
           }
+        }
+
+        if (cloudAccountId == null || cloudAccountId.isEmpty) {
+          final lawyerDoc = await FirebaseFirestore.instance.collection('lawyers').doc(_userUid).get();
+          cloudAccountId = lawyerDoc.data()?['accountId'] as String?;
+        }
+
+        if (cloudAccountId == null || cloudAccountId.isEmpty) {
+          cloudAccountId = await AccountIdUtils.ensureUserHasAccountId(
+            uid: _userUid!,
+            role: _userRole,
+          );
+        }
+
+        if (mounted && cloudAccountId.isNotEmpty) {
+          setState(() {
+            _accountId = cloudAccountId;
+          });
+          await prefs.setString('user_account_id', cloudAccountId);
         }
       } catch (_) {}
     }
@@ -977,6 +1004,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _buildProfileHeaderCard(),
               const SizedBox(height: 22),
 
+              // Chat & Messaging Section
+              if (_isLoggedIn) ...[
+                _buildSectionTitle('المحادثات والتواصل', const Color(0xFF0F766E)),
+                const SizedBox(height: 12),
+                _buildActionCard(
+                  icon: Icons.chat_bubble_rounded,
+                  title: 'المحادثات المباشرة',
+                  subtitle: 'التواصل الفوري والآمن مع المحامين والمشرفين',
+                  iconColor: const Color(0xFF0F766E),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const ChatListScreen()),
+                    );
+                  },
+                ),
+                const SizedBox(height: 22),
+              ],
+
               // 2. Account & Security Section
               _buildSectionTitle('الحساب والأمان', const Color(0xFFF59E0B)),
               const SizedBox(height: 12),
@@ -1407,6 +1453,84 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       textAlign: TextAlign.center,
                     ),
+
+                  // 4.5. 12-Digit Account ID Capsule with Copy
+                  if (_isLoggedIn && _accountId != null && _accountId!.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFFBEB),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFFFDE68A), width: 1.2),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(5),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFD49B1A),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.badge_rounded,
+                                color: Colors.white,
+                                size: 14,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'المعرّف: ${AccountIdUtils.formatForDisplay(_accountId!)}',
+                              style: GoogleFonts.cairo(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: const Color(0xFF92400E),
+                                letterSpacing: 0.5,
+                              ),
+                              textDirection: TextDirection.ltr,
+                            ),
+                            const SizedBox(width: 10),
+                            InkWell(
+                              onTap: () {
+                                Clipboard.setData(ClipboardData(text: _accountId!));
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Row(
+                                      textDirection: TextDirection.rtl,
+                                      children: [
+                                        const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+                                        const SizedBox(width: 8),
+                                        Text('تم نسخ المعرّف الموحد (12 رقم) بنجاح', style: GoogleFonts.cairo(fontWeight: FontWeight.w700)),
+                                      ],
+                                    ),
+                                    duration: const Duration(seconds: 2),
+                                    backgroundColor: const Color(0xFF0B2A5B),
+                                    behavior: SnackBarBehavior.floating,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  ),
+                                );
+                              },
+                              borderRadius: BorderRadius.circular(6),
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFD49B1A).withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: const Icon(
+                                  Icons.copy_rounded,
+                                  size: 14,
+                                  color: Color(0xFFB45309),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 16),
 
                   // 5. 3-Column Executive Metrics Strip

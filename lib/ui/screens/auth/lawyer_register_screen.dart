@@ -30,7 +30,6 @@ class _LawyerRegisterScreenState extends State<LawyerRegisterScreen> {
   final ImagePicker _picker = ImagePicker();
 
   String? _selectedCity;
-  String? _selectedSpec;
   String? _photoBase64;
   String? _photoPath;
   bool _obscure = true;
@@ -157,10 +156,6 @@ class _LawyerRegisterScreenState extends State<LawyerRegisterScreen> {
       setState(() => _error = 'يرجى اختيار المدينة');
       return;
     }
-    if (_selectedSpec == null) {
-      setState(() => _error = 'يرجى اختيار تخصصك القانوني');
-      return;
-    }
 
     final hasNet = await NetworkService().hasInternet();
     if (!hasNet) {
@@ -206,7 +201,7 @@ class _LawyerRegisterScreenState extends State<LawyerRegisterScreen> {
       phone: normalizedPhone,
       whatsapp: normalizedWhatsapp,
       city: _selectedCity!,
-      specialization: _selectedSpec!,
+      specialization: '',
       password: _passController.text,
       photoBase64: _photoBase64,
     );
@@ -385,17 +380,6 @@ class _LawyerRegisterScreenState extends State<LawyerRegisterScreen> {
                             isSelected: _selectedCity != null,
                             icon: Icons.location_on_outlined,
                             onTap: _openCityPickerModal,
-                          ),
-                          const SizedBox(height: 18),
-
-                          // 5. Specialization
-                          _buildFieldHeader('التخصص القانوني', Icons.gavel_rounded),
-                          const SizedBox(height: 8),
-                          _buildPickerSelector(
-                            label: _selectedSpec ?? 'اختر تخصصك القانوني',
-                            isSelected: _selectedSpec != null,
-                            icon: Icons.balance_rounded,
-                            onTap: _openSpecializationPickerModal,
                           ),
                           const SizedBox(height: 18),
 
@@ -1012,136 +996,6 @@ class _LawyerRegisterScreenState extends State<LawyerRegisterScreen> {
             ),
           );
         },
-      ),
-    );
-  }
-
-  void _openSpecializationPickerModal() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(ctx).size.height * 0.75,
-        ),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-        ),
-        padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Center(
-              child: Container(
-                width: 44,
-                height: 4.5,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFCBD5E1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-            ),
-            const SizedBox(height: 18),
-            Row(
-              textDirection: TextDirection.rtl,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0B2A5B).withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.gavel_rounded, color: Color(0xFF0B2A5B), size: 22),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'اختر التخصص القانوني',
-                        style: GoogleFonts.cairo(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w800,
-                          color: const Color(0xFF0B2A5B),
-                        ),
-                      ),
-                      Text(
-                        'حدد مجال تخصصك وخبرتك القانونية الأساسية',
-                        style: GoogleFonts.cairo(fontSize: 11.5, color: const Color(0xFF64748B)),
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close_rounded, color: Color(0xFF94A3B8)),
-                  onPressed: () => Navigator.pop(ctx),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Expanded(
-              child: ListView.separated(
-                physics: const BouncingScrollPhysics(),
-                itemCount: LawyerSpecializations.list.length,
-                separatorBuilder: (context, index) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
-                itemBuilder: (_, index) {
-                  final spec = LawyerSpecializations.list[index];
-                  final isSelected = _selectedSpec == spec;
-                  return InkWell(
-                    onTap: () {
-                      setState(() => _selectedSpec = spec);
-                      Navigator.pop(ctx);
-                    },
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-                      decoration: BoxDecoration(
-                        color: isSelected ? const Color(0xFFFFFBEB) : Colors.transparent,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        textDirection: TextDirection.rtl,
-                        children: [
-                          Container(
-                            width: 34,
-                            height: 34,
-                            decoration: BoxDecoration(
-                              color: isSelected
-                                  ? const Color(0xFFD49B1A).withValues(alpha: 0.2)
-                                  : const Color(0xFFF1F5F9),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              Icons.balance_rounded,
-                              size: 17,
-                              color: isSelected ? const Color(0xFFD49B1A) : const Color(0xFF64748B),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              spec,
-                              style: GoogleFonts.cairo(
-                                fontSize: 14,
-                                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                                color: isSelected ? const Color(0xFF0B2A5B) : const Color(0xFF334155),
-                              ),
-                            ),
-                          ),
-                          if (isSelected)
-                            const Icon(Icons.check_circle_rounded, color: Color(0xFFD49B1A), size: 20),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

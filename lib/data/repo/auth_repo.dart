@@ -56,7 +56,7 @@ class AuthRepo {
     required String phone,
     required String password,
     required String city,
-    required String specialization,
+    String? specialization,
     required String whatsapp,
     String? photoUrl,
     String? photoBase64,

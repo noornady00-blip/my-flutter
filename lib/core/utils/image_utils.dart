@@ -96,3 +96,27 @@ class AppImageUtils {
     return fallback;
   }
 }
+
+/// Convenience wrapper for avatar and profile image rendering
+class ImageUtils extends AppImageUtils {
+  static Widget buildSafeImage({
+    String? photoUrl,
+    String? photoBase64,
+    BoxFit fit = BoxFit.cover,
+    double? width,
+    double? height,
+  }) {
+    return AppImageUtils.buildAvatarImage(
+      photoUrl: photoUrl,
+      photoBase64: photoBase64,
+      fit: fit,
+      width: width,
+      height: height,
+      fallback: Container(
+        color: const Color(0xFF0B2A5B).withValues(alpha: 0.08),
+        child: const Icon(Icons.person, color: Color(0xFF0B2A5B)),
+      ),
+    );
+  }
+}
+

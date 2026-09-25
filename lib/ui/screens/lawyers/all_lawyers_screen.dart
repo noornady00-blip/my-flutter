@@ -9,8 +9,7 @@ import '../../../core/utils/search_utils.dart';
 
 class AllLawyersScreen extends StatefulWidget {
   final VoidCallback? onOpenDrawer;
-  final String? initialSpecialization;
-  const AllLawyersScreen({super.key, this.onOpenDrawer, this.initialSpecialization});
+  const AllLawyersScreen({super.key, this.onOpenDrawer});
 
   @override
   State<AllLawyersScreen> createState() => _AllLawyersScreenState();
@@ -20,16 +19,12 @@ class _AllLawyersScreenState extends State<AllLawyersScreen> {
   final TextEditingController _searchController = TextEditingController();
   final FirestoreService _firestoreService = FirestoreService();
   String _searchQuery = '';
-  late String _selectedSpec;
-
-  final List<String> _specializations = LawyerSpecializations.filterList;
 
   late final Stream<List<LawyerModel>> _lawyersStream;
 
   @override
   void initState() {
     super.initState();
-    _selectedSpec = widget.initialSpecialization ?? 'الكل';
     _lawyersStream = _firestoreService.getApprovedLawyers();
   }
 
@@ -45,11 +40,10 @@ class _AllLawyersScreenState extends State<AllLawyersScreen> {
       final matchesSearch = AppSearchUtils.matchesAny(_searchQuery, [
         l.name,
         l.city,
-        l.specialization,
         l.phone,
+        l.accountId,
       ]);
-      final matchesSpec = LawyerSpecializations.matches(l.specialization, _selectedSpec);
-      return isApproved && matchesSearch && matchesSpec;
+      return isApproved && matchesSearch;
     }).toList();
   }
 
@@ -108,10 +102,7 @@ class _AllLawyersScreenState extends State<AllLawyersScreen> {
             // 1. Search Bar
             _buildSearchBar(),
 
-            // 2. Specializations Filter Chips
-            _buildSpecializationsFilter(),
-
-            // 3. Lawyers Stream List (Approved Only)
+            // 2. Lawyers Stream List (Approved Only)
             Expanded(
               child: StreamBuilder<List<LawyerModel>>(
                 stream: _lawyersStream,
@@ -165,7 +156,7 @@ class _AllLawyersScreenState extends State<AllLawyersScreen> {
         textDirection: TextDirection.rtl,
         style: GoogleFonts.cairo(fontSize: 14, color: const Color(0xFF0B2A5B)),
         decoration: InputDecoration(
-          hintText: 'ابحث باسم المحامي، التخصص، أو المدينة...',
+          hintText: 'ابحث باسم المحامي، المدينة، أو المعرّف الموحد...',
           hintStyle: GoogleFonts.cairo(color: const Color(0xFF94A3B8), fontSize: 13),
           prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFFF59E0B)),
           suffixIcon: _searchQuery.isNotEmpty
@@ -197,49 +188,6 @@ class _AllLawyersScreenState extends State<AllLawyersScreen> {
     );
   }
 
-  Widget _buildSpecializationsFilter() {
-    return SizedBox(
-      height: 48,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        itemCount: _specializations.length,
-        separatorBuilder: (context, index) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final spec = _specializations[index];
-          final isSelected = _selectedSpec == spec;
-
-          return InkWell(
-            onTap: () => setState(() => _selectedSpec = spec),
-            borderRadius: BorderRadius.circular(20),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-              decoration: BoxDecoration(
-                color: isSelected ? const Color(0xFF0B2A5B) : Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: isSelected ? const Color(0xFF0B2A5B) : const Color(0xFFE2E8F0),
-                ),
-              ),
-              child: Center(
-                child: Text(
-                  spec,
-                  style: GoogleFonts.cairo(
-                    fontSize: 12,
-                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                    color: isSelected ? const Color(0xFFFDE68A) : const Color(0xFF64748B),
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
   Widget _buildEmptyState() {
     return Center(
       child: Column(
@@ -264,7 +212,7 @@ class _AllLawyersScreenState extends State<AllLawyersScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            'جرب تغيير كلمة البحث أو اختيار تصنيف آخر',
+            'جرب تغيير كلمة البحث أو كتابة اسم المحامي والمدينة',
             style: GoogleFonts.cairo(fontSize: 13, color: const Color(0xFF64748B)),
           ),
         ],

@@ -29,11 +29,12 @@ service cloud.firestore {
       // Users can create their own document (cannot self-assign admin role)
       allow create: if (isOwner(uid) && (!('role' in request.resource.data) || request.resource.data.role != 'admin')) || isAdmin();
 
-      // Users can update their own data, but CANNOT elevate their role to admin
+      // Users can update their own data, but CANNOT elevate their role to admin, and CANNOT alter accountId once set
       allow update: if isAdmin() || (
         isOwner(uid) &&
         (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'isPrimary'])) &&
-        (!('adminResetPassword' in request.resource.data) || request.resource.data.adminResetPassword == resource.data.adminResetPassword)
+        (!('adminResetPassword' in request.resource.data) || request.resource.data.adminResetPassword == resource.data.adminResetPassword) &&
+        (!('accountId' in resource.data) || request.resource.data.accountId == resource.data.accountId)
       );
 
       // Only admins or the owner can delete the account document
@@ -48,16 +49,70 @@ service cloud.firestore {
       // Lawyer can register with initial status 'pending', or admin can create
       allow create: if (isOwner(uid) && (!('status' in request.resource.data) || request.resource.data.status == 'pending')) || isAdmin();
 
-      // Lawyer can update their profile information, but only admin can approve/reject status
+      // Lawyer can update their profile information, but only admin can approve/reject status, and CANNOT alter accountId once set
       allow update: if isAdmin() || (
         isOwner(uid) &&
         request.resource.data.status == resource.data.status &&
         (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['isVerified', 'featured'])) &&
-        (!('adminResetPassword' in request.resource.data) || request.resource.data.adminResetPassword == resource.data.adminResetPassword)
+        (!('adminResetPassword' in request.resource.data) || request.resource.data.adminResetPassword == resource.data.adminResetPassword) &&
+        (!('accountId' in resource.data) || request.resource.data.accountId == resource.data.accountId)
       );
 
       // Lawyer can delete their own document or admins can delete
       allow delete: if isOwner(uid) || isAdmin();
+    }
+
+    // ==================== UNIQUE ACCOUNT IDS REGISTRY ====================
+    match /account_ids/{accountId} {
+      // Authenticated users and admins can check/lookup account IDs
+      allow read: if isAuthenticated() || isAdmin();
+      // Any authenticated user can reserve a unique 12-digit account ID if not already taken
+      allow create: if isAuthenticated() && !exists(/databases/$(database)/documents/account_ids/$(accountId));
+      // Only admins can modify or clean up account ID registry entries
+      allow update, delete: if isAdmin();
+    }
+
+    // ==================== CHATS & DIRECT MESSAGING ====================
+    match /chats/{chatId} {
+      // Chat is accessible only to participants or authenticated admins
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.participants.hasAny([request.auth.uid]));
+
+      // Initiating a chat requires being one of the participants or an admin
+      allow create: if isAdmin() || (isAuthenticated() && request.resource.data.participants.hasAny([request.auth.uid]));
+
+      // Updating a chat (lastMessage, unreadCount, etc.) is allowed for participants and admins
+      allow update: if isAdmin() || (isAuthenticated() && resource.data.participants.hasAny([request.auth.uid]));
+
+      // Only admins can delete an entire conversation thread
+      allow delete: if isAdmin();
+
+      // Subcollection for individual messages
+      match /messages/{messageId} {
+        // Only chat participants and admins can read messages
+        allow read: if isAdmin() || (
+          isAuthenticated() &&
+          get(/databases/$(database)/documents/chats/$(chatId)).data.participants.hasAny([request.auth.uid])
+        );
+
+        // Sender must be an authenticated participant in this chat and senderUid must match their auth UID
+        allow create: if isAdmin() || (
+          isAuthenticated() &&
+          get(/databases/$(database)/documents/chats/$(chatId)).data.participants.hasAny([request.auth.uid]) &&
+          request.resource.data.senderUid == request.auth.uid
+        );
+
+        // Updates (e.g. read status) allowed to chat participants and admins
+        allow update: if isAdmin() || (
+          isAuthenticated() &&
+          get(/databases/$(database)/documents/chats/$(chatId)).data.participants.hasAny([request.auth.uid])
+        );
+
+        // Message deletion allowed to sender or admin
+        allow delete: if isAdmin() || (
+          isAuthenticated() &&
+          resource.data.senderUid == request.auth.uid
+        );
+      }
     }
 
     // ==================== ADMINS COLLECTION ====================

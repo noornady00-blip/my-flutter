@@ -55,7 +55,7 @@ class _AdminRecentLawyersScreenState extends State<AdminRecentLawyersScreen> {
             name: lawyer.name,
             photoBase64: lawyer.photoBase64,
             photoUrl: lawyer.photoUrl,
-            subtitle: lawyer.specialization,
+            subtitle: 'محامٍ ومستشار قانوني',
           );
         }
       },
@@ -219,7 +219,7 @@ class _AdminRecentLawyersScreenState extends State<AdminRecentLawyersScreen> {
                 final filtered = allApproved.where((l) {
                   return AppSearchUtils.matchesAny(_searchQuery, [
                     l.name,
-                    l.specialization,
+                    l.accountId,
                     l.city,
                     l.phone,
                   ]);
@@ -369,7 +369,7 @@ class _AdminRecentLawyersScreenState extends State<AdminRecentLawyersScreen> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        lawyer.specialization,
+                        'محامٍ ومستشار قانوني${lawyer.accountId.isNotEmpty ? " • معرّف: ${lawyer.accountId}" : ""}',
                         style: GoogleFonts.cairo(fontSize: 12, color: const Color(0xFF64748B)),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,

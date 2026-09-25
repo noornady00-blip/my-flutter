@@ -14,8 +14,9 @@ class LawyerModel {
   final String phone;
   final String whatsapp;
   final String city;
-  final String specialization;
+  final String specialization; // Kept as optional fallback for legacy data compatibility
   final String status; // 'pending' | 'approved' | 'rejected' | 'suspended'
+  final String accountId; // 12-digit fixed unique identifier
   final String? photoBase64;
   final String? photoUrl;
   final DateTime createdAt;
@@ -28,6 +29,7 @@ class LawyerModel {
     this.city = '',
     this.specialization = '',
     this.status = 'approved',
+    this.accountId = '',
     this.photoBase64,
     this.photoUrl,
     DateTime? createdAt,
@@ -77,6 +79,7 @@ class LawyerModel {
       city: cityVal,
       specialization: specVal,
       status: map['status']?.toString() ?? 'pending',
+      accountId: map['accountId']?.toString() ?? map['memberId']?.toString() ?? '',
       photoBase64: map['photoBase64']?.toString() ??
           map['photo']?.toString() ??
           map['avatar']?.toString(),
@@ -95,9 +98,10 @@ class LawyerModel {
       'phone': phone,
       'whatsapp': whatsapp,
       'city': city,
-      'specialization': specialization,
+      if (specialization.isNotEmpty) 'specialization': specialization,
       'role': 'lawyer',
       'status': status,
+      if (accountId.isNotEmpty) 'accountId': accountId,
       if (photoBase64 != null) 'photoBase64': photoBase64,
       if (photoUrl != null) 'photoUrl': photoUrl,
       'createdAt': Timestamp.fromDate(createdAt),
@@ -111,9 +115,10 @@ class LawyerModel {
       'phone': phone,
       'whatsapp': whatsapp,
       'city': city,
-      'specialization': specialization,
+      if (specialization.isNotEmpty) 'specialization': specialization,
       'role': 'lawyer',
       'status': status,
+      if (accountId.isNotEmpty) 'accountId': accountId,
       if (photoBase64 != null) 'photoBase64': photoBase64,
       if (photoUrl != null) 'photoUrl': photoUrl,
       'createdAt': createdAt.toIso8601String(),
@@ -145,6 +150,7 @@ class LawyerModel {
       city: cityVal,
       specialization: specVal,
       status: map['status']?.toString() ?? 'approved',
+      accountId: map['accountId']?.toString() ?? map['memberId']?.toString() ?? '',
       photoBase64: map['photoBase64'] as String?,
       photoUrl: map['photoUrl'] as String?,
       createdAt: map['createdAt'] != null
@@ -164,6 +170,7 @@ class LawyerModel {
     String? city,
     String? specialization,
     String? status,
+    String? accountId,
     String? photoBase64,
     String? photoUrl,
     DateTime? createdAt,
@@ -176,6 +183,7 @@ class LawyerModel {
       city: city ?? this.city,
       specialization: specialization ?? this.specialization,
       status: status ?? this.status,
+      accountId: accountId ?? this.accountId,
       photoBase64: photoBase64 ?? this.photoBase64,
       photoUrl: photoUrl ?? this.photoUrl,
       createdAt: createdAt ?? this.createdAt,

@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/theme/app_theme.dart';
@@ -11,7 +12,9 @@ import '../../../network/firestore_service.dart';
 import '../../custom_widgets/app_logo_badge.dart';
 import '../../custom_widgets/profile_details_modal.dart';
 import '../../../core/utils/phone_utils.dart';
+import '../../../core/utils/account_id_utils.dart';
 import '../../custom_widgets/sudan_phone_field.dart';
+import '../chat/chat_list_screen.dart';
 
 class LawyerHomeScreen extends StatefulWidget {
   final VoidCallback? onNavigateSettings;
@@ -53,8 +56,6 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
     'الجنينة',
     'كادقلي',
   ];
-
-  final List<String> _specializations = LawyerSpecializations.list;
 
   @override
   void initState() {
@@ -467,7 +468,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
           final phone = lawyer?.phone.isNotEmpty == true ? lawyer!.phone : (_cachedPhone ?? '---');
           final whatsapp = lawyer?.whatsapp.isNotEmpty == true ? lawyer!.whatsapp : phone;
           final city = lawyer?.city.isNotEmpty == true ? lawyer!.city : 'الخرطوم';
-          final spec = lawyer?.specialization.isNotEmpty == true ? lawyer!.specialization : 'قانون عام وقضايا متنوعة';
+          final accountId = lawyer?.accountId ?? '';
           final photoBase64 = lawyer?.photoBase64;
           final photoUrl = (lawyer?.photoUrl != null && lawyer!.photoUrl!.isNotEmpty)
               ? lawyer.photoUrl
@@ -482,15 +483,19 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
                 // 1. Executive Hero Identity Card
                 _buildExecutiveHeroCard(
                   name: name,
-                  spec: spec,
                   city: city,
+                  accountId: accountId,
                   photoUrl: photoUrl,
                   photoBase64: photoBase64,
                   lawyer: lawyer,
                 ),
                 const SizedBox(height: 14),
 
-                // 2. Client Live Interaction Preview Card
+                // 2. Direct Chats Entry Card
+                _buildDirectChatsEntryCard(),
+                const SizedBox(height: 14),
+
+                // 3. Client Live Interaction Preview Card
                 _buildLiveClientInteractionCard(
                   phone: phone,
                   whatsapp: whatsapp,
@@ -498,7 +503,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
                 ),
                 const SizedBox(height: 20),
 
-                // 3. Section Title: Direct Profile Management
+                // 4. Section Title: Direct Profile Management
                 Row(
                   children: [
                     Container(
@@ -522,16 +527,16 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
                 ),
                 const SizedBox(height: 10),
 
-                // 4. Unified Data Management Suite
+                // 5. Unified Data Management Suite
                 _buildDataManagementSuite(
                   phone: phone,
                   whatsapp: whatsapp,
                   city: city,
-                  spec: spec,
+                  accountId: accountId,
                 ),
                 const SizedBox(height: 16),
 
-                // 5. Photo Notice Box
+                // 6. Photo Notice Box
                 _buildPhotoNoticeBox(),
               ],
             ),
@@ -546,8 +551,8 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
   // ─────────────────────────────────────────────────────────────
   Widget _buildExecutiveHeroCard({
     required String name,
-    required String spec,
     required String city,
+    required String accountId,
     String? photoUrl,
     String? photoBase64,
     LawyerModel? lawyer,
@@ -589,7 +594,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
                       name: name,
                       photoUrl: photoUrl,
                       photoBase64: photoBase64,
-                      subtitle: spec,
+                      subtitle: city.isNotEmpty ? 'محامٍ ومستشار قانوني - $city' : 'محامٍ ومستشار قانوني',
                     );
                   }
                 },
@@ -601,7 +606,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
                       name: name,
                       photoUrl: photoUrl,
                       photoBase64: photoBase64,
-                      subtitle: spec,
+                      subtitle: city.isNotEmpty ? 'محامٍ ومستشار قانوني - $city' : 'محامٍ ومستشار قانوني',
                     );
                   }
                 },
@@ -660,7 +665,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
                         border: Border.all(color: const Color(0xFFD49B1A).withValues(alpha: 0.35)),
                       ),
                       child: Text(
-                        spec,
+                        'محامٍ ومستشار قانوني',
                         style: GoogleFonts.cairo(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w700,
@@ -688,6 +693,49 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
                         ),
                       ],
                     ),
+                    if (accountId.isNotEmpty) ...[
+                      const SizedBox(height: 5),
+                      InkWell(
+                        onTap: () {
+                          Clipboard.setData(ClipboardData(text: accountId));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('تم نسخ المعرّف الموحد (12 رقم) بنجاح',
+                                  style: GoogleFonts.cairo(fontWeight: FontWeight.w700)),
+                              backgroundColor: const Color(0xFF0B2A5B),
+                              duration: const Duration(seconds: 2),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFFD49B1A).withValues(alpha: 0.4)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.badge_rounded, color: Color(0xFFD49B1A), size: 13),
+                              const SizedBox(width: 4),
+                              Text(
+                                'المعرّف: ${AccountIdUtils.formatForDisplay(accountId)}',
+                                style: GoogleFonts.cairo(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                ),
+                                textDirection: TextDirection.ltr,
+                              ),
+                              const SizedBox(width: 6),
+                              const Icon(Icons.copy_rounded, color: Color(0xFFD49B1A), size: 12),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -913,13 +961,83 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
   }
 
   // ─────────────────────────────────────────────────────────────
+  // 2. Direct Chats Entry Card
+  // ─────────────────────────────────────────────────────────────
+  Widget _buildDirectChatsEntryCard() {
+    return InkWell(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const ChatListScreen()),
+        );
+      },
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topRight,
+            end: Alignment.bottomLeft,
+            colors: [Color(0xFF0F766E), Color(0xFF115E59)],
+          ),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF0F766E).withValues(alpha: 0.25),
+              blurRadius: 14,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.forum_rounded, color: Colors.white, size: 22),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'محادثات المراجعين والاستشارات',
+                    style: GoogleFonts.cairo(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
+                  Text(
+                    'تواصل فوري مباشر عبر المنصة مع الموكلين والمشرفين',
+                    style: GoogleFonts.cairo(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white70,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────
   // 3. Unified Data Management Suite (Sleek List Layout)
   // ─────────────────────────────────────────────────────────────
   Widget _buildDataManagementSuite({
     required String phone,
     required String whatsapp,
     required String city,
-    required String spec,
+    required String accountId,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -936,6 +1054,29 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
       ),
       child: Column(
         children: [
+          // 0. Account ID Row
+          if (accountId.isNotEmpty) ...[
+            _buildSuiteRow(
+              icon: Icons.badge_rounded,
+              iconColor: const Color(0xFFD49B1A),
+              label: 'المعرّف الموحد الرقمي (12 رقم)',
+              value: AccountIdUtils.formatForDisplay(accountId),
+              isPhone: false,
+              onTap: () {
+                Clipboard.setData(ClipboardData(text: accountId));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('تم نسخ المعرّف الموحد (12 رقم) بنجاح',
+                        style: GoogleFonts.cairo(fontWeight: FontWeight.w700)),
+                    backgroundColor: const Color(0xFF0B2A5B),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
+            ),
+            const Divider(height: 1, indent: 54, endIndent: 16, color: Color(0xFFF1F5F9)),
+          ],
+
           // 1. WhatsApp Row
           _buildSuiteRow(
             icon: Icons.chat_bubble_rounded,
@@ -974,23 +1115,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
           ),
           const Divider(height: 1, indent: 54, endIndent: 16, color: Color(0xFFF1F5F9)),
 
-          // 3. Specialization Row
-          _buildSuiteRow(
-            icon: Icons.gavel_rounded,
-            iconColor: const Color(0xFFD97706),
-            label: 'التخصص القانوني الأساسي',
-            value: spec,
-            isPhone: false,
-            onTap: () => _openDropdownModal(
-              title: 'اختر تخصصك القانوني',
-              currentVal: spec,
-              options: _specializations,
-              onSave: (val) => _firestoreService.updateLawyerProfile(uid: _uid!, specialization: val),
-            ),
-          ),
-          const Divider(height: 1, indent: 54, endIndent: 16, color: Color(0xFFF1F5F9)),
-
-          // 4. City Row
+          // 3. City Row
           _buildSuiteRow(
             icon: Icons.location_on_rounded,
             iconColor: const Color(0xFFDC2626),

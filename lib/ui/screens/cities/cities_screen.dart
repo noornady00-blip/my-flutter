@@ -74,7 +74,7 @@ class _CitiesScreenState extends State<CitiesScreen> {
     }).toList();
   }
 
-  // Matching lawyers for instant search by name, city, or specialization
+  // Matching lawyers for instant search by name, city, phone, or accountId
   List<LawyerModel> get _matchingLawyers {
     final query = _searchQuery.trim();
     if (query.isEmpty) return [];
@@ -82,27 +82,9 @@ class _CitiesScreenState extends State<CitiesScreen> {
       return AppSearchUtils.matchesAny(query, [
         l.name,
         l.city,
-        l.specialization,
         l.phone,
+        l.accountId,
       ]);
-    }).toList();
-  }
-
-  String _selectedSpec = 'الكل';
-
-  // Matching lawyers for the selected specialization filter and/or search
-  List<LawyerModel> get _specializedLawyers {
-    if (_selectedSpec == 'الكل') return [];
-    return _allApprovedLawyers.where((l) {
-      final matchesSpec = LawyerSpecializations.matches(l.specialization, _selectedSpec);
-      final query = _searchQuery.trim();
-      final matchesQuery = query.isEmpty || AppSearchUtils.matchesAny(query, [
-        l.name,
-        l.city,
-        l.specialization,
-        l.phone,
-      ]);
-      return matchesSpec && matchesQuery;
     }).toList();
   }
 
@@ -137,14 +119,12 @@ class _CitiesScreenState extends State<CitiesScreen> {
   }
 
   void _navigateToLawyers(String city) {
-    final specToPass = _selectedSpec != 'الكل' ? _selectedSpec : null;
     if (city == 'جميع المدن' || city == 'كافة المدن' || city == 'كافة المحامين') {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => LawyersListScreen(
+          builder: (_) => const LawyersListScreen(
             city: 'جميع المدن',
-            initialSpecialization: specToPass,
           ),
         ),
       );
@@ -154,7 +134,6 @@ class _CitiesScreenState extends State<CitiesScreen> {
         MaterialPageRoute(
           builder: (_) => LawyersListScreen(
             city: city,
-            initialSpecialization: specToPass,
           ),
         ),
       );
@@ -184,13 +163,7 @@ class _CitiesScreenState extends State<CitiesScreen> {
               _buildHeroHeader(),
               const SizedBox(height: 16),
               _buildSearchInput(),
-              const SizedBox(height: 12),
-              _buildSpecializationsFilter(),
               const SizedBox(height: 16),
-              if (_selectedSpec != 'الكل') ...[
-                _buildSpecializedLawyersSection(),
-                const SizedBox(height: 20),
-              ],
               if (!hasSearchQuery) ...[
                 _buildSectionTitle(),
                 const SizedBox(height: 14),
@@ -456,186 +429,7 @@ class _CitiesScreenState extends State<CitiesScreen> {
     );
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // 3.5. SPECIALIZATION FILTER CHIPS (Horizontal Category Bar)
-  // ─────────────────────────────────────────────────────────────
-  Widget _buildSpecializationsFilter() {
-    return SizedBox(
-      height: 44,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 2),
-        itemCount: LawyerSpecializations.filterList.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final spec = LawyerSpecializations.filterList[index];
-          final isSelected = _selectedSpec == spec;
-          return InkWell(
-            onTap: () {
-              setState(() {
-                _selectedSpec = spec;
-              });
-            },
-            borderRadius: BorderRadius.circular(20),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-              decoration: BoxDecoration(
-                color: isSelected ? const Color(0xFF0B2A5B) : Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: isSelected ? const Color(0xFF0B2A5B) : const Color(0xFFE2E8F0),
-                  width: isSelected ? 1.4 : 1.0,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: isSelected
-                        ? const Color(0xFF0B2A5B).withValues(alpha: 0.18)
-                        : Colors.black.withValues(alpha: 0.03),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Center(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (spec != 'الكل') ...[
-                      Icon(
-                        Icons.balance_rounded,
-                        size: 13,
-                        color: isSelected ? const Color(0xFFD49B1A) : const Color(0xFF94A3B8),
-                      ),
-                      const SizedBox(width: 5),
-                    ],
-                    Text(
-                      spec,
-                      style: GoogleFonts.cairo(
-                        fontSize: 12,
-                        fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                        color: isSelected ? const Color(0xFFD49B1A) : const Color(0xFF475569),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
 
-  // ─────────────────────────────────────────────────────────────
-  // 3.6. SPECIALIZED LAWYERS SECTION
-  // ─────────────────────────────────────────────────────────────
-  Widget _buildSpecializedLawyersSection() {
-    final lawyers = _specializedLawyers;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            textDirection: TextDirection.rtl,
-            children: [
-              Row(
-                textDirection: TextDirection.rtl,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(5),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0B2A5B),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(
-                      Icons.balance_rounded,
-                      color: Color(0xFFD49B1A),
-                      size: 15,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'محامو $_selectedSpec (${lawyers.length})',
-                    style: GoogleFonts.cairo(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFF0B2A5B),
-                    ),
-                  ),
-                ],
-              ),
-              InkWell(
-                onTap: () => _navigateToLawyers('جميع المدن'),
-                borderRadius: BorderRadius.circular(20),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFD49B1A).withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: const Color(0xFFD49B1A).withValues(alpha: 0.4)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'عرض الكل',
-                        style: GoogleFonts.cairo(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFF926006),
-                        ),
-                      ),
-                      const SizedBox(width: 3),
-                      const Icon(Icons.arrow_back_ios_new_rounded, size: 9, color: Color(0xFF926006)),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (lawyers.isEmpty)
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-              ),
-              child: Center(
-                child: Text(
-                  'لا يوجد محامون مسجلون حالياً في تخصص "$_selectedSpec"',
-                  style: GoogleFonts.cairo(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF64748B),
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            )
-          else
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: lawyers.length,
-              separatorBuilder: (context, index) => const SizedBox(height: 10),
-              itemBuilder: (context, index) {
-                final lawyer = lawyers[index];
-                return ExecutiveLawyerCard(
-                  lawyer: lawyer,
-                  index: index,
-                );
-              },
-            ),
-        ],
-      ),
-    );
-  }
 
   // ─────────────────────────────────────────────────────────────
   // 4. SECTION TITLE & "كافة المحامين" BUTTON

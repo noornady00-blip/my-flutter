@@ -26,6 +26,7 @@ import 'storage_service.dart';
 import '../core/utils/app_error_translator.dart';
 import 'notification_service.dart';
 import 'network_service.dart';
+import '../core/utils/account_id_utils.dart';
 
 /// Concrete implementation of authentication and session contract.
 class AuthService implements AuthContract {
@@ -281,12 +282,14 @@ class AuthService implements AuthContract {
         }
       }
       final uid = cred.user!.uid;
+      final accountId = await AccountIdUtils.generateUnique12DigitId(_db);
 
       final user = UserModel(
         uid: uid,
         name: name,
         phone: normPhone,
         role: 'client',
+        accountId: accountId,
         photoUrl: photoUrl,
         photoBase64: photoBase64,
         createdAt: DateTime.now(),
@@ -297,12 +300,18 @@ class AuthService implements AuthContract {
 
       final batch = _db.batch();
       batch.set(_db.collection('users').doc(uid), userMap);
+      batch.set(_db.collection('account_ids').doc(accountId), {
+        'uid': uid,
+        'role': 'client',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
 
       final dirData = {
         'uid': uid,
         'name': name,
         'phone': normPhone,
         'role': 'client',
+        'accountId': accountId,
         'passwordHash': pwdHash,
         'createdAt': FieldValue.serverTimestamp(),
       };
@@ -318,12 +327,13 @@ class AuthService implements AuthContract {
         name: name,
         phone: normPhone,
         photoUrl: photoUrl,
+        accountId: accountId,
       );
 
       // Unregister admin device topic on client login
       unawaited(NotificationService().unregisterAdminDevice());
 
-      return {'success': true, 'uid': uid, 'role': 'client'};
+      return {'success': true, 'uid': uid, 'role': 'client', 'accountId': accountId};
     } on FirebaseAuthException catch (e) {
       debugPrint('registerClient FirebaseAuthException: [${e.code}] ${e.message}');
       final isNet = e.code == 'network-request-failed' || e.code == 'unavailable';
@@ -386,7 +396,7 @@ class AuthService implements AuthContract {
     required String phone,
     required String whatsapp,
     required String city,
-    required String specialization,
+    String? specialization,
     required String password,
     String? photoUrl,
     String? photoBase64,
@@ -493,12 +503,14 @@ class AuthService implements AuthContract {
         }
       }
       final uid = cred.user!.uid;
+      final accountId = await AccountIdUtils.generateUnique12DigitId(_db);
 
       final user = UserModel(
         uid: uid,
         name: name,
         phone: normPhone,
         role: 'lawyer',
+        accountId: accountId,
         photoUrl: photoUrl,
         photoBase64: photoBase64,
         createdAt: DateTime.now(),
@@ -510,8 +522,9 @@ class AuthService implements AuthContract {
         phone: normPhone,
         whatsapp: normWhatsapp,
         city: city,
-        specialization: specialization,
+        specialization: specialization ?? '',
         status: 'pending',
+        accountId: accountId,
         photoUrl: photoUrl,
         photoBase64: photoBase64,
         createdAt: DateTime.now(),
@@ -526,6 +539,11 @@ class AuthService implements AuthContract {
       final batch = _db.batch();
       batch.set(_db.collection('users').doc(uid), userMap);
       batch.set(_db.collection('lawyers').doc(uid), lawyerMap);
+      batch.set(_db.collection('account_ids').doc(accountId), {
+        'uid': uid,
+        'role': 'lawyer',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
 
       final dirData = {
         'uid': uid,
@@ -533,8 +551,9 @@ class AuthService implements AuthContract {
         'phone': normPhone,
         'role': 'lawyer',
         'status': 'pending',
-        'specialization': specialization,
+        if (specialization != null && specialization.isNotEmpty) 'specialization': specialization,
         'city': city,
+        'accountId': accountId,
         'passwordHash': pwdHash,
         'createdAt': FieldValue.serverTimestamp(),
       };
@@ -551,6 +570,7 @@ class AuthService implements AuthContract {
         phone: normPhone,
         photoUrl: photoUrl,
         status: 'pending',
+        accountId: accountId,
       );
 
       unawaited(NotificationService().unregisterAdminDevice());
@@ -1009,6 +1029,16 @@ class AuthService implements AuthContract {
         }
       } catch (_) {}
 
+      // Ensure user has a 12-digit fixed account ID
+      final rawAccountId = userDoc.data()?['accountId']?.toString() ??
+          userDoc.data()?['memberId']?.toString();
+      final effectiveAccountId = await AccountIdUtils.ensureUserHasAccountId(
+        uid: uid,
+        role: userRole,
+        currentAccountId: rawAccountId,
+        firestore: _db,
+      );
+
       await _saveSession(
         uid: uid,
         role: userRole,
@@ -1016,6 +1046,7 @@ class AuthService implements AuthContract {
         phone: normPhone,
         photoUrl: photoUrl,
         status: lawyerStatus,
+        accountId: effectiveAccountId,
       );
 
       if (userRole != 'admin') {
@@ -1028,6 +1059,7 @@ class AuthService implements AuthContract {
         'role': userRole,
         'status': lawyerStatus,
         'name': name,
+        'accountId': effectiveAccountId,
       };
     } on FirebaseAuthException catch (e) {
       debugPrint('login FirebaseAuthException: [${e.code}] ${e.message}');
@@ -1180,6 +1212,7 @@ class AuthService implements AuthContract {
       }
 
       final newUid = cred.user!.uid;
+      final accountId = await AccountIdUtils.generateUnique12DigitId(_db);
 
       final adminData = {
         'uid': newUid,
@@ -1189,6 +1222,7 @@ class AuthService implements AuthContract {
         'cleanDigits': cleanDigits,
         'email': email,
         'role': 'admin',
+        'accountId': accountId,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       };
@@ -1196,6 +1230,11 @@ class AuthService implements AuthContract {
       // Assign role: 'admin' in Firestore
       await _db.collection('users').doc(newUid).set(adminData, SetOptions(merge: true));
       await _db.collection('admins').doc(newUid).set(adminData, SetOptions(merge: true));
+      await _db.collection('account_ids').doc(accountId).set({
+        'uid': newUid,
+        'role': 'admin',
+        'createdAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
 
       // Register all phone variants in phone_directory
       final phoneCandidates = PhoneUtils.generatePhoneCandidates(cleanPhone);
@@ -1460,12 +1499,19 @@ class AuthService implements AuthContract {
           ? '01146979833'
           : (digits.isNotEmpty ? digits : input);
 
+      final adminAccountId = await AccountIdUtils.ensureUserHasAccountId(
+        uid: uid,
+        role: 'admin',
+        firestore: _db,
+      );
+
       if (isPrimaryAdmin) {
         final adminData = {
           'uid': uid,
           'name': adminName,
           'phone': adminPhone,
           'role': 'admin',
+          'accountId': adminAccountId,
           'email': successfulEmail,
           'isPrimary': true,
           'updatedAt': FieldValue.serverTimestamp(),
@@ -1502,6 +1548,7 @@ class AuthService implements AuthContract {
           role: 'admin',
           name: adminName,
           phone: adminPhone,
+          accountId: adminAccountId,
         );
 
         unawaited(NotificationService().registerAdminDevice(adminUid: uid));
@@ -1511,6 +1558,7 @@ class AuthService implements AuthContract {
           'uid': uid,
           'role': 'admin',
           'name': adminName,
+          'accountId': adminAccountId,
         };
       }
 
@@ -1539,6 +1587,7 @@ class AuthService implements AuthContract {
         role: 'admin',
         name: resolvedName,
         phone: input,
+        accountId: adminAccountId,
       );
 
       unawaited(NotificationService().registerAdminDevice(adminUid: uid));
@@ -1548,6 +1597,7 @@ class AuthService implements AuthContract {
         'uid': uid,
         'role': 'admin',
         'name': resolvedName,
+        'accountId': adminAccountId,
       };
     } on FirebaseAuthException catch (e) {
       debugPrint('adminLogin FirebaseAuthException: [${e.code}] ${e.message}');
@@ -2456,6 +2506,7 @@ class AuthService implements AuthContract {
     required String phone,
     String? photoUrl,
     String? status,
+    String? accountId,
   }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -2463,6 +2514,9 @@ class AuthService implements AuthContract {
       await prefs.setString('role', role);
       await prefs.setString('name', name);
       await prefs.setString('phone', phone);
+      if (accountId != null && accountId.isNotEmpty) {
+        await prefs.setString('accountId', accountId);
+      }
       if (photoUrl != null) {
         await prefs.setString('user_profile_photo_url', photoUrl);
       }
@@ -2481,6 +2535,7 @@ class AuthService implements AuthContract {
         'phone': prefs.getString('phone'),
         'status': prefs.getString('status'),
         'photoUrl': prefs.getString('user_profile_photo_url'),
+        'accountId': prefs.getString('accountId'),
       };
     } catch (_) {
       return {};

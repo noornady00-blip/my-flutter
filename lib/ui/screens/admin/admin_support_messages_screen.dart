@@ -359,7 +359,6 @@ class _AdminSupportMessagesScreenState extends State<AdminSupportMessagesScreen>
         phone: phone,
         whatsapp: phone,
         city: data['city']?.toString() ?? 'الخرطوم',
-        specialization: data['specialization']?.toString() ?? 'قانون العمل والتأمينات',
         status: 'approved',
         photoBase64: photoBase64,
         photoUrl: photoUrl,
@@ -418,7 +417,7 @@ class _AdminSupportMessagesScreenState extends State<AdminSupportMessagesScreen>
               data['subject']?.toString(),
               data['message']?.toString(),
               data['city']?.toString(),
-              data['specialization']?.toString(),
+              data['accountId']?.toString(),
             ]);
           }
           return true;

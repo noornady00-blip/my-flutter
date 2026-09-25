@@ -42,7 +42,7 @@ abstract class DatabaseContract {
   });
 
   // ---------------------------------------------------------------------------
-  // Users & Clients
+  // Users & Clients & Admins
   // ---------------------------------------------------------------------------
   Future<UserModel?> getUser(String uid);
   Stream<List<UserModel>> getAllClients();
@@ -50,6 +50,14 @@ abstract class DatabaseContract {
   Future<void> activateClient(String uid);
   Future<void> deleteClient(String uid);
   Future<void> deleteUser(String uid);
+
+  // ---------------------------------------------------------------------------
+  // Admins
+  // ---------------------------------------------------------------------------
+  Stream<List<UserModel>> getAllAdmins();
+  Future<void> suspendAdmin(String uid);
+  Future<void> activateAdmin(String uid);
+  Future<void> deleteAdmin(String uid);
 
   // ---------------------------------------------------------------------------
   // Password Reset Operations

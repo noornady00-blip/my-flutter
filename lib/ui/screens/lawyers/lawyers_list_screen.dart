@@ -8,8 +8,7 @@ import '../../../core/utils/search_utils.dart';
 
 class LawyersListScreen extends StatefulWidget {
   final String city;
-  final String? initialSpecialization;
-  const LawyersListScreen({super.key, required this.city, this.initialSpecialization});
+  const LawyersListScreen({super.key, required this.city});
 
   @override
   State<LawyersListScreen> createState() => _LawyersListScreenState();
@@ -18,17 +17,13 @@ class LawyersListScreen extends StatefulWidget {
 class _LawyersListScreenState extends State<LawyersListScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
-  late String _selectedSpec;
   final _firestoreService = FirestoreService();
   late final Stream<List<LawyerModel>> _lawyersStream;
   List<LawyerModel>? _initialLawyers;
 
-  static const List<String> _specializations = LawyerSpecializations.filterList;
-
   @override
   void initState() {
     super.initState();
-    _selectedSpec = widget.initialSpecialization ?? 'الكل';
     _lawyersStream = _firestoreService.getLawyersByCity(widget.city);
     final inMem = FirestoreService.inMemoryApprovedLawyers;
     if (inMem != null && inMem.isNotEmpty) {
@@ -49,12 +44,11 @@ class _LawyersListScreenState extends State<LawyersListScreen> {
       final isApproved = l.status == 'approved';
       final matchesQuery = AppSearchUtils.matchesAny(_searchQuery, [
         l.name,
-        l.specialization,
         l.city,
         l.phone,
+        l.accountId,
       ]);
-      final matchesSpec = LawyerSpecializations.matches(l.specialization, _selectedSpec);
-      return isApproved && matchesQuery && matchesSpec;
+      return isApproved && matchesQuery;
     }).toList();
   }
 
@@ -65,8 +59,6 @@ class _LawyersListScreenState extends State<LawyersListScreen> {
       body: Column(
         children: [
           _buildHeader(),
-          // Specialization filter chips
-          _buildSpecializationsFilter(),
           Expanded(
             child: StreamBuilder<List<LawyerModel>>(
               stream: _lawyersStream,
@@ -88,48 +80,6 @@ class _LawyersListScreenState extends State<LawyersListScreen> {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildSpecializationsFilter() {
-    return SizedBox(
-      height: 48,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        itemCount: _specializations.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final spec = _specializations[index];
-          final isSelected = _selectedSpec == spec;
-          return InkWell(
-            onTap: () => setState(() => _selectedSpec = spec),
-            borderRadius: BorderRadius.circular(20),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-              decoration: BoxDecoration(
-                color: isSelected ? AppTheme.navyDark : Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: isSelected ? AppTheme.navyDark : const Color(0xFFE2E8F0),
-                ),
-              ),
-              child: Center(
-                child: Text(
-                  spec,
-                  style: GoogleFonts.cairo(
-                    fontSize: 12,
-                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                    color: isSelected ? AppTheme.gold : const Color(0xFF64748B),
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
       ),
     );
   }
@@ -227,8 +177,8 @@ class _LawyersListScreenState extends State<LawyersListScreen> {
                 style: GoogleFonts.cairo(color: AppTheme.navyDark),
                 decoration: InputDecoration(
                   hintText: isAllCities
-                      ? 'ابحث باسم المحامي أو المدينة أو التخصص...'
-                      : 'ابحث باسم المحامي أو التخصص...',
+                      ? 'ابحث باسم المحامي، المدينة، أو المعرّف...'
+                      : 'ابحث باسم المحامي، الهاتف، أو المعرّف...',
                   hintStyle: GoogleFonts.cairo(color: AppTheme.grey, fontSize: 13.5),
                   prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.gold),
                   filled: true,

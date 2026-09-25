@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/utils/search_utils.dart';
 import '../../../core/utils/phone_utils.dart';
 import '../../../core/utils/image_utils.dart';
+import '../../../core/utils/account_id_utils.dart';
 import '../../../data/models/lawyer.dart';
 import '../../../data/models/user_model.dart';
 import '../../../data/models/password_reset_model.dart';
@@ -14,6 +15,7 @@ import '../../../network/auth_service.dart';
 import '../../custom_widgets/app_logo_badge.dart';
 import '../../custom_widgets/app_dialog.dart';
 import '../../custom_widgets/profile_details_modal.dart';
+import '../../custom_widgets/account_role_badge.dart';
 
 // ============================================================================
 // AdminAccountManagementScreen
@@ -122,48 +124,103 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
             return StreamBuilder<List<UserModel>>(
               stream: _firestoreService.getAllClients(),
               builder: (context, clientsSnap) {
-                if (lawyersSnap.connectionState == ConnectionState.waiting &&
-                    clientsSnap.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: CircularProgressIndicator(color: headerGold),
-                  );
-                }
+                return StreamBuilder<List<UserModel>>(
+                  stream: _firestoreService.getAllAdmins(),
+                  builder: (context, adminsSnap) {
+                    if (lawyersSnap.connectionState == ConnectionState.waiting &&
+                        clientsSnap.connectionState == ConnectionState.waiting &&
+                        adminsSnap.connectionState == ConnectionState.waiting) {
+                      return const Center(
+                        child: CircularProgressIndicator(color: headerGold),
+                      );
+                    }
 
-                final lawyers = lawyersSnap.data ?? [];
-                final clients = clientsSnap.data ?? [];
+                    final lawyers = lawyersSnap.data ?? [];
+                    final clients = clientsSnap.data ?? [];
+                    final admins = adminsSnap.data ?? [];
 
-                return CustomScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  slivers: [
-                    // 1. Search Bar & Filter Header
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _buildSearchInput(),
-                            const SizedBox(height: 12),
-                            _buildFilterChips(lawyers: lawyers, clients: clients),
-                            const SizedBox(height: 12),
-                            _buildStatsOverview(lawyers: lawyers, clients: clients),
-                            const SizedBox(height: 14),
-                          ],
+                    return CustomScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      slivers: [
+                        // 1. Search Bar & Filter Header
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                _buildSearchInput(),
+                                const SizedBox(height: 12),
+                                _buildFilterChips(lawyers: lawyers, clients: clients, admins: admins),
+                                const SizedBox(height: 10),
+                                _buildAddAdminButton(),
+                                const SizedBox(height: 10),
+                                _buildStatsOverview(lawyers: lawyers, clients: clients, admins: admins),
+                                const SizedBox(height: 14),
+                              ],
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
 
-                    // 2. Account List
-                    _buildAccountsList(lawyers: lawyers, clients: clients),
+                        // 2. Account List
+                        _buildAccountsList(lawyers: lawyers, clients: clients, admins: admins),
 
-                    const SliverToBoxAdapter(
-                      child: SizedBox(height: 40),
-                    ),
-                  ],
+                        const SliverToBoxAdapter(
+                          child: SizedBox(height: 40),
+                        ),
+                      ],
+                    );
+                  },
                 );
               },
             );
           },
+        ),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // ADD ADMIN BUTTON
+  // ─────────────────────────────────────────────────────────────
+  Widget _buildAddAdminButton() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF0B2A5B), Color(0xFF1E3A8A)],
+        ),
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0B2A5B).withValues(alpha: 0.2),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _showAddAdminDialog(),
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.add_moderator_rounded, color: Color(0xFFD49B1A), size: 18),
+                const SizedBox(width: 8),
+                Text(
+                  'إضافة مشرف جديد للنظام',
+                  style: GoogleFonts.cairo(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -190,7 +247,7 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
         controller: _searchCtrl,
         textDirection: TextDirection.rtl,
         decoration: InputDecoration(
-          hintText: 'ابحث بالاسم، رقم الهاتف، أو المدينة...',
+          hintText: 'ابحث بالاسم، رقم الهاتف، أو المعرّف (12 رقم)...',
           hintStyle: GoogleFonts.cairo(fontSize: 13, color: const Color(0xFF94A3B8)),
           prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFFD49B1A)),
           suffixIcon: _searchQuery.isNotEmpty
@@ -212,10 +269,13 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
   Widget _buildFilterChips({
     required List<LawyerModel> lawyers,
     required List<UserModel> clients,
+    required List<UserModel> admins,
   }) {
     final suspendedLawyers = lawyers.where((l) => l.isSuspended).length;
     final suspendedClients = clients.where((c) => c.isSuspended).length;
-    final totalSuspended = suspendedLawyers + suspendedClients;
+    final suspendedAdmins = admins.where((a) => a.isSuspended).length;
+    final totalSuspended = suspendedLawyers + suspendedClients + suspendedAdmins;
+    final totalAll = lawyers.length + clients.length + admins.length;
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -223,7 +283,9 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
       reverse: true,
       child: Row(
         children: [
-          _buildChip('all', 'الكل (${lawyers.length + clients.length})'),
+          _buildChip('all', 'الكل ($totalAll)'),
+          const SizedBox(width: 8),
+          _buildChip('admins', 'المشرفون (${admins.length})'),
           const SizedBox(width: 8),
           _buildChip('lawyers', 'المحامون (${lawyers.length})'),
           const SizedBox(width: 8),
@@ -284,18 +346,21 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
   Widget _buildStatsOverview({
     required List<LawyerModel> lawyers,
     required List<UserModel> clients,
+    required List<UserModel> admins,
   }) {
     final activeLawyers = lawyers.where((l) => l.isApproved).length;
     final activeClients = clients.where((c) => c.isActive).length;
+    final activeAdmins = admins.where((a) => !a.isSuspended).length;
     final suspendedLawyers = lawyers.where((l) => l.isSuspended).length;
     final suspendedClients = clients.where((c) => c.isSuspended).length;
+    final suspendedAdmins = admins.where((a) => a.isSuspended).length;
 
     return Row(
       children: [
         Expanded(
           child: _buildMiniStat(
             title: 'حسابات نشطة',
-            count: activeLawyers + activeClients,
+            count: activeLawyers + activeClients + activeAdmins,
             color: const Color(0xFF059669),
             bg: const Color(0xFFECFDF5),
             icon: Icons.check_circle_outline_rounded,
@@ -305,7 +370,7 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
         Expanded(
           child: _buildMiniStat(
             title: 'حسابات موقوفة',
-            count: suspendedLawyers + suspendedClients,
+            count: suspendedLawyers + suspendedClients + suspendedAdmins,
             color: const Color(0xFFE11D48),
             bg: const Color(0xFFFFF1F2),
             icon: Icons.pause_circle_outline_rounded,
@@ -315,7 +380,7 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
         Expanded(
           child: _buildMiniStat(
             title: 'إجمالي المسجلين',
-            count: lawyers.length + clients.length,
+            count: lawyers.length + clients.length + admins.length,
             color: const Color(0xFF0B2A5B),
             bg: const Color(0xFFF1F5F9),
             icon: Icons.groups_rounded,
@@ -324,6 +389,7 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
       ],
     );
   }
+
 
   Widget _buildMiniStat({
     required String title,
@@ -371,8 +437,22 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
   Widget _buildAccountsList({
     required List<LawyerModel> lawyers,
     required List<UserModel> clients,
+    required List<UserModel> admins,
   }) {
-    // 1. Filter Lawyers
+    // 1. Filter Admins
+    List<UserModel> filteredAdmins = [];
+    if (_activeFilter == 'all' || _activeFilter == 'admins' || _activeFilter == 'suspended') {
+      filteredAdmins = admins.where((a) {
+        if (_activeFilter == 'suspended' && !a.isSuspended) return false;
+        return AppSearchUtils.matchesAny(_searchQuery, [
+          a.name,
+          a.phone,
+          a.accountId,
+        ]);
+      }).toList();
+    }
+
+    // 2. Filter Lawyers
     List<LawyerModel> filteredLawyers = [];
     if (_activeFilter == 'all' || _activeFilter == 'lawyers' || _activeFilter == 'suspended') {
       filteredLawyers = lawyers.where((l) {
@@ -381,12 +461,12 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
           l.name,
           l.phone,
           l.city,
-          l.specialization,
+          l.accountId,
         ]);
       }).toList();
     }
 
-    // 2. Filter Clients
+    // 3. Filter Clients
     List<UserModel> filteredClients = [];
     if (_activeFilter == 'all' || _activeFilter == 'clients' || _activeFilter == 'suspended') {
       filteredClients = clients.where((c) {
@@ -394,11 +474,12 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
         return AppSearchUtils.matchesAny(_searchQuery, [
           c.name,
           c.phone,
+          c.accountId,
         ]);
       }).toList();
     }
 
-    final totalCount = filteredLawyers.length + filteredClients.length;
+    final totalCount = filteredAdmins.length + filteredLawyers.length + filteredClients.length;
 
     if (totalCount == 0) {
       return SliverFillRemaining(
@@ -436,15 +517,21 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
       sliver: SliverList(
         delegate: SliverChildBuilderDelegate(
           (context, index) {
-            // Render lawyers first, then clients
-            if (index < filteredLawyers.length) {
-              final lawyer = filteredLawyers[index];
+            // Render order: Admins first, then Lawyers, then Clients
+            if (index < filteredAdmins.length) {
+              final admin = filteredAdmins[index];
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _buildAdminAccountCard(admin),
+              );
+            } else if (index < filteredAdmins.length + filteredLawyers.length) {
+              final lawyer = filteredLawyers[index - filteredAdmins.length];
               return Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: _buildLawyerAccountCard(lawyer),
               );
             } else {
-              final client = filteredClients[index - filteredLawyers.length];
+              final client = filteredClients[index - filteredAdmins.length - filteredLawyers.length];
               return Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: _buildClientAccountCard(client),
@@ -491,26 +578,7 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             textDirection: TextDirection.rtl,
             children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFFBEB),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFFD49B1A).withValues(alpha: 0.4)),
-                    ),
-                    child: Text(
-                      '⚖️ محامي معتمد',
-                      style: GoogleFonts.cairo(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        color: const Color(0xFFD97706),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+              const AccountRoleBadge(role: 'lawyer'),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                 decoration: BoxDecoration(
@@ -569,7 +637,7 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                       name: l.name,
                       photoBase64: l.photoBase64,
                       photoUrl: l.photoUrl,
-                      subtitle: l.specialization,
+                      subtitle: 'محامٍ ومستشار قانوني',
                     );
                   }
                 },
@@ -607,7 +675,7 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                       ),
                     ),
                     Text(
-                      '${l.specialization.isNotEmpty ? l.specialization : "محامي ومستشار قانوني"} • ${l.city}',
+                      'محامٍ ومستشار قانوني • ${l.city}',
                       style: GoogleFonts.cairo(
                         fontSize: 12,
                         color: const Color(0xFF64748B),
@@ -623,6 +691,39 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                         fontWeight: FontWeight.w700,
                       ),
                     ),
+                    if (l.accountId.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          InkWell(
+                            onTap: () {
+                              Clipboard.setData(ClipboardData(text: l.accountId));
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('تم نسخ معرّف الحساب')),
+                              );
+                            },
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 4),
+                              child: Icon(Icons.copy_rounded, size: 13, color: Color(0xFFD49B1A)),
+                            ),
+                          ),
+                          Text(
+                            AccountIdUtils.format12Digits(l.accountId),
+                            style: GoogleFonts.sourceCodePro(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF0B2A5B),
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '🆔 المعرّف:',
+                            style: GoogleFonts.cairo(fontSize: 10.5, color: const Color(0xFF64748B), fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -728,22 +829,7 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             textDirection: TextDirection.rtl,
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEFF6FF),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFF3B82F6).withValues(alpha: 0.3)),
-                ),
-                child: Text(
-                  '👤 عميل بالمنصة',
-                  style: GoogleFonts.cairo(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    color: const Color(0xFF2563EB),
-                  ),
-                ),
-              ),
+              const AccountRoleBadge(role: 'client'),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                 decoration: BoxDecoration(
@@ -842,6 +928,39 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                         fontWeight: FontWeight.w700,
                       ),
                     ),
+                    if (c.accountId.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          InkWell(
+                            onTap: () {
+                              Clipboard.setData(ClipboardData(text: c.accountId));
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('تم نسخ معرّف الحساب')),
+                              );
+                            },
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 4),
+                              child: Icon(Icons.copy_rounded, size: 13, color: Color(0xFFD49B1A)),
+                            ),
+                          ),
+                          Text(
+                            AccountIdUtils.format12Digits(c.accountId),
+                            style: GoogleFonts.sourceCodePro(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF0B2A5B),
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '🆔 المعرّف:',
+                            style: GoogleFonts.cairo(fontSize: 10.5, color: const Color(0xFF64748B), fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -909,6 +1028,250 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                 icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444), size: 22),
                 tooltip: 'حذف العميل نهائياً',
               ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // ADMIN ACCOUNT CARD
+  // ─────────────────────────────────────────────────────────────
+  Widget _buildAdminAccountCard(UserModel a) {
+    final bool isSuspended = a.isSuspended;
+    final bool isPrimary = a.phone == '01146979833' || a.phone == '1146979833';
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: isSuspended ? const Color(0xFFFDA4AF) : const Color(0xFFE2E8F0),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0B2A5B).withValues(alpha: 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Header: Role Badge + Status Badge
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            textDirection: TextDirection.rtl,
+            children: [
+              const AccountRoleBadge(role: 'admin'),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                decoration: BoxDecoration(
+                  color: isSuspended ? const Color(0xFFFFF1F2) : const Color(0xFFECFDF5),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: isSuspended
+                        ? const Color(0xFFE11D48).withValues(alpha: 0.3)
+                        : const Color(0xFF10B981).withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isSuspended ? const Color(0xFFE11D48) : const Color(0xFF10B981),
+                      ),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      isSuspended ? 'موقف' : (isPrimary ? 'مشرف رئيسي' : 'نشط'),
+                      style: GoogleFonts.cairo(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                        color: isSuspended ? const Color(0xFFE11D48) : const Color(0xFF059669),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Admin Details
+          Row(
+            textDirection: TextDirection.rtl,
+            children: [
+              Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFF0B2A5B),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF0B2A5B).withValues(alpha: 0.25),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: const Center(
+                  child: Icon(Icons.shield_rounded, color: Color(0xFFD49B1A), size: 26),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      a.name.isNotEmpty ? a.name : 'مشرف النظام',
+                      style: GoogleFonts.cairo(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF0B2A5B),
+                      ),
+                    ),
+                    Text(
+                      '📞 ${a.phone}',
+                      textDirection: TextDirection.ltr,
+                      style: GoogleFonts.cairo(
+                        fontSize: 12,
+                        color: const Color(0xFF0B2A5B),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if (a.accountId.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          InkWell(
+                            onTap: () {
+                              Clipboard.setData(ClipboardData(text: a.accountId));
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('تم نسخ معرّف الحساب')),
+                              );
+                            },
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 4),
+                              child: Icon(Icons.copy_rounded, size: 13, color: Color(0xFFD49B1A)),
+                            ),
+                          ),
+                          Text(
+                            AccountIdUtils.format12Digits(a.accountId),
+                            style: GoogleFonts.sourceCodePro(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF0B2A5B),
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '🆔 المعرّف:',
+                            style: GoogleFonts.cairo(fontSize: 10.5, color: const Color(0xFF64748B), fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          const SizedBox(height: 12),
+
+          // Actions
+          Row(
+            children: [
+              // 1. Change Password
+              Expanded(
+                flex: 4,
+                child: ElevatedButton.icon(
+                  onPressed: () => _showChangePasswordDialog(phone: a.phone, name: a.name, uid: a.uid),
+                  icon: const Icon(Icons.key_rounded, size: 15, color: Color(0xFFD49B1A)),
+                  label: Text(
+                    'كلمة السر',
+                    style: GoogleFonts.cairo(fontSize: 11.5, fontWeight: FontWeight.w800),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF0B2A5B),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+
+              // 2. Suspend / Activate (Only for non-primary admins)
+              if (!isPrimary) ...[
+                Expanded(
+                  flex: 4,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _toggleAdminStatus(a),
+                    icon: Icon(
+                      isSuspended ? Icons.play_arrow_rounded : Icons.pause_rounded,
+                      size: 16,
+                      color: isSuspended ? const Color(0xFF10B981) : const Color(0xFFE11D48),
+                    ),
+                    label: Text(
+                      isSuspended ? 'تنشيط' : 'إيقاف',
+                      style: GoogleFonts.cairo(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                        color: isSuspended ? const Color(0xFF10B981) : const Color(0xFFE11D48),
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(
+                        color: isSuspended ? const Color(0xFF10B981) : const Color(0xFFE11D48),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+
+                // 3. Delete Admin
+                IconButton(
+                  onPressed: () => _confirmDeleteAdmin(a),
+                  icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444), size: 22),
+                  tooltip: 'حذف المشرف نهائياً',
+                ),
+              ] else ...[
+                Expanded(
+                  flex: 4,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      'حساب أساسي محمي',
+                      style: GoogleFonts.cairo(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF64748B),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ],
@@ -1271,6 +1634,301 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
         messenger.showSnackBar(
           SnackBar(
             content: Text('فشل حذف حساب العميل: $e', style: GoogleFonts.cairo()),
+            backgroundColor: const Color(0xFFDC2626),
+          ),
+        );
+      }
+    }
+  }
+
+  /// 6. نافذة إضافة مشرف جديد للنظام
+  void _showAddAdminDialog() {
+    final nameCtrl = TextEditingController();
+    final phoneCtrl = TextEditingController();
+    final passCtrl = TextEditingController(text: '123456');
+    bool isSaving = false;
+    bool obscurePass = true;
+
+    showDialog(
+      context: context,
+      builder: (dlgCtx) => StatefulBuilder(
+        builder: (ctx, setDlgState) => Dialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          elevation: 16,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 60,
+                      height: 60,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0B2A5B).withValues(alpha: 0.08),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: const Color(0xFF0B2A5B), width: 1.5),
+                      ),
+                      child: const Center(
+                        child: Icon(Icons.shield_rounded, color: Color(0xFFD49B1A), size: 30),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'إضافة مشرف جديد للنظام',
+                    style: GoogleFonts.cairo(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 17,
+                      color: const Color(0xFF0B2A5B),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'سيتم منح هذا الحساب صلاحيات الإشراف الإداري على المنصة',
+                    style: GoogleFonts.cairo(fontSize: 12, color: const Color(0xFF64748B)),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Name Field
+                  TextField(
+                    controller: nameCtrl,
+                    textDirection: TextDirection.rtl,
+                    decoration: InputDecoration(
+                      labelText: 'الاسم الكامل للمشرف',
+                      labelStyle: GoogleFonts.cairo(fontSize: 13, color: const Color(0xFF64748B)),
+                      prefixIcon: const Icon(Icons.person_rounded, color: Color(0xFF0B2A5B)),
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Phone Field
+                  TextField(
+                    controller: phoneCtrl,
+                    keyboardType: TextInputType.phone,
+                    textDirection: TextDirection.ltr,
+                    decoration: InputDecoration(
+                      labelText: 'رقم هاتف المشرف (11 رقم)',
+                      hintText: '011XXXXXXXX',
+                      labelStyle: GoogleFonts.cairo(fontSize: 13, color: const Color(0xFF64748B)),
+                      prefixIcon: const Icon(Icons.phone_rounded, color: Color(0xFF0B2A5B)),
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Password Field
+                  TextField(
+                    controller: passCtrl,
+                    obscureText: obscurePass,
+                    textDirection: TextDirection.ltr,
+                    decoration: InputDecoration(
+                      labelText: 'كلمة المرور',
+                      labelStyle: GoogleFonts.cairo(fontSize: 13, color: const Color(0xFF64748B)),
+                      prefixIcon: const Icon(Icons.lock_rounded, color: Color(0xFF0B2A5B)),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          obscurePass ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                          color: const Color(0xFF94A3B8),
+                        ),
+                        onPressed: () => setDlgState(() => obscurePass = !obscurePass),
+                      ),
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(dlgCtx),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF64748B),
+                            backgroundColor: const Color(0xFFF1F5F9),
+                            side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          ),
+                          child: Text('إلغاء', style: GoogleFonts.cairo(fontWeight: FontWeight.w700, fontSize: 13.5)),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: isSaving
+                              ? null
+                              : () async {
+                                  final name = nameCtrl.text.trim();
+                                  final phone = phoneCtrl.text.trim();
+                                  final pass = passCtrl.text.trim();
+
+                                  if (name.isEmpty || phone.isEmpty || pass.isEmpty) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('يرجى ملء جميع الحقول المطلوبة', style: GoogleFonts.cairo()),
+                                        backgroundColor: const Color(0xFFDC2626),
+                                      ),
+                                    );
+                                    return;
+                                  }
+
+                                  if (pass.length < 6) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('كلمة المرور يجب ألا تقل عن 6 أحرف', style: GoogleFonts.cairo()),
+                                        backgroundColor: const Color(0xFFDC2626),
+                                      ),
+                                    );
+                                    return;
+                                  }
+
+                                  setDlgState(() => isSaving = true);
+                                  final res = await _authService.createAdminAccount(
+                                    name: name,
+                                    phone: phone,
+                                    password: pass,
+                                  );
+
+                                  if (!mounted) return;
+                                  setDlgState(() => isSaving = false);
+
+                                  if (res['success'] == true) {
+                                    if (dlgCtx.mounted) {
+                                      Navigator.pop(dlgCtx);
+                                    }
+                                    if (!context.mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(res['message']?.toString() ?? 'تم إضافة المشرف واعتماده بنجاح', style: GoogleFonts.cairo()),
+                                        backgroundColor: const Color(0xFF10B981),
+                                      ),
+                                    );
+                                  } else {
+                                    if (!context.mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(res['error']?.toString() ?? 'تعذر إضافة حساب المشرف', style: GoogleFonts.cairo()),
+                                        backgroundColor: const Color(0xFFDC2626),
+                                      ),
+                                    );
+                                  }
+                                },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF0B2A5B),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          ),
+                          child: isSaving
+                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                              : Text('حفظ واعتماد', style: GoogleFonts.cairo(fontWeight: FontWeight.w800, fontSize: 13.5)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 7. تبديل حالة المشرف (تنشيط / إيقاف)
+  Future<void> _toggleAdminStatus(UserModel a) async {
+    if (a.phone == '01146979833' || a.phone == '1146979833') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('لا يمكن إيقاف الحساب الأساسي للمشرف العام', style: GoogleFonts.cairo()),
+          backgroundColor: const Color(0xFFDC2626),
+        ),
+      );
+      return;
+    }
+
+    final messenger = ScaffoldMessenger.of(context);
+    final willSuspend = !a.isSuspended;
+
+    try {
+      if (willSuspend) {
+        await _firestoreService.suspendAdmin(a.uid);
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('تم إيقاف حساب المشرف: ${a.name}', style: GoogleFonts.cairo()),
+            backgroundColor: const Color(0xFFE11D48),
+          ),
+        );
+      } else {
+        await _firestoreService.activateAdmin(a.uid);
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('تم تنشيط حساب المشرف: ${a.name} بنجاح', style: GoogleFonts.cairo()),
+            backgroundColor: const Color(0xFF10B981),
+          ),
+        );
+      }
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('فشل تحديث حالة المشرف: $e', style: GoogleFonts.cairo()),
+          backgroundColor: const Color(0xFFDC2626),
+        ),
+      );
+    }
+  }
+
+  /// 8. تأكيد وحذف المشرف نهائياً
+  Future<void> _confirmDeleteAdmin(UserModel a) async {
+    if (a.phone == '01146979833' || a.phone == '1146979833') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('لا يمكن حذف الحساب الأساسي للمشرف العام', style: GoogleFonts.cairo()),
+          backgroundColor: const Color(0xFFDC2626),
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await AppDialog.deleteConfirm(
+      context,
+      title: 'حذف المشرف نهائياً',
+      message: 'هل أنت متأكد من رغبتك في حذف حساب المشرف (${a.name}) نهائياً؟ سيتم إلغاء صلاحياته الإدارية فوراً.',
+      confirmLabel: 'تأكيد الحذف',
+      cancelLabel: 'إلغاء',
+    );
+
+    if (confirmed == true && mounted) {
+      final messenger = ScaffoldMessenger.of(context);
+      try {
+        await _firestoreService.deleteAdmin(a.uid);
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('تم حذف حساب المشرف بنجاح', style: GoogleFonts.cairo()),
+            backgroundColor: const Color(0xFF10B981),
+          ),
+        );
+      } catch (e) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('فشل حذف حساب المشرف: $e', style: GoogleFonts.cairo()),
             backgroundColor: const Color(0xFFDC2626),
           ),
         );
