@@ -217,6 +217,7 @@ class ProfileDetailsModal {
     String? fallbackName,
     String? fallbackPhone,
     String? fallbackPhoto,
+    String? fallbackPhotoBase64,
     String? fallbackAccountId,
     bool isAdmin = false,
   }) async {
@@ -235,6 +236,7 @@ class ProfileDetailsModal {
         city: 'السودان',
         accountId: fallbackAccountId ?? '',
         photoUrl: fallbackPhoto,
+        photoBase64: fallbackPhotoBase64,
         status: 'approved',
       );
       showLawyerModal(context, lawyer: initialLawyer, isAdmin: isAdmin);
@@ -244,6 +246,7 @@ class ProfileDetailsModal {
         name: cleanName,
         phone: fallbackPhone ?? '',
         photoUrl: fallbackPhoto,
+        photoBase64: fallbackPhotoBase64,
         accountId: fallbackAccountId ?? '',
         role: effectiveRole.isNotEmpty ? effectiveRole : 'client',
         createdAt: DateTime.now(),
@@ -1458,6 +1461,8 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
+    final isAdminRole = client.role == 'admin' || client.name.contains('مشرف') || client.name.contains('إدارة');
+
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
@@ -1526,7 +1531,7 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
                             name: client.name,
                             photoBase64: client.photoBase64,
                             photoUrl: client.photoUrl,
-                            subtitle: 'عميل مسجل في المنصة',
+                            subtitle: isAdminRole ? 'مشرف المنصة' : 'عميل مسجل في المنصة',
                           )
                       : null,
                   child: Container(
@@ -1535,11 +1540,17 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
                     padding: const EdgeInsets.all(3.5),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: const Color(0xFF0B2A5B),
+                      gradient: isAdminRole
+                          ? const LinearGradient(
+                              colors: [Color(0xFFD49B1A), Color(0xFF0B2A5B)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            )
+                          : null,
+                      color: isAdminRole ? null : const Color(0xFF0B2A5B),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF0B2A5B)
-                              .withValues(alpha: 0.25),
+                          color: const Color(0xFF0B2A5B).withValues(alpha: 0.25),
                           blurRadius: 16,
                           offset: const Offset(0, 5),
                         ),
@@ -1572,20 +1583,35 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
             const SizedBox(height: 6),
             Center(
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEFF6FF),
+                  gradient: isAdminRole
+                      ? const LinearGradient(
+                          colors: [Color(0xFFFEF3C7), Color(0xFFFDE68A)],
+                        )
+                      : null,
+                  color: isAdminRole ? null : const Color(0xFFEFF6FF),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFBFDBFE)),
-                ),
-                child: Text(
-                  'عميل مسجل في المنصة',
-                  style: GoogleFonts.cairo(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF2563EB),
+                  border: Border.all(
+                    color: isAdminRole ? const Color(0xFFD49B1A) : const Color(0xFFBFDBFE),
                   ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (isAdminRole) ...[
+                      const Icon(Icons.shield_rounded, size: 15, color: Color(0xFF92400E)),
+                      const SizedBox(width: 5),
+                    ],
+                    Text(
+                      isAdminRole ? 'مشرف المنصة • إدارة محاميك' : 'عميل مسجل في المنصة',
+                      style: GoogleFonts.cairo(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: isAdminRole ? const Color(0xFF92400E) : const Color(0xFF2563EB),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -1630,36 +1656,39 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
                     },
                   ),
                 ),
-                const SizedBox(width: 8),
 
-                // 2. Call
-                Expanded(
-                  child: _ExecutiveModalActionButton(
-                    title: 'اتصال',
-                    iconWidget: const Icon(Icons.phone_rounded,
-                        color: Color(0xFFD49B1A), size: 17),
-                    backgroundColor: const Color(0xFF0B2A5B),
-                    borderColor: const Color(0xFF1E2E5C),
-                    shadowColor: const Color(0xFF0B2A5B),
-                    onTap: () =>
-                        ProfileDetailsModal.launchCall(client.phone),
-                  ),
-                ),
-                const SizedBox(width: 8),
+                if (!isAdminRole) ...[
+                  const SizedBox(width: 8),
 
-                // 3. WhatsApp
-                Expanded(
-                  child: _ExecutiveModalActionButton(
-                    title: 'واتساب',
-                    iconWidget:
-                        const WhatsAppIcon(size: 17, color: Colors.white),
-                    backgroundColor: const Color(0xFF1E8E5A),
-                    borderColor: const Color(0xFF15803D),
-                    shadowColor: const Color(0xFF16A34A),
-                    onTap: () =>
-                        ProfileDetailsModal.launchWhatsApp(client.phone),
+                  // 2. Call (Clients/Lawyers only)
+                  Expanded(
+                    child: _ExecutiveModalActionButton(
+                      title: 'اتصال',
+                      iconWidget: const Icon(Icons.phone_rounded,
+                          color: Color(0xFFD49B1A), size: 17),
+                      backgroundColor: const Color(0xFF0B2A5B),
+                      borderColor: const Color(0xFF1E2E5C),
+                      shadowColor: const Color(0xFF0B2A5B),
+                      onTap: () =>
+                          ProfileDetailsModal.launchCall(client.phone),
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 8),
+
+                  // 3. WhatsApp (Clients/Lawyers only)
+                  Expanded(
+                    child: _ExecutiveModalActionButton(
+                      title: 'واتساب',
+                      iconWidget:
+                          const WhatsAppIcon(size: 17, color: Colors.white),
+                      backgroundColor: const Color(0xFF1E8E5A),
+                      borderColor: const Color(0xFF15803D),
+                      shadowColor: const Color(0xFF16A34A),
+                      onTap: () =>
+                          ProfileDetailsModal.launchWhatsApp(client.phone),
+                    ),
+                  ),
+                ],
               ],
             ),
             const SizedBox(height: 20),
@@ -1688,21 +1717,23 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
                     ),
                     const Divider(height: 20, color: Color(0xFFE2E8F0)),
                   ],
-                  _buildDetailRow(
-                    context: context,
-                    iconWidget: const Icon(Icons.phone_android_rounded,
-                        color: Color(0xFF3B82F6), size: 18),
-                    label: 'رقم الموبايل',
-                    value: client.phone,
-                    isPhone: true,
-                    color: const Color(0xFF3B82F6),
-                    onCopy: () {
-                      Clipboard.setData(ClipboardData(text: client.phone));
-                      _showFloatingCopyToast(
-                          context, 'تم نسخ رقم الموبايل بنجاح');
-                    },
-                  ),
-                  const Divider(height: 20, color: Color(0xFFE2E8F0)),
+                  if (!isAdminRole && client.phone.isNotEmpty) ...[
+                    _buildDetailRow(
+                      context: context,
+                      iconWidget: const Icon(Icons.phone_android_rounded,
+                          color: Color(0xFF3B82F6), size: 18),
+                      label: 'رقم الموبايل',
+                      value: client.phone,
+                      isPhone: true,
+                      color: const Color(0xFF3B82F6),
+                      onCopy: () {
+                        Clipboard.setData(ClipboardData(text: client.phone));
+                        _showFloatingCopyToast(
+                            context, 'تم نسخ رقم الموبايل بنجاح');
+                      },
+                    ),
+                    const Divider(height: 20, color: Color(0xFFE2E8F0)),
+                  ],
                   _buildDetailRow(
                     context: context,
                     iconWidget: const Icon(Icons.calendar_today_rounded,
@@ -1714,13 +1745,13 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
                   const Divider(height: 20, color: Color(0xFFE2E8F0)),
                   _buildDetailRow(
                     context: context,
-                    iconWidget: const Icon(
-                        Icons.check_circle_outline_rounded,
-                        color: Color(0xFF10B981),
+                    iconWidget: Icon(
+                        isAdminRole ? Icons.shield_rounded : Icons.check_circle_outline_rounded,
+                        color: isAdminRole ? const Color(0xFFD49B1A) : const Color(0xFF10B981),
                         size: 18),
                     label: 'حالة الحساب',
-                    value: 'حساب نشط',
-                    color: const Color(0xFF10B981),
+                    value: isAdminRole ? 'مشرف رسمي معتمد' : 'حساب نشط',
+                    color: isAdminRole ? const Color(0xFFD49B1A) : const Color(0xFF10B981),
                   ),
                 ],
               ),

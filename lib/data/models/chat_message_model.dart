@@ -2,7 +2,7 @@
 // 📨 CHAT MESSAGE DATA MODEL
 // ==============================================================================
 // Represents a single message within a conversation thread with sender metadata,
-// 12-digit account ID, read status, and delivery timestamps.
+// 12-digit account ID, read status, delivery timestamps, replies, and deletions.
 // ==============================================================================
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -18,6 +18,13 @@ class ChatMessageModel {
   final DateTime createdAt;
   final bool isRead;
 
+  // Deletion & Reply fields
+  final bool isDeletedForEveryone;
+  final List<String> deletedFor;
+  final String? replyToMessageId;
+  final String? replyToText;
+  final String? replyToSenderName;
+
   ChatMessageModel({
     required this.id,
     required this.chatId,
@@ -28,6 +35,11 @@ class ChatMessageModel {
     required this.text,
     DateTime? createdAt,
     this.isRead = false,
+    this.isDeletedForEveryone = false,
+    this.deletedFor = const [],
+    this.replyToMessageId,
+    this.replyToText,
+    this.replyToSenderName,
   }) : createdAt = createdAt ?? DateTime.now();
 
   bool get isAdminSender => senderRole == 'admin';
@@ -39,6 +51,11 @@ class ChatMessageModel {
       return DateTime.now();
     }
 
+    final rawDeletedFor = map['deletedFor'];
+    final List<String> parsedDeletedFor = rawDeletedFor is List
+        ? rawDeletedFor.map((e) => e.toString()).toList()
+        : [];
+
     return ChatMessageModel(
       id: id,
       chatId: map['chatId']?.toString() ?? '',
@@ -49,6 +66,11 @@ class ChatMessageModel {
       text: map['text']?.toString() ?? '',
       createdAt: parseDate(map['createdAt']),
       isRead: map['isRead'] == true,
+      isDeletedForEveryone: map['isDeletedForEveryone'] == true || map['isDeleted'] == true,
+      deletedFor: parsedDeletedFor,
+      replyToMessageId: map['replyToMessageId']?.toString(),
+      replyToText: map['replyToText']?.toString(),
+      replyToSenderName: map['replyToSenderName']?.toString(),
     );
   }
 
@@ -63,6 +85,11 @@ class ChatMessageModel {
       'text': text,
       'createdAt': Timestamp.fromDate(createdAt),
       'isRead': isRead,
+      'isDeletedForEveryone': isDeletedForEveryone,
+      'deletedFor': deletedFor,
+      if (replyToMessageId != null) 'replyToMessageId': replyToMessageId,
+      if (replyToText != null) 'replyToText': replyToText,
+      if (replyToSenderName != null) 'replyToSenderName': replyToSenderName,
     };
   }
 }

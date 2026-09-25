@@ -2,7 +2,7 @@
 // 💬 CHAT SERVICE & REALTIME FIRESTORE REPOSITORY
 // ==============================================================================
 // Manages real-time 1-on-1 conversations between Clients and Lawyers,
-// with Admin oversight, 12-digit fixed account IDs, and notification dispatch.
+// with Admin oversight, 12-digit fixed account IDs, replies, deletions, and push.
 // ==============================================================================
 
 import 'dart:async';
@@ -63,7 +63,8 @@ class ChatService {
   }
 
   /// Stream messages for a specific conversation thread (newest first for reverse ListView)
-  Stream<List<ChatMessageModel>> getMessagesStream(String chatId) {
+  /// Optionally filters out messages deleted locally for the current user.
+  Stream<List<ChatMessageModel>> getMessagesStream(String chatId, {String? currentUserId}) {
     if (chatId.trim().isEmpty) {
       return Stream.value(<ChatMessageModel>[]);
     }
@@ -75,6 +76,12 @@ class ChatService {
         .map((snap) {
       final list = snap.docs
           .map((doc) => ChatMessageModel.fromMap(doc.data(), doc.id))
+          .where((msg) {
+            if (currentUserId != null && currentUserId.isNotEmpty) {
+              return !msg.deletedFor.contains(currentUserId);
+            }
+            return true;
+          })
           .toList();
       list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       return list;
@@ -159,7 +166,7 @@ class ChatService {
     }
   }
 
-  /// Send a text message inside a conversation
+  /// Send a text message inside a conversation with optional reply
   Future<void> sendMessage({
     required String chatId,
     required String senderId,
@@ -168,6 +175,9 @@ class ChatService {
     required String senderAccountId,
     required String text,
     required String recipientId,
+    String? replyToMessageId,
+    String? replyToText,
+    String? replyToSenderName,
   }) async {
     final cleanText = text.trim();
     if (cleanText.isEmpty) return;
@@ -186,6 +196,11 @@ class ChatService {
       'text': cleanText,
       'createdAt': FieldValue.serverTimestamp(),
       'isRead': false,
+      'isDeletedForEveryone': false,
+      'deletedFor': <String>[],
+      'replyToMessageId': ?replyToMessageId,
+      'replyToText': ?replyToText,
+      'replyToSenderName': ?replyToSenderName,
     };
     batch.set(msgDocRef, messageData);
 
@@ -229,6 +244,46 @@ class ChatService {
         senderRole: senderRole,
         senderAccountId: senderAccountId,
       ));
+    }
+  }
+
+  /// Delete message for everyone (within 1 minute)
+  Future<void> deleteMessageForEveryone({
+    required String chatId,
+    required String messageId,
+  }) async {
+    try {
+      await _db
+          .collection('chats')
+          .doc(chatId)
+          .collection('messages')
+          .doc(messageId)
+          .update({
+        'isDeletedForEveryone': true,
+        'text': 'تم حذف هذه الرسالة',
+      });
+    } catch (e) {
+      debugPrint('[ChatService] deleteMessageForEveryone error: $e');
+    }
+  }
+
+  /// Delete message for the active user only
+  Future<void> deleteMessageForMe({
+    required String chatId,
+    required String messageId,
+    required String currentUserId,
+  }) async {
+    try {
+      await _db
+          .collection('chats')
+          .doc(chatId)
+          .collection('messages')
+          .doc(messageId)
+          .update({
+        'deletedFor': FieldValue.arrayUnion([currentUserId]),
+      });
+    } catch (e) {
+      debugPrint('[ChatService] deleteMessageForMe error: $e');
     }
   }
 

@@ -2,8 +2,9 @@
 // 💬 CHAT CONVERSATION SCREEN
 // ==============================================================================
 // WhatsApp-familiar simplicity tailored to Mahameek's Royal Navy & Gold branding.
-// Features real-time Firestore synchronization, 12-digit account ID display,
-// network disconnection handling, and empty message guards.
+// Features RTL Arabic layout, Swipe-to-Reply (left), Swipe-to-Delete (right with 1-min rule),
+// supervisor privacy protection, curved header, live client photo loading,
+// and real-time Firestore synchronization.
 // ==============================================================================
 
 import 'package:flutter/material.dart';
@@ -86,6 +87,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final ChatService _chatService = ChatService();
   final TextEditingController _msgCtrl = TextEditingController();
   final ScrollController _scrollCtrl = ScrollController();
+  final FocusNode _focusNode = FocusNode();
 
   ChatModel? _activeChat;
   String _currentUserId = '';
@@ -93,6 +95,17 @@ class _ChatScreenState extends State<ChatScreen> {
   String _currentUserRole = 'client';
   String _currentUserAccountId = '';
   String _detectedOtherRole = '';
+
+  // Live profile details of the other party (especially for client photos & updated roles)
+  String? _liveOtherPhotoUrl;
+  String? _liveOtherPhotoBase64;
+  String? _liveOtherName;
+  String? _liveOtherAccountId;
+  String? _liveOtherPhone;
+
+  // Active reply target
+  ChatMessageModel? _replyingTo;
+
   bool _isSending = false;
 
   @override
@@ -105,20 +118,73 @@ class _ChatScreenState extends State<ChatScreen> {
     _initChat();
   }
 
-  Future<void> _fetchOtherPartyRoleIfNeeded() async {
+  Future<void> _fetchOtherPartyInfoIfNeeded() async {
     if (_activeChat == null) return;
     try {
       final otherUid = _activeChat!.getOtherPartyUid(_currentUserId);
-      if (otherUid.isNotEmpty) {
-        final uDoc = await FirebaseFirestore.instance.collection('users').doc(otherUid).get().timeout(const Duration(seconds: 3));
+      final targetUid = otherUid.isNotEmpty
+          ? otherUid
+          : (widget.lawyerUid ?? widget.clientUid ?? widget.otherUserUid ?? '');
+
+      if (targetUid.isNotEmpty) {
+        final uDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(targetUid)
+            .get()
+            .timeout(const Duration(seconds: 4));
+
         if (uDoc.exists && uDoc.data() != null) {
-          final r = uDoc.data()!['role']?.toString();
-          if (r != null && r.isNotEmpty && mounted) {
-            setState(() => _detectedOtherRole = r);
+          final data = uDoc.data()!;
+          final r = data['role']?.toString();
+          final photoUrl = data['photoUrl']?.toString();
+          final photoBase64 = data['photoBase64']?.toString();
+          final name = data['name']?.toString();
+          final accId = data['accountId']?.toString();
+          final phone = data['phone']?.toString();
+
+          if (mounted) {
+            setState(() {
+              if (r != null && r.isNotEmpty) _detectedOtherRole = r;
+              if (photoUrl != null && photoUrl.isNotEmpty && photoUrl != 'default') _liveOtherPhotoUrl = photoUrl;
+              if (photoBase64 != null && photoBase64.isNotEmpty && photoBase64 != 'default') _liveOtherPhotoBase64 = photoBase64;
+              if (name != null && name.isNotEmpty) _liveOtherName = name;
+              if (accId != null && accId.isNotEmpty) _liveOtherAccountId = accId;
+              if (phone != null && phone.isNotEmpty) _liveOtherPhone = phone;
+            });
+          }
+        }
+
+        // If lawyer, check lawyers collection as well for latest photo/name
+        if (_detectedOtherRole == 'lawyer' || widget.otherUserRole == 'lawyer' || widget.lawyerUid != null) {
+          final lDoc = await FirebaseFirestore.instance
+              .collection('lawyers')
+              .doc(targetUid)
+              .get()
+              .timeout(const Duration(seconds: 4));
+
+          if (lDoc.exists && lDoc.data() != null) {
+            final lData = lDoc.data()!;
+            final lPhotoUrl = lData['photoUrl']?.toString();
+            final lPhotoBase64 = lData['photoBase64']?.toString();
+            final lName = lData['name']?.toString();
+            final lAccId = lData['accountId']?.toString();
+            final lPhone = lData['phone']?.toString();
+
+            if (mounted) {
+              setState(() {
+                if (lPhotoUrl != null && lPhotoUrl.isNotEmpty && lPhotoUrl != 'default') _liveOtherPhotoUrl = lPhotoUrl;
+                if (lPhotoBase64 != null && lPhotoBase64.isNotEmpty && lPhotoBase64 != 'default') _liveOtherPhotoBase64 = lPhotoBase64;
+                if (lName != null && lName.isNotEmpty) _liveOtherName = lName;
+                if (lAccId != null && lAccId.isNotEmpty) _liveOtherAccountId = lAccId;
+                if (lPhone != null && lPhone.isNotEmpty) _liveOtherPhone = lPhone;
+              });
+            }
           }
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[ChatScreen] _fetchOtherPartyInfoIfNeeded: $e');
+    }
   }
 
   Future<void> _initChat() async {
@@ -133,12 +199,16 @@ class _ChatScreenState extends State<ChatScreen> {
     _currentUserName = widget.currentUserName ?? session?['name'] ?? (authUser?.displayName ?? 'المستخدم');
     _currentUserAccountId = widget.currentUserAccountId ?? session?['accountId'] ?? '';
 
+    // Initialize live image state from widget parameters if available
+    _liveOtherPhotoUrl = widget.clientPhotoUrl ?? widget.lawyerPhotoUrl;
+    _liveOtherPhotoBase64 = widget.clientPhotoBase64 ?? widget.lawyerPhotoBase64;
+
     if (widget.chat != null) {
       _activeChat = widget.chat;
       NotificationService.activeChatId = widget.chat!.id;
       if (mounted) setState(() {});
       _markRead();
-      _fetchOtherPartyRoleIfNeeded();
+      _fetchOtherPartyInfoIfNeeded();
       return;
     }
 
@@ -157,11 +227,9 @@ class _ChatScreenState extends State<ChatScreen> {
     String effectiveLawyerUid;
 
     if (targetLawyerUid.isNotEmpty) {
-      // Current user is chatting with a lawyer
       effectiveLawyerUid = targetLawyerUid;
       effectiveClientUid = _currentUserId;
     } else if (targetClientUid.isNotEmpty) {
-      // Current user is chatting with a client
       effectiveClientUid = targetClientUid;
       effectiveLawyerUid = _currentUserId;
     } else {
@@ -169,7 +237,7 @@ class _ChatScreenState extends State<ChatScreen> {
       effectiveLawyerUid = widget.otherUserUid ?? '';
     }
 
-    // Synchronous optimistic chat model: allows the chat UI to render instantly without waiting for network
+    // Optimistic chat model for instantaneous screen rendering
     _activeChat = ChatModel(
       id: ChatService.generateChatId(effectiveClientUid, effectiveLawyerUid),
       participants: [effectiveClientUid, effectiveLawyerUid],
@@ -191,6 +259,7 @@ class _ChatScreenState extends State<ChatScreen> {
     NotificationService.activeChatId = _activeChat!.id;
     if (mounted) setState(() {});
     _markRead();
+    _fetchOtherPartyInfoIfNeeded();
 
     if (authUser == null) {
       return;
@@ -272,7 +341,7 @@ class _ChatScreenState extends State<ChatScreen> {
         });
         NotificationService.activeChatId = chat.id;
         _markRead();
-        _fetchOtherPartyRoleIfNeeded();
+        _fetchOtherPartyInfoIfNeeded();
       }
     } catch (e) {
       debugPrint('[ChatScreen] Error background initializing chat: $e');
@@ -286,6 +355,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     _msgCtrl.dispose();
     _scrollCtrl.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -298,11 +368,168 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  void _onReplyToMessage(ChatMessageModel message) {
+    if (message.isDeletedForEveryone) return;
+    setState(() {
+      _replyingTo = message;
+    });
+    _focusNode.requestFocus();
+  }
+
+  void _showDeleteDialog(ChatMessageModel message) {
+    final isMe = message.senderId == _currentUserId;
+    final diff = DateTime.now().difference(message.createdAt);
+    // 1-minute (60 seconds) window for Delete for Everyone
+    final canDeleteForEveryone = isMe && !message.isDeletedForEveryone && diff.inSeconds <= 60;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(Icons.delete_outline_rounded, color: Colors.red.shade700, size: 22),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      'خيارات حذف الرسالة',
+                      style: GoogleFonts.cairo(fontSize: 16, fontWeight: FontWeight.w800, color: const Color(0xFF0F172A)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  canDeleteForEveryone
+                      ? 'الرسالة أُرسلت منذ أقل من دقيقة. يمكنك حذفها لدى جميع أطراف المحادثة أو حذفها من عندك فقط.'
+                      : 'سيتم حذف هذه الرسالة من محادثتك فقط ولن تظهر لك مجدداً.',
+                  style: GoogleFonts.cairo(fontSize: 13, color: const Color(0xFF64748B), height: 1.5),
+                  textAlign: TextAlign.start,
+                ),
+                const SizedBox(height: 20),
+
+                if (canDeleteForEveryone) ...[
+                  // Delete for Everyone Button
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        Navigator.of(ctx).pop();
+                        try {
+                          await _chatService.deleteMessageForEveryone(
+                            chatId: _activeChat!.id,
+                            messageId: message.id,
+                          );
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('تم حذف الرسالة لدى الجميع', style: GoogleFonts.cairo(fontWeight: FontWeight.w600)),
+                                backgroundColor: const Color(0xFF0B2A5B),
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          debugPrint('[ChatScreen] deleteMessageForEveryone err: $e');
+                        }
+                      },
+                      icon: const Icon(Icons.public_off_rounded, size: 18),
+                      label: Text('الحذف لدى الجميع', style: GoogleFonts.cairo(fontWeight: FontWeight.w700, fontSize: 14)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red.shade700,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        elevation: 0,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+
+                // Delete for Me Button
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      Navigator.of(ctx).pop();
+                      try {
+                        await _chatService.deleteMessageForMe(
+                          chatId: _activeChat!.id,
+                          messageId: message.id,
+                          currentUserId: _currentUserId,
+                        );
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('تم حذف الرسالة من عندك', style: GoogleFonts.cairo(fontWeight: FontWeight.w600)),
+                              backgroundColor: const Color(0xFF64748B),
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        debugPrint('[ChatScreen] deleteMessageForMe err: $e');
+                      }
+                    },
+                    icon: Icon(Icons.delete_outline_rounded, size: 18, color: Colors.grey.shade800),
+                    label: Text('الحذف لدي فقط', style: GoogleFonts.cairo(fontWeight: FontWeight.w700, fontSize: 14, color: const Color(0xFF0F172A))),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: Colors.grey.shade300),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+
+                // Cancel Button
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: Text('إلغاء', style: GoogleFonts.cairo(fontWeight: FontWeight.w600, color: const Color(0xFF64748B))),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _handleSend() async {
     final text = _msgCtrl.text.trim();
     if (text.isEmpty || _isSending || _activeChat == null) return;
 
-    setState(() => _isSending = true);
+    final replying = _replyingTo;
+    setState(() {
+      _isSending = true;
+      _replyingTo = null; // Clear reply bar immediately for fluid UX
+    });
     _msgCtrl.clear();
 
     try {
@@ -346,6 +573,17 @@ class _ChatScreenState extends State<ChatScreen> {
         recipientId = '';
       }
 
+      String? replySenderName;
+      if (replying != null) {
+        if (replying.isAdminSender || replying.senderRole == 'admin') {
+          replySenderName = 'مشرف المنصة';
+        } else if (replying.senderId == activeUserId) {
+          replySenderName = 'أنت';
+        } else {
+          replySenderName = replying.senderName;
+        }
+      }
+
       await _chatService.sendMessage(
         chatId: _activeChat!.id,
         senderId: activeUserId,
@@ -354,6 +592,9 @@ class _ChatScreenState extends State<ChatScreen> {
         senderAccountId: _currentUserAccountId,
         text: text,
         recipientId: recipientId,
+        replyToMessageId: replying?.id,
+        replyToText: replying?.text,
+        replyToSenderName: replySenderName,
       );
     } catch (e) {
       debugPrint('[ChatScreen] sendMessage error: $e');
@@ -397,6 +638,9 @@ class _ChatScreenState extends State<ChatScreen> {
         appBar: AppBar(
           backgroundColor: brandNavy,
           elevation: 1,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
+          ),
           leading: IconButton(
             icon: const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 20),
             onPressed: () => Navigator.of(context).pop(),
@@ -444,11 +688,17 @@ class _ChatScreenState extends State<ChatScreen> {
         ? _detectedOtherRole
         : (widget.otherUserRole ?? _activeChat!.getOtherPartyRole(_currentUserId));
 
+    final displayOtherName = _liveOtherName ?? (otherName.isNotEmpty ? otherName : 'مستخدم المنصة');
+
     return Scaffold(
       backgroundColor: chatBg,
       appBar: AppBar(
         backgroundColor: brandNavy,
-        elevation: 1,
+        elevation: 2,
+        shadowColor: brandNavy.withValues(alpha: 0.3),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
+        ),
         automaticallyImplyLeading: false,
         titleSpacing: 8,
         title: Row(
@@ -459,7 +709,7 @@ class _ChatScreenState extends State<ChatScreen> {
               onPressed: () => Navigator.of(context).pop(),
             ),
 
-            // Avatar & Name with interactive profile opening (No ID shown)
+            // Avatar & Name with interactive profile opening (Privacy protected for supervisors)
             Expanded(
               child: InkWell(
                 onTap: () {
@@ -467,16 +717,12 @@ class _ChatScreenState extends State<ChatScreen> {
                   final targetUid = otherUid.isNotEmpty
                       ? otherUid
                       : (widget.lawyerUid ?? widget.clientUid ?? widget.otherUserUid ?? '');
-                  final fallbackName = otherName.isNotEmpty
-                      ? otherName
-                      : (widget.clientName ?? widget.lawyerName ?? widget.otherUserName ?? 'مستخدم المنصة');
-                  final fallbackPhone = otherPhone.isNotEmpty
-                      ? otherPhone
-                      : (widget.clientPhone ?? widget.lawyerPhone ?? '');
-                  final fallbackPhoto = otherPhoto ?? widget.clientPhotoUrl ?? widget.lawyerPhotoUrl;
-                  final fallbackAccountId = otherAccountId.isNotEmpty
-                      ? otherAccountId
-                      : (widget.clientAccountId ?? widget.lawyerAccountId ?? widget.otherUserAccountId ?? '');
+                  final fallbackName = displayOtherName;
+                  // If supervisor, phone is strictly hidden
+                  final fallbackPhone = otherRole == 'admin' ? '' : (_liveOtherPhone ?? otherPhone);
+                  final fallbackPhoto = _liveOtherPhotoUrl ?? otherPhoto ?? widget.clientPhotoUrl ?? widget.lawyerPhotoUrl;
+                  final fallbackPhotoBase64 = _liveOtherPhotoBase64 ?? widget.clientPhotoBase64 ?? widget.lawyerPhotoBase64;
+                  final fallbackAccountId = _liveOtherAccountId ?? (otherAccountId.isNotEmpty ? otherAccountId : (widget.clientAccountId ?? widget.lawyerAccountId ?? widget.otherUserAccountId ?? ''));
 
                   ProfileDetailsModal.showProfileByUid(
                     context,
@@ -485,6 +731,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     fallbackName: fallbackName,
                     fallbackPhone: fallbackPhone,
                     fallbackPhoto: fallbackPhoto,
+                    fallbackPhotoBase64: fallbackPhotoBase64,
                     fallbackAccountId: fallbackAccountId,
                     isAdmin: _currentUserRole == 'admin',
                   );
@@ -494,11 +741,11 @@ class _ChatScreenState extends State<ChatScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
                   child: Row(
                     children: [
-                      // Avatar
+                      // Avatar with Live Client/Lawyer Photo Support
                       Container(
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          border: Border.all(color: brandGold.withValues(alpha: 0.6), width: 1.5),
+                          border: Border.all(color: brandGold.withValues(alpha: 0.7), width: 1.5),
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(20),
@@ -506,21 +753,22 @@ class _ChatScreenState extends State<ChatScreen> {
                             width: 40,
                             height: 40,
                             color: brandGold.withValues(alpha: 0.2),
-                            child: otherPhoto != null && otherPhoto.isNotEmpty
-                                ? ImageUtils.buildSafeImage(
-                                    photoUrl: otherPhoto,
-                                    fit: BoxFit.cover,
-                                  )
-                                : Center(
-                                    child: Text(
-                                      otherName.isNotEmpty ? otherName.substring(0, 1) : 'م',
-                                      style: GoogleFonts.cairo(
-                                        color: Colors.white,
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
+                            child: AppImageUtils.buildAvatarImage(
+                              photoBase64: _liveOtherPhotoBase64 ?? widget.clientPhotoBase64 ?? widget.lawyerPhotoBase64,
+                              photoUrl: _liveOtherPhotoUrl ?? otherPhoto ?? widget.clientPhotoUrl ?? widget.lawyerPhotoUrl,
+                              width: 40,
+                              height: 40,
+                              fallback: Center(
+                                child: Text(
+                                  displayOtherName.isNotEmpty ? displayOtherName.substring(0, 1) : 'م',
+                                  style: GoogleFonts.cairo(
+                                    color: Colors.white,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w800,
                                   ),
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -536,7 +784,7 @@ class _ChatScreenState extends State<ChatScreen> {
                               children: [
                                 Flexible(
                                   child: Text(
-                                    otherName,
+                                    displayOtherName,
                                     style: GoogleFonts.cairo(
                                       fontSize: 14.5,
                                       fontWeight: FontWeight.w800,
@@ -558,7 +806,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                   'اضغط لعرض الملف الشخصي',
                                   style: GoogleFonts.cairo(
                                     fontSize: 10.5,
-                                    color: Colors.white.withValues(alpha: 0.75),
+                                    color: Colors.white.withValues(alpha: 0.8),
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
@@ -566,7 +814,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                 Icon(
                                   Icons.arrow_forward_ios_rounded,
                                   size: 9,
-                                  color: Colors.white.withValues(alpha: 0.75),
+                                  color: Colors.white.withValues(alpha: 0.8),
                                 ),
                               ],
                             ),
@@ -579,8 +827,8 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
 
-            // Call Action if available
-            if (otherPhone.isNotEmpty)
+            // Call Action if available AND NOT an Admin/Supervisor
+            if (otherPhone.isNotEmpty && otherRole != 'admin')
               IconButton(
                 icon: const Icon(Icons.phone_rounded, color: Colors.white, size: 21),
                 tooltip: 'اتصال هاتفياً',
@@ -596,7 +844,7 @@ class _ChatScreenState extends State<ChatScreen> {
             Expanded(
               child: StreamBuilder<List<ChatMessageModel>>(
                 initialData: const <ChatMessageModel>[],
-                stream: _chatService.getMessagesStream(_activeChat!.id),
+                stream: _chatService.getMessagesStream(_activeChat!.id, currentUserId: _currentUserId),
                 builder: (context, snapshot) {
                   final messages = snapshot.data ?? [];
                   if (messages.any((m) => m.senderId != _currentUserId && !m.isRead)) {
@@ -659,7 +907,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              'ابدأ بإرسال رسالتك الأولى الآن. المحادثة مشفرة ومحمية ضمن سياسة المنصة.',
+                              'اسحب الرسالة لليسار للرد، أو لليمين للحذف.\nالمحادثة مشفرة ومحمية ضمن سياسة المنصة.',
                               style: GoogleFonts.cairo(
                                 fontSize: 13,
                                 color: const Color(0xFF64748B),
@@ -675,24 +923,226 @@ class _ChatScreenState extends State<ChatScreen> {
 
                   return ListView.builder(
                     controller: _scrollCtrl,
-                    reverse: true, // newest messages at the bottom like WhatsApp
+                    reverse: true, // newest messages at the bottom
                     physics: const BouncingScrollPhysics(),
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                     itemCount: messages.length,
                     itemBuilder: (context, index) {
                       final message = messages[index];
                       final isMe = message.senderId == _currentUserId;
-                      return _buildMessageBubble(message, isMe);
+
+                      return _buildDismissibleBubble(message, isMe);
                     },
                   );
                 },
               ),
             ),
 
+            // Active Reply Bar (shown when swiping left or clicking reply)
+            _buildReplyBar(),
+
             // Bottom Input Bar
             _buildInputBar(brandNavy, brandGold),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Wraps message bubble with Dismissible for Swipe Left (Reply) & Swipe Right (Delete)
+  Widget _buildDismissibleBubble(ChatMessageModel message, bool isMe) {
+    // In RTL context:
+    // startToEnd = dragging from Right to Left (سحب للشمال) -> REPLY
+    // endToStart = dragging from Left to Right (سحب لليمين) -> DELETE
+    return Dismissible(
+      key: ValueKey('msg_${message.id}'),
+      direction: DismissDirection.horizontal,
+      confirmDismiss: (direction) async {
+        final isRtl = Directionality.of(context) == TextDirection.rtl;
+        final isDragLeft = isRtl
+            ? (direction == DismissDirection.startToEnd)
+            : (direction == DismissDirection.endToStart);
+
+        if (isDragLeft) {
+          // Swipe Left: Reply
+          _onReplyToMessage(message);
+          return false; // do not remove from list
+        } else {
+          // Swipe Right: Delete
+          _showDeleteDialog(message);
+          return false; // do not remove from list
+        }
+      },
+      // When dragging Right to Left (Reply in RTL)
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0B2A5B).withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.reply_rounded, color: Color(0xFF0B2A5B), size: 24),
+            const SizedBox(width: 8),
+            Text(
+              'رد',
+              style: GoogleFonts.cairo(color: const Color(0xFF0B2A5B), fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+          ],
+        ),
+      ),
+      // When dragging Left to Right (Delete in RTL)
+      secondaryBackground: Container(
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.red.shade50,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'حذف',
+              style: GoogleFonts.cairo(color: Colors.red.shade700, fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+            const SizedBox(width: 8),
+            Icon(Icons.delete_outline_rounded, color: Colors.red.shade700, size: 24),
+          ],
+        ),
+      ),
+      child: InkWell(
+        onLongPress: () {
+          _showActionMenu(message);
+        },
+        borderRadius: BorderRadius.circular(18),
+        child: _buildMessageBubble(message, isMe),
+      ),
+    );
+  }
+
+  void _showActionMenu(ChatMessageModel message) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Container(
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                if (!message.isDeletedForEveryone)
+                  ListTile(
+                    leading: const Icon(Icons.reply_rounded, color: Color(0xFF0B2A5B)),
+                    title: Text('رد على هذه الرسالة', style: GoogleFonts.cairo(fontWeight: FontWeight.w700)),
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      _onReplyToMessage(message);
+                    },
+                  ),
+                ListTile(
+                  leading: Icon(Icons.delete_outline_rounded, color: Colors.red.shade700),
+                  title: Text('حذف الرسالة', style: GoogleFonts.cairo(fontWeight: FontWeight.w700, color: Colors.red.shade700)),
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    _showDeleteDialog(message);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildReplyBar() {
+    if (_replyingTo == null) return const SizedBox.shrink();
+
+    final isReplyAdmin = _replyingTo!.isAdminSender || _replyingTo!.senderRole == 'admin';
+    final replySenderTitle = isReplyAdmin
+        ? 'مشرف المنصة 🛡️'
+        : (_replyingTo!.senderId == _currentUserId ? 'أنت' : _replyingTo!.senderName);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        border: Border(
+          top: BorderSide(color: Colors.grey.shade300, width: 0.8),
+          bottom: BorderSide(color: Colors.grey.shade200, width: 0.8),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            height: 36,
+            decoration: BoxDecoration(
+              color: isReplyAdmin ? const Color(0xFFD49B1A) : const Color(0xFF0B2A5B),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.reply_rounded, size: 14, color: Color(0xFF0B2A5B)),
+                    const SizedBox(width: 4),
+                    Text(
+                      'الرد على $replySenderTitle',
+                      style: GoogleFonts.cairo(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF0B2A5B),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _replyingTo!.text,
+                  style: GoogleFonts.cairo(
+                    fontSize: 12,
+                    color: const Color(0xFF64748B),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF64748B)),
+            onPressed: () {
+              setState(() {
+                _replyingTo = null;
+              });
+            },
+          ),
+        ],
       ),
     );
   }
@@ -769,6 +1219,9 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  /// Builds Message Bubble with Native Arabic RTL Alignment:
+  /// Sent by Me (`isMe`): Placed on the LEFT (`Alignment.centerLeft`), pointy bottom-left corner.
+  /// Received from Other: Placed on the RIGHT (`Alignment.centerRight`), pointy bottom-right corner.
   Widget _buildMessageBubble(ChatMessageModel message, bool isMe) {
     const Color brandNavy = Color(0xFF0B2A5B);
     const Color brandGold = Color(0xFFD49B1A);
@@ -777,7 +1230,8 @@ class _ChatScreenState extends State<ChatScreen> {
     final timeStr = _formatMessageTime(message.createdAt);
 
     return Align(
-      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+      // Native Arabic layout: Sent messages on the LEFT, Incoming on the RIGHT
+      alignment: isMe ? Alignment.centerLeft : Alignment.centerRight,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 4),
         constraints: BoxConstraints(
@@ -790,8 +1244,9 @@ class _ChatScreenState extends State<ChatScreen> {
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(18),
             topRight: const Radius.circular(18),
-            bottomLeft: Radius.circular(isMe ? 18 : 4),
-            bottomRight: Radius.circular(isMe ? 4 : 18),
+            // In Arabic RTL: Sent message pointy corner is on the bottom-left, incoming on bottom-right
+            bottomLeft: Radius.circular(isMe ? 4 : 18),
+            bottomRight: Radius.circular(isMe ? 18 : 4),
           ),
           border: Border.all(
             color: isSpecialAdmin
@@ -811,7 +1266,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         child: Column(
-          crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          crossAxisAlignment: isMe ? CrossAxisAlignment.start : CrossAxisAlignment.end,
           mainAxisSize: MainAxisSize.min,
           children: [
             // Prominent official Supervisor badge if message is from Admin
@@ -854,23 +1309,89 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ],
 
-            // Message text
-            SelectableText(
-              message.text,
-              style: GoogleFonts.cairo(
-                fontSize: 14,
-                color: isMe ? Colors.white : const Color(0xFF1E293B),
-                height: 1.45,
-                fontWeight: isSpecialAdmin && !isMe ? FontWeight.w600 : FontWeight.normal,
+            // Quoted Reply Card
+            if (message.replyToText != null && message.replyToText!.isNotEmpty) ...[
+              Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: isMe ? Colors.black.withValues(alpha: 0.25) : const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border(
+                    right: BorderSide(
+                      color: isMe ? brandGold : brandNavy,
+                      width: 3.5,
+                    ),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      message.replyToSenderName ?? 'رسالة',
+                      style: GoogleFonts.cairo(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: isMe ? const Color(0xFFFDE68A) : brandNavy,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      message.replyToText!,
+                      style: GoogleFonts.cairo(
+                        fontSize: 11.5,
+                        color: isMe ? Colors.white70 : const Color(0xFF475569),
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
               ),
-              textDirection: TextDirection.rtl,
-            ),
+            ],
+
+            // Message text or Deleted indicator
+            if (message.isDeletedForEveryone) ...[
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.block_rounded,
+                    size: 14,
+                    color: isMe ? Colors.white60 : const Color(0xFF94A3B8),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'تم حذف هذه الرسالة',
+                    style: GoogleFonts.cairo(
+                      fontSize: 13,
+                      fontStyle: FontStyle.italic,
+                      color: isMe ? Colors.white70 : const Color(0xFF94A3B8),
+                    ),
+                  ),
+                ],
+              ),
+            ] else ...[
+              SelectableText(
+                message.text,
+                style: GoogleFonts.cairo(
+                  fontSize: 14,
+                  color: isMe ? Colors.white : const Color(0xFF1E293B),
+                  height: 1.45,
+                  fontWeight: isSpecialAdmin && !isMe ? FontWeight.w600 : FontWeight.normal,
+                ),
+                textDirection: TextDirection.rtl,
+              ),
+            ],
             const SizedBox(height: 4),
 
             // Timestamp & Read indicator
             Row(
               mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.end,
+              mainAxisAlignment: isMe ? MainAxisAlignment.start : MainAxisAlignment.end,
               children: [
                 Text(
                   timeStr,
@@ -958,12 +1479,13 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
               child: TextField(
                 controller: _msgCtrl,
+                focusNode: _focusNode,
                 maxLines: 4,
                 minLines: 1,
                 textDirection: TextDirection.rtl,
                 style: GoogleFonts.cairo(fontSize: 14, color: const Color(0xFF0F172A)),
                 decoration: InputDecoration(
-                  hintText: 'اكتب رسالتك هنا...',
+                  hintText: _replyingTo != null ? 'اكتب ردك هنا...' : 'اكتب رسالتك هنا...',
                   hintStyle: GoogleFonts.cairo(fontSize: 13, color: const Color(0xFF94A3B8)),
                   border: InputBorder.none,
                   isDense: true,
