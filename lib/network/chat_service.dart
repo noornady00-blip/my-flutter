@@ -124,33 +124,7 @@ class ChatService {
     }).handleError((_) => 0);
   }
 
-  /// Stream blocked user UIDs for a specific user
-  Stream<List<String>> getBlockedUsersStream(String currentUserId) {
-    if (currentUserId.isEmpty) return Stream.value([]);
-    return _db.collection('users').doc(currentUserId).snapshots().map((snap) {
-      if (!snap.exists || snap.data() == null) return <String>[];
-      final raw = snap.data()!['blockedUsers'];
-      if (raw is List) {
-        return raw.map((e) => e.toString()).toList();
-      }
-      return <String>[];
-    }).handleError((_) => <String>[]);
-  }
 
-  /// Get current blocked user UIDs list
-  Future<List<String>> getBlockedUsers(String currentUserId) async {
-    if (currentUserId.isEmpty) return [];
-    try {
-      final snap = await _db.collection('users').doc(currentUserId).get();
-      if (snap.exists && snap.data() != null) {
-        final raw = snap.data()!['blockedUsers'];
-        if (raw is List) {
-          return raw.map((e) => e.toString()).toList();
-        }
-      }
-    } catch (_) {}
-    return [];
-  }
 
   // ---------------------------------------------------------------------------
   // 🚀 ACTIONS
@@ -164,18 +138,23 @@ class ChatService {
     final chatId = generateChatId(client.uid, lawyer.uid);
     final chatDocRef = _db.collection('chats').doc(chatId);
 
+    final effectiveClientPhoto = client.photoUrl ?? client.photoBase64;
+    final effectiveLawyerPhoto = lawyer.photoUrl ?? lawyer.photoBase64;
+
     final fallbackChat = ChatModel(
       id: chatId,
       participants: [client.uid, lawyer.uid],
       clientId: client.uid,
       clientName: client.name.isNotEmpty ? client.name : 'عميل',
       clientPhone: client.phone,
-      clientPhoto: client.photoUrl,
+      clientPhoto: effectiveClientPhoto,
+      clientPhotoBase64: client.photoBase64,
       clientAccountId: client.accountId,
       lawyerId: lawyer.uid,
       lawyerName: lawyer.name.isNotEmpty ? lawyer.name : 'محامٍ',
       lawyerPhone: lawyer.phone,
-      lawyerPhoto: lawyer.photoUrl,
+      lawyerPhoto: effectiveLawyerPhoto,
+      lawyerPhotoBase64: lawyer.photoBase64,
       lawyerAccountId: lawyer.accountId,
       lastMessage: 'مرحباً، تم بدء المحادثة',
       lastSenderId: client.uid,
@@ -191,13 +170,44 @@ class ChatService {
       final doc = await chatDocRef.get().timeout(const Duration(seconds: 4));
       if (doc.exists && doc.data() != null) {
         final existing = ChatModel.fromMap(doc.data()!, doc.id);
-        // Refresh account IDs if they were empty
-        if ((existing.clientAccountId.isEmpty && client.accountId.isNotEmpty) ||
-            (existing.lawyerAccountId.isEmpty && lawyer.accountId.isNotEmpty)) {
-          unawaited(chatDocRef.update({
-            if (client.accountId.isNotEmpty) 'clientAccountId': client.accountId,
-            if (lawyer.accountId.isNotEmpty) 'lawyerAccountId': lawyer.accountId,
-          }).catchError((_) {}));
+        final Map<String, dynamic> updates = {};
+
+        // Keep client profile info up-to-date in the conversation
+        if (client.name.isNotEmpty && client.name != 'عميل' && existing.clientName != client.name) {
+          updates['clientName'] = client.name;
+        }
+        if (client.phone.isNotEmpty && existing.clientPhone != client.phone) {
+          updates['clientPhone'] = client.phone;
+        }
+        if (client.accountId.isNotEmpty && existing.clientAccountId != client.accountId) {
+          updates['clientAccountId'] = client.accountId;
+        }
+        if (effectiveClientPhoto != null && effectiveClientPhoto.isNotEmpty && existing.clientPhoto != effectiveClientPhoto) {
+          updates['clientPhoto'] = effectiveClientPhoto;
+        }
+        if (client.photoBase64 != null && client.photoBase64!.isNotEmpty && existing.clientPhotoBase64 != client.photoBase64) {
+          updates['clientPhotoBase64'] = client.photoBase64;
+        }
+
+        // Keep lawyer profile info up-to-date in the conversation
+        if (lawyer.name.isNotEmpty && lawyer.name != 'محامٍ' && existing.lawyerName != lawyer.name) {
+          updates['lawyerName'] = lawyer.name;
+        }
+        if (lawyer.phone.isNotEmpty && existing.lawyerPhone != lawyer.phone) {
+          updates['lawyerPhone'] = lawyer.phone;
+        }
+        if (lawyer.accountId.isNotEmpty && existing.lawyerAccountId != lawyer.accountId) {
+          updates['lawyerAccountId'] = lawyer.accountId;
+        }
+        if (effectiveLawyerPhoto != null && effectiveLawyerPhoto.isNotEmpty && existing.lawyerPhoto != effectiveLawyerPhoto) {
+          updates['lawyerPhoto'] = effectiveLawyerPhoto;
+        }
+        if (lawyer.photoBase64 != null && lawyer.photoBase64!.isNotEmpty && existing.lawyerPhotoBase64 != lawyer.photoBase64) {
+          updates['lawyerPhotoBase64'] = lawyer.photoBase64;
+        }
+
+        if (updates.isNotEmpty) {
+          unawaited(chatDocRef.set(updates, SetOptions(merge: true)).catchError((_) {}));
         }
         return existing;
       }
@@ -207,6 +217,67 @@ class ChatService {
     } catch (e) {
       debugPrint('[ChatService] getOrCreateChat notice: $e');
       return fallbackChat;
+    }
+  }
+
+  /// Synchronizes a user's updated photo and profile across all their conversations in Firestore
+  Future<void> syncUserProfileToAllChats({
+    required String uid,
+    required String role,
+    String? name,
+    String? photoUrl,
+    String? photoBase64,
+    String? phone,
+    String? accountId,
+  }) async {
+    if (uid.isEmpty) return;
+    try {
+      final snap = await _db.collection('chats').where('participants', arrayContains: uid).get();
+      if (snap.docs.isEmpty) return;
+
+      final batch = _db.batch();
+      final isLawyer = (role == 'lawyer' || role == 'approved_lawyer');
+
+      for (final doc in snap.docs) {
+        final Map<String, dynamic> updateData = {};
+        if (isLawyer) {
+          if (name != null && name.isNotEmpty) updateData['lawyerName'] = name;
+          if (phone != null && phone.isNotEmpty) updateData['lawyerPhone'] = phone;
+          if (accountId != null && accountId.isNotEmpty) updateData['lawyerAccountId'] = accountId;
+          if (photoUrl != null && photoUrl.isNotEmpty) {
+            updateData['lawyerPhoto'] = photoUrl;
+          } else if (photoUrl == '') {
+            updateData['lawyerPhoto'] = FieldValue.delete();
+          }
+          if (photoBase64 != null && photoBase64.isNotEmpty) {
+            updateData['lawyerPhotoBase64'] = photoBase64;
+          } else if (photoBase64 == '') {
+            updateData['lawyerPhotoBase64'] = FieldValue.delete();
+          }
+        } else {
+          if (name != null && name.isNotEmpty) updateData['clientName'] = name;
+          if (phone != null && phone.isNotEmpty) updateData['clientPhone'] = phone;
+          if (accountId != null && accountId.isNotEmpty) updateData['clientAccountId'] = accountId;
+          if (photoUrl != null && photoUrl.isNotEmpty) {
+            updateData['clientPhoto'] = photoUrl;
+          } else if (photoUrl == '') {
+            updateData['clientPhoto'] = FieldValue.delete();
+          }
+          if (photoBase64 != null && photoBase64.isNotEmpty) {
+            updateData['clientPhotoBase64'] = photoBase64;
+          } else if (photoBase64 == '') {
+            updateData['clientPhotoBase64'] = FieldValue.delete();
+          }
+        }
+
+        if (updateData.isNotEmpty) {
+          batch.set(doc.reference, updateData, SetOptions(merge: true));
+        }
+      }
+
+      await batch.commit();
+    } catch (e) {
+      debugPrint('[ChatService] syncUserProfileToAllChats error: $e');
     }
   }
 
@@ -226,9 +297,28 @@ class ChatService {
     final cleanText = text.trim();
     if (cleanText.isEmpty) return;
 
+    // Check if recipient has stopped or muted this chat
+    bool isStoppedByRecipient = false;
+    bool isMutedByRecipient = false;
+    try {
+      final chatDoc = await _db.collection('chats').doc(chatId).get();
+      if (chatDoc.exists && chatDoc.data() != null) {
+        final data = chatDoc.data()!;
+        final rawStopped = data['stoppedBy'];
+        if (rawStopped is List && rawStopped.map((e) => e.toString()).contains(recipientId)) {
+          isStoppedByRecipient = true;
+        }
+        final rawMuted = data['mutedBy'];
+        if (rawMuted is List && rawMuted.map((e) => e.toString()).contains(recipientId)) {
+          isMutedByRecipient = true;
+        }
+      }
+    } catch (_) {}
+
     final batch = _db.batch();
 
     // 1. Add message to subcollection
+    // If recipient has stopped the chat, message is hidden for recipient (deletedFor: [recipientId])
     final msgDocRef = _db.collection('chats').doc(chatId).collection('messages').doc();
     final messageData = {
       'id': msgDocRef.id,
@@ -241,19 +331,19 @@ class ChatService {
       'createdAt': FieldValue.serverTimestamp(),
       'isRead': false,
       'isDeletedForEveryone': false,
-      'deletedFor': <String>[],
+      'deletedFor': isStoppedByRecipient ? <String>[recipientId] : <String>[],
       'replyToMessageId': ?replyToMessageId,
       'replyToText': ?replyToText,
       'replyToSenderName': ?replyToSenderName,
     };
     batch.set(msgDocRef, messageData);
 
-    // 2. Update conversation summary and remove from deletedBy if either party sent a message
+    // 2. Update conversation summary and remove from deletedBy
     final chatDocRef = _db.collection('chats').doc(chatId);
     final updateData = <String, dynamic>{
       'id': chatId,
       'participants': FieldValue.arrayUnion([senderId, recipientId]),
-      'deletedBy': FieldValue.arrayRemove([senderId, recipientId]),
+      'deletedBy': FieldValue.arrayRemove(isStoppedByRecipient ? [senderId] : [senderId, recipientId]),
       'lastMessage': cleanText,
       'lastSenderId': senderId,
       'lastSenderName': senderName,
@@ -262,33 +352,38 @@ class ChatService {
       'updatedAt': FieldValue.serverTimestamp(),
     };
 
-    if (senderRole == 'lawyer') {
-      updateData['lawyerId'] = senderId;
-      updateData['clientId'] = recipientId;
-      updateData['unreadByClient'] = FieldValue.increment(1);
-    } else if (senderRole == 'client') {
-      updateData['clientId'] = senderId;
-      updateData['lawyerId'] = recipientId;
-      updateData['unreadByLawyer'] = FieldValue.increment(1);
-    } else if (senderRole == 'admin') {
-      updateData['unreadByClient'] = FieldValue.increment(1);
-      updateData['unreadByLawyer'] = FieldValue.increment(1);
+    // Only increment unread count for recipient if NOT stopped by recipient
+    if (!isStoppedByRecipient) {
+      if (senderRole == 'lawyer') {
+        updateData['lawyerId'] = senderId;
+        updateData['clientId'] = recipientId;
+        updateData['unreadByClient'] = FieldValue.increment(1);
+      } else if (senderRole == 'client') {
+        updateData['clientId'] = senderId;
+        updateData['lawyerId'] = recipientId;
+        updateData['unreadByLawyer'] = FieldValue.increment(1);
+      } else if (senderRole == 'admin') {
+        updateData['unreadByClient'] = FieldValue.increment(1);
+        updateData['unreadByLawyer'] = FieldValue.increment(1);
+      }
     }
 
     batch.set(chatDocRef, updateData, SetOptions(merge: true));
     await batch.commit();
 
-    // Dispatch real push notification to recipient device (works even when app is closed)
-    if (recipientId.isNotEmpty && recipientId != senderId) {
-      unawaited(FcmDispatcherService().dispatchChatNotification(
-        recipientId: recipientId,
-        senderId: senderId,
-        senderName: senderName,
-        messageText: cleanText,
-        chatId: chatId,
-        senderRole: senderRole,
-        senderAccountId: senderAccountId,
-      ));
+    // Dispatch real push notification to recipient device (only if recipient has NOT stopped AND NOT muted this chat)
+    if (recipientId.isNotEmpty && recipientId != senderId && !isStoppedByRecipient && !isMutedByRecipient) {
+      try {
+        unawaited(FcmDispatcherService().dispatchChatNotification(
+          recipientId: recipientId,
+          senderId: senderId,
+          senderName: senderName,
+          messageText: cleanText,
+          chatId: chatId,
+          senderRole: senderRole,
+          senderAccountId: senderAccountId,
+        ));
+      } catch (_) {}
     }
   }
 
@@ -392,6 +487,23 @@ class ChatService {
     }
   }
 
+  /// Toggle mute/silence notifications for a chat
+  Future<void> toggleMuteChat({
+    required String chatId,
+    required String currentUserId,
+    required bool mute,
+  }) async {
+    try {
+      await _db.collection('chats').doc(chatId).set({
+        'mutedBy': mute
+            ? FieldValue.arrayUnion([currentUserId])
+            : FieldValue.arrayRemove([currentUserId]),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('[ChatService] toggleMuteChat error: $e');
+    }
+  }
+
   /// Toggle unread status for a chat
   Future<void> toggleUnreadChat({
     required String chatId,
@@ -409,49 +521,64 @@ class ChatService {
     }
   }
 
-  /// Delete conversation for the active user only (removes from their list)
+  /// Delete conversation for the active user only (removes from their list and hides all past messages)
   Future<void> deleteChatForUser({
     required String chatId,
     required String currentUserId,
   }) async {
+    if (chatId.isEmpty || currentUserId.isEmpty) return;
     try {
-      await _db.collection('chats').doc(chatId).update({
+      // 1. Fetch all messages in the chat and mark them deletedFor this user
+      final messagesSnap = await _db
+          .collection('chats')
+          .doc(chatId)
+          .collection('messages')
+          .get();
+
+      final batch = _db.batch();
+      for (final doc in messagesSnap.docs) {
+        batch.update(doc.reference, {
+          'deletedFor': FieldValue.arrayUnion([currentUserId]),
+        });
+      }
+
+      // 2. Mark parent chat document as deletedBy this user
+      final chatRef = _db.collection('chats').doc(chatId);
+      batch.set(chatRef, {
         'deletedBy': FieldValue.arrayUnion([currentUserId]),
         'pinnedBy': FieldValue.arrayRemove([currentUserId]),
-      });
+      }, SetOptions(merge: true));
+
+      await batch.commit();
     } catch (e) {
       debugPrint('[ChatService] deleteChatForUser error: $e');
     }
   }
 
-  /// Block a user
-  Future<void> blockUser({
+  /// Toggle stopped/paused status for a chat (disables messaging and suppresses all notifications from the other party)
+  Future<void> toggleStopChat({
+    required String chatId,
     required String currentUserId,
-    required String targetUserId,
+    required bool stop,
   }) async {
-    if (currentUserId.isEmpty || targetUserId.isEmpty) return;
     try {
-      await _db.collection('users').doc(currentUserId).set({
-        'blockedUsers': FieldValue.arrayUnion([targetUserId]),
+      await _db.collection('chats').doc(chatId).set({
+        'stoppedBy': stop
+            ? FieldValue.arrayUnion([currentUserId])
+            : FieldValue.arrayRemove([currentUserId]),
+        'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
     } catch (e) {
-      debugPrint('[ChatService] blockUser error: $e');
+      debugPrint('[ChatService] toggleStopChat error: $e');
     }
   }
 
-  /// Unblock a user
-  Future<void> unblockUser({
-    required String currentUserId,
-    required String targetUserId,
+  /// Delete chat for a user
+  Future<void> deleteChat({
+    required String chatId,
+    required String userId,
   }) async {
-    if (currentUserId.isEmpty || targetUserId.isEmpty) return;
-    try {
-      await _db.collection('users').doc(currentUserId).update({
-        'blockedUsers': FieldValue.arrayRemove([targetUserId]),
-      });
-    } catch (e) {
-      debugPrint('[ChatService] unblockUser error: $e');
-    }
+    await deleteChatForUser(chatId: chatId, currentUserId: userId);
   }
 
   /// Mark conversation as read for the active user

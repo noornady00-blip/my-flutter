@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -22,8 +23,8 @@ import '../../../core/utils/navigation_utils.dart';
 import '../../../core/utils/image_utils.dart';
 import '../../../core/utils/app_error_translator.dart';
 import '../../../core/utils/account_id_utils.dart';
+import '../../../network/chat_service.dart';
 import '../chat/chat_list_screen.dart';
-import 'blocked_users_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final bool isStandalone;
@@ -214,11 +215,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (cleanUid.isNotEmpty && cleanUid != 'unknown') {
         final Map<String, dynamic> updateData = {
           'photoUrl': downloadUrl,
+          'photoBase64': base64Str,
+          'user_profile_photo_base64': base64Str,
+          'user_profile_photo_url': downloadUrl,
         };
-        // Only store lightweight base64 thumbnail if needed (< 50KB)
-        if (base64Str.length < 50000) {
-          updateData['photoBase64'] = base64Str;
-        }
 
         try {
           final batch = FirebaseFirestore.instance.batch();
@@ -236,6 +236,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
             );
           }
           await batch.commit();
+
+          // Sync photo to all active chats where this user participates
+          unawaited(ChatService().syncUserProfileToAllChats(
+            uid: cleanUid,
+            role: _userRole,
+            photoUrl: downloadUrl,
+            photoBase64: base64Str,
+            name: _userName,
+          ));
         } catch (dbErr) {
           debugPrint('Firestore update notice: $dbErr');
         }
@@ -401,7 +410,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
         await FirebaseFirestore.instance.collection('users').doc(_userUid).set({
           'photoUrl': FieldValue.delete(),
           'photoBase64': FieldValue.delete(),
+          'user_profile_photo_base64': FieldValue.delete(),
+          'user_profile_photo_url': FieldValue.delete(),
         }, SetOptions(merge: true));
+
+        unawaited(ChatService().syncUserProfileToAllChats(
+          uid: _userUid!,
+          role: _userRole,
+          photoUrl: '',
+          photoBase64: '',
+        ));
       }
       setState(() {
         _photoUrl = null;
@@ -1043,23 +1061,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 iconColor: const Color(0xFFF59E0B),
                 onTap: _showChangePasswordDialog,
               ),
-              if (_isLoggedIn && _userUid != null && _userUid!.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                _buildActionCard(
-                  icon: Icons.person_off_rounded,
-                  title: 'الجهات المحظورة',
-                  subtitle: 'إدارة وفك الحظر عن الحسابات وجهات الاتصال',
-                  iconColor: const Color(0xFFDC2626),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => BlockedUsersScreen(currentUserId: _userUid!),
-                      ),
-                    );
-                  },
-                ),
-              ],
               const SizedBox(height: 22),
 
               // 3. Support & Assistance Section

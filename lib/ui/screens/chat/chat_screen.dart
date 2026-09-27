@@ -7,6 +7,7 @@
 // and real-time Firestore synchronization.
 // ==============================================================================
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -96,6 +97,11 @@ class _ChatScreenState extends State<ChatScreen> {
   String _currentUserAccountId = '';
   String _detectedOtherRole = '';
 
+  // Pin & Stop status state
+  bool _isPinned = false;
+  bool _isStoppedByMe = false;
+  StreamSubscription<DocumentSnapshot>? _chatDocSubscription;
+
   // Live profile details of the other party (especially for client photos & updated roles)
   String? _liveOtherPhotoUrl;
   String? _liveOtherPhotoBase64;
@@ -114,8 +120,34 @@ class _ChatScreenState extends State<ChatScreen> {
     if (widget.chat != null) {
       _activeChat = widget.chat;
       NotificationService.activeChatId = widget.chat!.id;
+      _setupChatDocListener(widget.chat!.id);
     }
     _initChat();
+  }
+
+  void _setupChatDocListener(String chatId) {
+    if (chatId.isEmpty) return;
+    _chatDocSubscription?.cancel();
+    _chatDocSubscription = FirebaseFirestore.instance
+        .collection('chats')
+        .doc(chatId)
+        .snapshots()
+        .listen((doc) {
+      if (!doc.exists || doc.data() == null) return;
+      final data = doc.data()!;
+      final rawPinned = data['pinnedBy'];
+      final pinnedBy = rawPinned is List ? rawPinned.map((e) => e.toString()).toList() : <String>[];
+      final rawStopped = data['stoppedBy'];
+      final stoppedBy = rawStopped is List ? rawStopped.map((e) => e.toString()).toList() : <String>[];
+      if (mounted) {
+        setState(() {
+          _isPinned = _currentUserId.isNotEmpty && pinnedBy.contains(_currentUserId);
+          _isStoppedByMe = _currentUserId.isNotEmpty && stoppedBy.contains(_currentUserId);
+        });
+      }
+    }, onError: (err) {
+      debugPrint('[ChatScreen] _setupChatDocListener error: $err');
+    });
   }
 
   Future<void> _fetchOtherPartyInfoIfNeeded() async {
@@ -133,52 +165,113 @@ class _ChatScreenState extends State<ChatScreen> {
             .get()
             .timeout(const Duration(seconds: 4));
 
+        String? photoUrl;
+        String? photoBase64;
+        String? name;
+        String? accId;
+        String? phone;
+        String? r;
+
         if (uDoc.exists && uDoc.data() != null) {
           final data = uDoc.data()!;
-          final r = data['role']?.toString();
-          final photoUrl = data['photoUrl']?.toString();
-          final photoBase64 = data['photoBase64']?.toString();
-          final name = data['name']?.toString();
-          final accId = data['accountId']?.toString();
-          final phone = data['phone']?.toString();
+          r = data['role']?.toString();
+          final rawPhoto = data['photo']?.toString();
+          photoUrl = data['photoUrl']?.toString() ??
+              data['user_profile_photo_url']?.toString() ??
+              data['imageUrl']?.toString() ??
+              data['profileImage']?.toString() ??
+              (rawPhoto != null && (rawPhoto.startsWith('http') || rawPhoto.startsWith('data:image'))
+                  ? rawPhoto
+                  : null);
 
-          if (mounted) {
-            setState(() {
-              if (r != null && r.isNotEmpty) _detectedOtherRole = r;
-              if (photoUrl != null && photoUrl.isNotEmpty && photoUrl != 'default') _liveOtherPhotoUrl = photoUrl;
-              if (photoBase64 != null && photoBase64.isNotEmpty && photoBase64 != 'default') _liveOtherPhotoBase64 = photoBase64;
-              if (name != null && name.isNotEmpty) _liveOtherName = name;
-              if (accId != null && accId.isNotEmpty) _liveOtherAccountId = accId;
-              if (phone != null && phone.isNotEmpty) _liveOtherPhone = phone;
-            });
-          }
+          photoBase64 = data['photoBase64']?.toString() ??
+              data['user_profile_photo_base64']?.toString() ??
+              data['user_profile_photo']?.toString() ??
+              (rawPhoto != null && !rawPhoto.startsWith('http') && rawPhoto.length > 50
+                  ? rawPhoto
+                  : null);
+
+          name = data['name']?.toString();
+          accId = data['accountId']?.toString() ?? data['memberId']?.toString();
+          phone = data['phone']?.toString();
         }
 
         // If lawyer, check lawyers collection as well for latest photo/name
-        if (_detectedOtherRole == 'lawyer' || widget.otherUserRole == 'lawyer' || widget.lawyerUid != null) {
-          final lDoc = await FirebaseFirestore.instance
-              .collection('lawyers')
-              .doc(targetUid)
-              .get()
-              .timeout(const Duration(seconds: 4));
+        if (_detectedOtherRole == 'lawyer' || widget.otherUserRole == 'lawyer' || widget.lawyerUid != null || r == 'lawyer') {
+          try {
+            final lDoc = await FirebaseFirestore.instance
+                .collection('lawyers')
+                .doc(targetUid)
+                .get()
+                .timeout(const Duration(seconds: 4));
 
-          if (lDoc.exists && lDoc.data() != null) {
-            final lData = lDoc.data()!;
-            final lPhotoUrl = lData['photoUrl']?.toString();
-            final lPhotoBase64 = lData['photoBase64']?.toString();
-            final lName = lData['name']?.toString();
-            final lAccId = lData['accountId']?.toString();
-            final lPhone = lData['phone']?.toString();
+            if (lDoc.exists && lDoc.data() != null) {
+              final lData = lDoc.data()!;
+              final lRawPhoto = lData['photo']?.toString();
+              final lPhotoUrl = lData['photoUrl']?.toString() ??
+                  lData['user_profile_photo_url']?.toString() ??
+                  lData['imageUrl']?.toString() ??
+                  (lRawPhoto != null && (lRawPhoto.startsWith('http') || lRawPhoto.startsWith('data:image'))
+                      ? lRawPhoto
+                      : null);
 
-            if (mounted) {
-              setState(() {
-                if (lPhotoUrl != null && lPhotoUrl.isNotEmpty && lPhotoUrl != 'default') _liveOtherPhotoUrl = lPhotoUrl;
-                if (lPhotoBase64 != null && lPhotoBase64.isNotEmpty && lPhotoBase64 != 'default') _liveOtherPhotoBase64 = lPhotoBase64;
-                if (lName != null && lName.isNotEmpty) _liveOtherName = lName;
-                if (lAccId != null && lAccId.isNotEmpty) _liveOtherAccountId = lAccId;
-                if (lPhone != null && lPhone.isNotEmpty) _liveOtherPhone = lPhone;
-              });
+              final lPhotoBase64 = lData['photoBase64']?.toString() ??
+                  lData['user_profile_photo_base64']?.toString() ??
+                  lData['user_profile_photo']?.toString() ??
+                  (lRawPhoto != null && !lRawPhoto.startsWith('http') && lRawPhoto.length > 50
+                      ? lRawPhoto
+                      : null);
+
+              if (lPhotoUrl != null && lPhotoUrl.isNotEmpty) photoUrl = lPhotoUrl;
+              if (lPhotoBase64 != null && lPhotoBase64.isNotEmpty) photoBase64 = lPhotoBase64;
+              if (lData['name'] != null && lData['name'].toString().isNotEmpty) name = lData['name']?.toString();
+              if (lData['accountId'] != null && lData['accountId'].toString().isNotEmpty) accId = lData['accountId']?.toString();
+              if (lData['phone'] != null && lData['phone'].toString().isNotEmpty) phone = lData['phone']?.toString();
             }
+          } catch (_) {}
+        }
+
+        if (mounted) {
+          setState(() {
+            if (r != null && r.isNotEmpty) _detectedOtherRole = r;
+            if (photoUrl != null && photoUrl.isNotEmpty && photoUrl != 'default') _liveOtherPhotoUrl = photoUrl;
+            if (photoBase64 != null && photoBase64.isNotEmpty && photoBase64 != 'default') _liveOtherPhotoBase64 = photoBase64;
+            if (name != null && name.isNotEmpty) _liveOtherName = name;
+            if (accId != null && accId.isNotEmpty) _liveOtherAccountId = accId;
+            if (phone != null && phone.isNotEmpty) _liveOtherPhone = phone;
+          });
+        }
+
+        // Keep parent chat document in sync with the other party's latest photo/name
+        if (_activeChat != null) {
+          final isOtherLawyer = (_detectedOtherRole == 'lawyer' || widget.otherUserRole == 'lawyer');
+          final Map<String, dynamic> chatUpdates = {};
+          if (isOtherLawyer) {
+            if (photoUrl != null && photoUrl.isNotEmpty && _activeChat!.lawyerPhoto != photoUrl) {
+              chatUpdates['lawyerPhoto'] = photoUrl;
+            }
+            if (photoBase64 != null && photoBase64.isNotEmpty && _activeChat!.lawyerPhotoBase64 != photoBase64) {
+              chatUpdates['lawyerPhotoBase64'] = photoBase64;
+            }
+            if (name != null && name.isNotEmpty && _activeChat!.lawyerName != name) {
+              chatUpdates['lawyerName'] = name;
+            }
+          } else {
+            if (photoUrl != null && photoUrl.isNotEmpty && _activeChat!.clientPhoto != photoUrl) {
+              chatUpdates['clientPhoto'] = photoUrl;
+            }
+            if (photoBase64 != null && photoBase64.isNotEmpty && _activeChat!.clientPhotoBase64 != photoBase64) {
+              chatUpdates['clientPhotoBase64'] = photoBase64;
+            }
+            if (name != null && name.isNotEmpty && _activeChat!.clientName != name) {
+              chatUpdates['clientName'] = name;
+            }
+          }
+          if (chatUpdates.isNotEmpty) {
+            unawaited(FirebaseFirestore.instance.collection('chats').doc(_activeChat!.id).set(
+              chatUpdates,
+              SetOptions(merge: true),
+            ).catchError((_) {}));
           }
         }
       }
@@ -206,6 +299,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (widget.chat != null) {
       _activeChat = widget.chat;
       NotificationService.activeChatId = widget.chat!.id;
+      _setupChatDocListener(widget.chat!.id);
       if (mounted) setState(() {});
       _markRead();
       _fetchOtherPartyInfoIfNeeded();
@@ -257,6 +351,7 @@ class _ChatScreenState extends State<ChatScreen> {
       lastMessageTime: DateTime.now(),
     );
     NotificationService.activeChatId = _activeChat!.id;
+    _setupChatDocListener(_activeChat!.id);
     if (mounted) setState(() {});
     _markRead();
     _fetchOtherPartyInfoIfNeeded();
@@ -340,6 +435,7 @@ class _ChatScreenState extends State<ChatScreen> {
           _activeChat = chat;
         });
         NotificationService.activeChatId = chat.id;
+        _setupChatDocListener(chat.id);
         _markRead();
         _fetchOtherPartyInfoIfNeeded();
       }
@@ -350,6 +446,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    _chatDocSubscription?.cancel();
     if (NotificationService.activeChatId == _activeChat?.id) {
       NotificationService.activeChatId = null;
     }
@@ -357,6 +454,96 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollCtrl.dispose();
     _focusNode.dispose();
     super.dispose();
+  }
+
+  void _openOtherProfile() {
+    if (_activeChat == null) return;
+    final otherName = _activeChat!.getOtherPartyName(_currentUserId);
+    final otherPhoto = _activeChat!.getOtherPartyPhoto(_currentUserId);
+    final otherAccountId = _activeChat!.getOtherPartyAccountId(_currentUserId);
+    final otherPhone = _activeChat!.getOtherPartyPhone(_currentUserId);
+    final otherRole = _detectedOtherRole.isNotEmpty
+        ? _detectedOtherRole
+        : (widget.otherUserRole ?? _activeChat!.getOtherPartyRole(_currentUserId));
+    final displayOtherName = _liveOtherName ?? (otherName.isNotEmpty ? otherName : 'مستخدم المنصة');
+
+    final otherUid = _activeChat?.getOtherPartyUid(_currentUserId) ?? '';
+    final targetUid = otherUid.isNotEmpty
+        ? otherUid
+        : (widget.lawyerUid ?? widget.clientUid ?? widget.otherUserUid ?? '');
+    final fallbackName = displayOtherName;
+    final fallbackPhone = otherRole == 'admin' ? '' : (_liveOtherPhone ?? otherPhone);
+    final fallbackPhoto = _liveOtherPhotoUrl ?? otherPhoto ?? widget.clientPhotoUrl ?? widget.lawyerPhotoUrl;
+    final fallbackPhotoBase64 = _liveOtherPhotoBase64 ?? widget.clientPhotoBase64 ?? widget.lawyerPhotoBase64;
+    final fallbackAccountId = _liveOtherAccountId ?? (otherAccountId.isNotEmpty ? otherAccountId : (widget.clientAccountId ?? widget.lawyerAccountId ?? widget.otherUserAccountId ?? ''));
+
+    ProfileDetailsModal.showProfileByUid(
+      context,
+      uid: targetUid,
+      role: otherRole,
+      fallbackName: fallbackName,
+      fallbackPhone: fallbackPhone,
+      fallbackPhoto: fallbackPhoto,
+      fallbackPhotoBase64: fallbackPhotoBase64,
+      fallbackAccountId: fallbackAccountId,
+      isAdmin: _currentUserRole == 'admin',
+    );
+  }
+
+  Future<void> _togglePinChat() async {
+    if (_activeChat == null || _currentUserId.isEmpty) return;
+    final nextState = !_isPinned;
+    setState(() => _isPinned = nextState);
+    try {
+      await _chatService.togglePinChat(
+        chatId: _activeChat!.id,
+        currentUserId: _currentUserId,
+        pin: nextState,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              nextState ? 'تم تثبيت المحادثة في الأعلى 📌' : 'تم إلغاء تثبيت المحادثة',
+              style: GoogleFonts.cairo(fontWeight: FontWeight.w600),
+            ),
+            backgroundColor: const Color(0xFF0B2A5B),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('[ChatScreen] togglePin error: $e');
+    }
+  }
+
+  Future<void> _toggleStopUser() async {
+    if (_activeChat == null || _currentUserId.isEmpty) return;
+    final nextState = !_isStoppedByMe;
+    setState(() => _isStoppedByMe = nextState);
+    try {
+      await _chatService.toggleStopChat(
+        chatId: _activeChat!.id,
+        currentUserId: _currentUserId,
+        stop: nextState,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              nextState
+                  ? 'تم إيقاف هذا الحساب ⏸️ (لن تصلك أي رسائل أو إشعارات منه)'
+                  : 'تم تنشيط المحادثة مع هذا الحساب بنجاح ▶️',
+              style: GoogleFonts.cairo(fontWeight: FontWeight.w700),
+            ),
+            backgroundColor: nextState ? const Color(0xFF991B1B) : const Color(0xFF0B2A5B),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('[ChatScreen] toggleStopUser error: $e');
+    }
   }
 
   void _markRead() {
@@ -523,7 +710,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _handleSend() async {
     final text = _msgCtrl.text.trim();
-    if (text.isEmpty || _isSending || _activeChat == null) return;
+    if (text.isEmpty || _isSending || _activeChat == null || _isStoppedByMe) return;
 
     final replying = _replyingTo;
     setState(() {
@@ -682,7 +869,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final otherName = _activeChat!.getOtherPartyName(_currentUserId);
     final otherPhoto = _activeChat!.getOtherPartyPhoto(_currentUserId);
-    final otherAccountId = _activeChat!.getOtherPartyAccountId(_currentUserId);
     final otherPhone = _activeChat!.getOtherPartyPhone(_currentUserId);
     final otherRole = _detectedOtherRole.isNotEmpty
         ? _detectedOtherRole
@@ -712,30 +898,7 @@ class _ChatScreenState extends State<ChatScreen> {
             // Avatar & Name with interactive profile opening (Privacy protected for supervisors)
             Expanded(
               child: InkWell(
-                onTap: () {
-                  final otherUid = _activeChat?.getOtherPartyUid(_currentUserId) ?? '';
-                  final targetUid = otherUid.isNotEmpty
-                      ? otherUid
-                      : (widget.lawyerUid ?? widget.clientUid ?? widget.otherUserUid ?? '');
-                  final fallbackName = displayOtherName;
-                  // If supervisor, phone is strictly hidden
-                  final fallbackPhone = otherRole == 'admin' ? '' : (_liveOtherPhone ?? otherPhone);
-                  final fallbackPhoto = _liveOtherPhotoUrl ?? otherPhoto ?? widget.clientPhotoUrl ?? widget.lawyerPhotoUrl;
-                  final fallbackPhotoBase64 = _liveOtherPhotoBase64 ?? widget.clientPhotoBase64 ?? widget.lawyerPhotoBase64;
-                  final fallbackAccountId = _liveOtherAccountId ?? (otherAccountId.isNotEmpty ? otherAccountId : (widget.clientAccountId ?? widget.lawyerAccountId ?? widget.otherUserAccountId ?? ''));
-
-                  ProfileDetailsModal.showProfileByUid(
-                    context,
-                    uid: targetUid,
-                    role: otherRole,
-                    fallbackName: fallbackName,
-                    fallbackPhone: fallbackPhone,
-                    fallbackPhoto: fallbackPhoto,
-                    fallbackPhotoBase64: fallbackPhotoBase64,
-                    fallbackAccountId: fallbackAccountId,
-                    isAdmin: _currentUserRole == 'admin',
-                  );
-                },
+                onTap: _openOtherProfile,
                 borderRadius: BorderRadius.circular(12),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
@@ -827,8 +990,30 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
 
-            // Call Action if available AND NOT an Admin/Supervisor
-            if (otherPhone.isNotEmpty && otherRole != 'admin')
+            // Pin / Unpin Action (Gold filled when pinned, white outline when unpinned)
+            IconButton(
+              icon: Icon(
+                _isPinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+                color: _isPinned ? brandGold : Colors.white,
+                size: 21,
+              ),
+              tooltip: _isPinned ? 'إلغاء تثبيت المحادثة' : 'تثبيت المحادثة في الأعلى',
+              onPressed: _togglePinChat,
+            ),
+
+            // Stop / Pause User Action (Red/Amber filled when stopped, white outline when active)
+            IconButton(
+              icon: Icon(
+                _isStoppedByMe ? Icons.pause_circle_filled_rounded : Icons.pause_circle_outline_rounded,
+                color: _isStoppedByMe ? const Color(0xFFF87171) : Colors.white,
+                size: 22,
+              ),
+              tooltip: _isStoppedByMe ? 'تنشيط الحساب وإلغاء الإيقاف' : 'إيقاف هذا المستخدم ومنع وصول رسائله',
+              onPressed: _toggleStopUser,
+            ),
+
+            // Call Action if available AND NOT an Admin/Supervisor AND not stopped
+            if (otherPhone.isNotEmpty && otherRole != 'admin' && !_isStoppedByMe)
               IconButton(
                 icon: const Icon(Icons.phone_rounded, color: Colors.white, size: 21),
                 tooltip: 'اتصال هاتفياً',
@@ -938,11 +1123,15 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
 
-            // Active Reply Bar (shown when swiping left or clicking reply)
-            _buildReplyBar(),
+            if (_isStoppedByMe)
+              _buildStoppedUserBanner(brandNavy, brandGold)
+            else ...[
+              // Active Reply Bar (shown when swiping left or clicking reply)
+              _buildReplyBar(),
 
-            // Bottom Input Bar
-            _buildInputBar(brandNavy, brandGold),
+              // Bottom Input Bar
+              _buildInputBar(brandNavy, brandGold),
+            ],
           ],
         ),
       ),
@@ -1409,6 +1598,83 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                 ],
               ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStoppedUserBanner(Color brandNavy, Color brandGold) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          top: BorderSide(color: const Color(0xFFFCA5A5), width: 1.5),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 8,
+            offset: const Offset(0, -3),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEE2E2),
+                shape: BoxShape.circle,
+                border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.3), width: 1),
+              ),
+              child: const Icon(Icons.pause_circle_filled_rounded, color: Color(0xFFDC2626), size: 22),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'لقد قمت بإيقاف هذا الحساب',
+                    style: GoogleFonts.cairo(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF991B1B),
+                    ),
+                  ),
+                  Text(
+                    'لن تصلك أي رسائل أو إشعارات جديدة من هذا الحساب.',
+                    style: GoogleFonts.cairo(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF64748B),
+                      height: 1.3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            ElevatedButton(
+              onPressed: _toggleStopUser,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: brandGold,
+                foregroundColor: brandNavy,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                elevation: 1,
+              ),
+              child: Text(
+                'تنشيط',
+                style: GoogleFonts.cairo(fontSize: 12.5, fontWeight: FontWeight.w800),
+              ),
             ),
           ],
         ),

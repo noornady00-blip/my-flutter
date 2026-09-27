@@ -7,6 +7,8 @@ import '../../../core/theme/app_theme.dart';
 import '../../../network/auth_service.dart';
 import '../../../network/firestore_service.dart';
 import '../../../network/storage_service.dart';
+import '../../../network/chat_service.dart';
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../custom_widgets/app_logo_badge.dart';
 import '../../custom_widgets/profile_details_modal.dart';
@@ -192,6 +194,13 @@ class _LawyerSettingsScreenState extends State<LawyerSettingsScreen> {
         final prefs = await SharedPreferences.getInstance();
         await prefs.remove('user_profile_photo');
         await prefs.remove('user_profile_photo_url');
+        await prefs.remove('user_profile_photo_base64');
+        unawaited(ChatService().syncUserProfileToAllChats(
+          uid: _uid!,
+          role: 'lawyer',
+          photoUrl: '',
+          photoBase64: '',
+        ));
         if (mounted) {
           setState(() {
             _photoUrl = null;
@@ -260,13 +269,23 @@ class _LawyerSettingsScreenState extends State<LawyerSettingsScreen> {
 
       final String base64Photo = croppedResult.base64;
       try {
-        final Map<String, dynamic> updateData = {'photoUrl': downloadUrl};
-        if (base64Photo.length < 50000) {
-          updateData['photoBase64'] = base64Photo;
-        }
+        final Map<String, dynamic> updateData = {
+          'photoUrl': downloadUrl,
+          'photoBase64': base64Photo,
+          'user_profile_photo_base64': base64Photo,
+          'user_profile_photo_url': downloadUrl,
+        };
         await FirebaseFirestore.instance.collection('users').doc(_uid!).set(updateData, SetOptions(merge: true));
         await FirebaseFirestore.instance.collection('lawyers').doc(_uid!).set(updateData, SetOptions(merge: true));
         await prefs.setString('user_profile_photo_base64', base64Photo);
+
+        unawaited(ChatService().syncUserProfileToAllChats(
+          uid: _uid!,
+          role: 'lawyer',
+          photoUrl: downloadUrl,
+          photoBase64: base64Photo,
+          name: _name,
+        ));
       } catch (_) {}
 
       if (mounted) {

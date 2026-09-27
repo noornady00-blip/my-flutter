@@ -43,6 +43,24 @@ class UserModel {
   // Serialization & Deserialization
   // ---------------------------------------------------------------------------
   factory UserModel.fromMap(Map<String, dynamic> map, String id) {
+    final rawPhoto = map['photo']?.toString();
+    final rawPhotoUrl = map['photoUrl']?.toString() ??
+        map['user_profile_photo_url']?.toString() ??
+        map['imageUrl']?.toString() ??
+        map['profileImage']?.toString() ??
+        (rawPhoto != null && (rawPhoto.startsWith('http') || rawPhoto.startsWith('data:image'))
+            ? rawPhoto
+            : null);
+
+    final rawPhotoBase64 = map['photoBase64']?.toString() ??
+        map['user_profile_photo_base64']?.toString() ??
+        map['user_profile_photo']?.toString() ??
+        (rawPhoto != null &&
+                !rawPhoto.startsWith('http') &&
+                rawPhoto.length > 50
+            ? rawPhoto
+            : null);
+
     return UserModel(
       uid: id,
       name: map['name']?.toString() ?? '',
@@ -50,18 +68,8 @@ class UserModel {
       role: map['role']?.toString() ?? 'client',
       status: map['status']?.toString() ?? 'active',
       accountId: map['accountId']?.toString() ?? map['memberId']?.toString() ?? '',
-      photoUrl: map['photoUrl']?.toString() ??
-          (map['photo'] != null && map['photo'].toString().startsWith('http')
-              ? map['photo'].toString()
-              : null) ??
-          map['imageUrl']?.toString() ??
-          map['profileImage']?.toString(),
-      photoBase64: map['photoBase64']?.toString() ??
-          (map['photo'] != null &&
-                  !map['photo'].toString().startsWith('http') &&
-                  map['photo'].toString().length > 100
-              ? map['photo'].toString()
-              : null),
+      photoUrl: rawPhotoUrl,
+      photoBase64: rawPhotoBase64,
       createdAt: (map['createdAt'] is Timestamp)
           ? (map['createdAt'] as Timestamp).toDate()
           : (map['createdAt'] != null

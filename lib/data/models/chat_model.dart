@@ -15,12 +15,14 @@ class ChatModel {
   final String clientName;
   final String clientPhone;
   final String? clientPhoto;
+  final String? clientPhotoBase64;
   final String clientAccountId; // 12-digit fixed ID
 
   final String lawyerId;
   final String lawyerName;
   final String lawyerPhone;
   final String? lawyerPhoto;
+  final String? lawyerPhotoBase64;
   final String lawyerAccountId; // 12-digit fixed ID
 
   final String lastMessage;
@@ -32,6 +34,8 @@ class ChatModel {
   final int unreadByLawyer;
   final List<String> pinnedBy;
   final List<String> deletedBy;
+  final List<String> mutedBy;
+  final List<String> stoppedBy;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -42,11 +46,13 @@ class ChatModel {
     required this.clientName,
     required this.clientPhone,
     this.clientPhoto,
+    this.clientPhotoBase64,
     this.clientAccountId = '',
     required this.lawyerId,
     required this.lawyerName,
     required this.lawyerPhone,
     this.lawyerPhoto,
+    this.lawyerPhotoBase64,
     this.lawyerAccountId = '',
     this.lastMessage = '',
     this.lastSenderId = '',
@@ -57,6 +63,8 @@ class ChatModel {
     this.unreadByLawyer = 0,
     this.pinnedBy = const [],
     this.deletedBy = const [],
+    this.mutedBy = const [],
+    this.stoppedBy = const [],
     DateTime? createdAt,
     DateTime? updatedAt,
   })  : lastMessageTime = lastMessageTime ?? DateTime.now(),
@@ -85,18 +93,44 @@ class ChatModel {
         ? rawDeletedBy.map((e) => e.toString()).toList()
         : [];
 
+    final rawMutedBy = map['mutedBy'];
+    final List<String> parsedMutedBy = rawMutedBy is List
+        ? rawMutedBy.map((e) => e.toString()).toList()
+        : [];
+
+    final rawStoppedBy = map['stoppedBy'];
+    final List<String> parsedStoppedBy = rawStoppedBy is List
+        ? rawStoppedBy.map((e) => e.toString()).toList()
+        : [];
+
+    final rawClientPhoto = map['clientPhoto']?.toString() ??
+        map['clientPhotoUrl']?.toString() ??
+        map['client_photo_url']?.toString();
+    final rawClientBase64 = map['clientPhotoBase64']?.toString() ??
+        map['client_photo_base64']?.toString() ??
+        (rawClientPhoto != null && !rawClientPhoto.startsWith('http') && rawClientPhoto.length > 50 ? rawClientPhoto : null);
+
+    final rawLawyerPhoto = map['lawyerPhoto']?.toString() ??
+        map['lawyerPhotoUrl']?.toString() ??
+        map['lawyer_photo_url']?.toString();
+    final rawLawyerBase64 = map['lawyerPhotoBase64']?.toString() ??
+        map['lawyer_photo_base64']?.toString() ??
+        (rawLawyerPhoto != null && !rawLawyerPhoto.startsWith('http') && rawLawyerPhoto.length > 50 ? rawLawyerPhoto : null);
+
     return ChatModel(
       id: id,
       participants: parsedParticipants,
       clientId: map['clientId']?.toString() ?? '',
       clientName: map['clientName']?.toString() ?? 'عميل',
       clientPhone: map['clientPhone']?.toString() ?? '',
-      clientPhoto: map['clientPhoto']?.toString(),
+      clientPhoto: rawClientPhoto,
+      clientPhotoBase64: rawClientBase64,
       clientAccountId: map['clientAccountId']?.toString() ?? '',
       lawyerId: map['lawyerId']?.toString() ?? '',
       lawyerName: map['lawyerName']?.toString() ?? 'محامٍ',
       lawyerPhone: map['lawyerPhone']?.toString() ?? '',
-      lawyerPhoto: map['lawyerPhoto']?.toString(),
+      lawyerPhoto: rawLawyerPhoto,
+      lawyerPhotoBase64: rawLawyerBase64,
       lawyerAccountId: map['lawyerAccountId']?.toString() ?? '',
       lastMessage: map['lastMessage']?.toString() ?? '',
       lastSenderId: map['lastSenderId']?.toString() ?? '',
@@ -107,6 +141,8 @@ class ChatModel {
       unreadByLawyer: (map['unreadByLawyer'] is num) ? (map['unreadByLawyer'] as num).toInt() : 0,
       pinnedBy: parsedPinnedBy,
       deletedBy: parsedDeletedBy,
+      mutedBy: parsedMutedBy,
+      stoppedBy: parsedStoppedBy,
       createdAt: parseDate(map['createdAt']),
       updatedAt: parseDate(map['updatedAt']),
     );
@@ -120,11 +156,13 @@ class ChatModel {
       'clientName': clientName,
       'clientPhone': clientPhone,
       if (clientPhoto != null) 'clientPhoto': clientPhoto,
+      if (clientPhotoBase64 != null) 'clientPhotoBase64': clientPhotoBase64,
       'clientAccountId': clientAccountId,
       'lawyerId': lawyerId,
       'lawyerName': lawyerName,
       'lawyerPhone': lawyerPhone,
       if (lawyerPhoto != null) 'lawyerPhoto': lawyerPhoto,
+      if (lawyerPhotoBase64 != null) 'lawyerPhotoBase64': lawyerPhotoBase64,
       'lawyerAccountId': lawyerAccountId,
       'lastMessage': lastMessage,
       'lastSenderId': lastSenderId,
@@ -135,6 +173,8 @@ class ChatModel {
       'unreadByLawyer': unreadByLawyer,
       'pinnedBy': pinnedBy,
       'deletedBy': deletedBy,
+      'mutedBy': mutedBy,
+      'stoppedBy': stoppedBy,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
     };
@@ -142,6 +182,8 @@ class ChatModel {
 
   bool isPinnedBy(String uid) => pinnedBy.contains(uid);
   bool isDeletedBy(String uid) => deletedBy.contains(uid);
+  bool isMutedBy(String uid) => mutedBy.contains(uid);
+  bool isStoppedBy(String uid) => stoppedBy.contains(uid);
 
   /// Helper to get the other party's name and details based on current user UID
   String getOtherPartyName(String currentUserId) {
@@ -150,6 +192,10 @@ class ChatModel {
 
   String? getOtherPartyPhoto(String currentUserId) {
     return currentUserId == clientId ? lawyerPhoto : clientPhoto;
+  }
+
+  String? getOtherPartyPhotoBase64(String currentUserId) {
+    return currentUserId == clientId ? lawyerPhotoBase64 : clientPhotoBase64;
   }
 
   String getOtherPartyAccountId(String currentUserId) {

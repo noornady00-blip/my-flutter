@@ -4,7 +4,7 @@
 // Displays all conversations for Clients, Lawyers, or Administrators.
 // Features luxury Royal Navy & Gold header, interactive search (by name or 12-digit ID),
 // pinned chat priority, and full RTL swipe gestures:
-// - Swipe Right: [حذف] + [حظر]
+// - Swipe Right: [حذف] + [إيقاف / تنشيط]
 // - Swipe Left:  [تثبيت / إلغاء التثبيت] + [غير مقروءة / مقروءة]
 // ==============================================================================
 
@@ -428,7 +428,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                         currentUserName: _name ?? 'المستخدم',
                         currentUserAccountId: _accountId ?? '',
                         onDelete: () => _confirmDeleteChat(chat),
-                        onBlock: () => _confirmBlockUser(chat),
+                        onToggleStop: () => _toggleStopChat(chat),
                         onTogglePin: () => _togglePinChat(chat),
                         onToggleUnread: () => _toggleUnreadChat(chat),
                         brandNavy: brandNavy,
@@ -672,100 +672,29 @@ class _ChatListScreenState extends State<ChatListScreen> {
     );
   }
 
-  void _confirmBlockUser(ChatModel chat) {
+  Future<void> _toggleStopChat(ChatModel chat) async {
     if (_uid == null) return;
-    final otherUid = chat.getOtherPartyUid(_uid!);
-    final otherName = chat.getOtherPartyName(_uid!);
-
-    showDialog(
-      context: context,
-      builder: (ctx) => Dialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFEF2F2),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: const Color(0xFFFECACA), width: 1.5),
-                  ),
-                  child: const Icon(Icons.block_rounded, color: Color(0xFFDC2626), size: 28),
-                ),
-              ),
-              const SizedBox(height: 14),
-              Text(
-                'حظر المستخدم',
-                style: GoogleFonts.cairo(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 17,
-                  color: const Color(0xFF0F172A),
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'هل أنت متأكد من حظر "$otherName"؟ لن يتمكن من مراسلتك مجدداً وسيتم إيقاف التواصل معه.',
-                style: GoogleFonts.cairo(fontSize: 13, color: const Color(0xFF64748B), height: 1.4),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF64748B),
-                        side: const BorderSide(color: Color(0xFFCBD5E1)),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      child: Text('إلغاء', style: GoogleFonts.cairo(fontWeight: FontWeight.w700, fontSize: 13)),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () async {
-                        Navigator.pop(ctx);
-                        await _chatService.blockUser(
-                          currentUserId: _uid!,
-                          targetUserId: otherUid,
-                        );
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('تم حظر المستخدم بنجاح', style: GoogleFonts.cairo(fontWeight: FontWeight.w700)),
-                              backgroundColor: const Color(0xFFDC2626),
-                            ),
-                          );
-                        }
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFDC2626),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      child: Text('حظر', style: GoogleFonts.cairo(fontWeight: FontWeight.w800, fontSize: 13)),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
+    final isStopped = chat.isStoppedBy(_uid!);
+    await _chatService.toggleStopChat(
+      chatId: chat.id,
+      currentUserId: _uid!,
+      stop: !isStopped,
     );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            !isStopped
+                ? 'تم إيقاف هذا الحساب ⏸️ (لن تصلك رسائل أو إشعارات منه)'
+                : 'تم تنشيط المحادثة مع هذا الحساب بنجاح ▶️',
+            style: GoogleFonts.cairo(fontWeight: FontWeight.w700),
+            textDirection: TextDirection.rtl,
+          ),
+          backgroundColor: !isStopped ? const Color(0xFF991B1B) : const Color(0xFF0B2A5B),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 }
 
@@ -774,7 +703,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
 // -----------------------------------------------------------------------------
 // Supports tactile horizontal dragging revealing action buttons matching
 // the user's reference designs in Mahameek Royal Navy & Gold branding:
-// - Swipe Right (RTL): [حذف] + [حظر]
+// - Swipe Right (RTL): [حذف] + [كتم/تفعيل الإشعارات]
 // - Swipe Left  (RTL): [تثبيت] + [غير مقروءة]
 // -----------------------------------------------------------------------------
 class _SwipeableChatTile extends StatefulWidget {
@@ -784,7 +713,7 @@ class _SwipeableChatTile extends StatefulWidget {
   final String currentUserName;
   final String currentUserAccountId;
   final VoidCallback onDelete;
-  final VoidCallback onBlock;
+  final VoidCallback onToggleStop;
   final VoidCallback onTogglePin;
   final VoidCallback onToggleUnread;
   final Color brandNavy;
@@ -798,7 +727,7 @@ class _SwipeableChatTile extends StatefulWidget {
     required this.currentUserName,
     required this.currentUserAccountId,
     required this.onDelete,
-    required this.onBlock,
+    required this.onToggleStop,
     required this.onTogglePin,
     required this.onToggleUnread,
     required this.brandNavy,
@@ -891,9 +820,11 @@ class _SwipeableChatTileState extends State<_SwipeableChatTile>
     final chat = widget.chat;
     final otherName = chat.getOtherPartyName(widget.currentUserId);
     final otherPhoto = chat.getOtherPartyPhoto(widget.currentUserId);
+    final otherPhotoBase64 = chat.getOtherPartyPhotoBase64(widget.currentUserId);
     final otherRole = chat.getOtherPartyRole(widget.currentUserId);
     final unread = chat.getUnreadCount(widget.currentUserId);
     final isPinned = chat.isPinnedBy(widget.currentUserId);
+    final isStopped = chat.isStoppedBy(widget.currentUserId);
     final timeStr = _formatChatTime(chat.lastMessageTime);
     final isLastMsgDeleted = chat.lastMessage == 'تم حذف هذه الرسالة';
 
@@ -943,27 +874,32 @@ class _SwipeableChatTileState extends State<_SwipeableChatTile>
                           ),
                         ),
                       ),
-                      // Block Button
+                      // Stop / Resume User Button
                       Expanded(
                         child: InkWell(
                           onTap: () {
                             _snapTo(0.0);
-                            widget.onBlock();
+                            widget.onToggleStop();
                           },
                           child: Container(
-                            color: const Color(0xFF334155),
+                            color: isStopped ? const Color(0xFF065F46) : const Color(0xFF475569),
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                const Icon(Icons.block_rounded, color: Colors.white, size: 22),
+                                Icon(
+                                  isStopped ? Icons.play_circle_filled_rounded : Icons.pause_circle_filled_rounded,
+                                  color: Colors.white,
+                                  size: 22,
+                                ),
                                 const SizedBox(height: 3),
                                 Text(
-                                  'حظر',
+                                  isStopped ? 'تنشيط' : 'إيقاف',
                                   style: GoogleFonts.cairo(
-                                    fontSize: 11.5,
+                                    fontSize: 10.5,
                                     fontWeight: FontWeight.w800,
                                     color: Colors.white,
                                   ),
+                                  textAlign: TextAlign.center,
                                 ),
                               ],
                             ),
@@ -1116,23 +1052,25 @@ class _SwipeableChatTileState extends State<_SwipeableChatTile>
                                 color: otherRole == 'admin'
                                     ? widget.headerGold.withValues(alpha: 0.12)
                                     : widget.brandNavy.withValues(alpha: 0.08),
-                                child: otherPhoto != null && otherPhoto.isNotEmpty
-                                    ? ImageUtils.buildSafeImage(
-                                        photoUrl: otherPhoto,
-                                        fit: BoxFit.cover,
-                                      )
-                                    : Center(
-                                        child: otherRole == 'admin'
-                                            ? const Icon(Icons.admin_panel_settings_rounded, size: 24, color: Color(0xFFB45309))
-                                            : Text(
-                                                otherName.isNotEmpty ? otherName.substring(0, 1) : 'م',
-                                                style: GoogleFonts.cairo(
-                                                  color: widget.brandNavy,
-                                                  fontSize: 18,
-                                                  fontWeight: FontWeight.w800,
-                                                ),
-                                              ),
-                                      ),
+                                child: AppImageUtils.buildAvatarImage(
+                                  photoUrl: otherPhoto,
+                                  photoBase64: otherPhotoBase64,
+                                  width: 48,
+                                  height: 48,
+                                  fit: BoxFit.cover,
+                                  fallback: Center(
+                                    child: otherRole == 'admin'
+                                        ? const Icon(Icons.admin_panel_settings_rounded, size: 24, color: Color(0xFFB45309))
+                                        : Text(
+                                            otherName.isNotEmpty ? otherName.substring(0, 1) : 'م',
+                                            style: GoogleFonts.cairo(
+                                              color: widget.brandNavy,
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                  ),
+                                ),
                               ),
                             ),
                           ),
@@ -1196,6 +1134,14 @@ class _SwipeableChatTileState extends State<_SwipeableChatTile>
                                       ),
                                       const SizedBox(width: 4),
                                     ],
+                                    if (isStopped) ...[
+                                      const Icon(
+                                        Icons.pause_circle_filled_rounded,
+                                        size: 14,
+                                        color: Color(0xFFEF4444),
+                                      ),
+                                      const SizedBox(width: 4),
+                                    ],
                                     Text(
                                       timeStr,
                                       style: GoogleFonts.cairo(
@@ -1216,7 +1162,7 @@ class _SwipeableChatTileState extends State<_SwipeableChatTile>
                                     children: [
                                       if (isLastMsgDeleted) ...[
                                         const Icon(
-                                          Icons.block_rounded,
+                                          Icons.delete_outline_rounded,
                                           size: 13,
                                           color: Color(0xFF94A3B8),
                                         ),

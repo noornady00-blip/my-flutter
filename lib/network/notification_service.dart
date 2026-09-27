@@ -57,6 +57,19 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       return;
     }
 
+    // STRICT: Suppress notification if chat is stopped or muted by current user
+    if (isChatMessage && currentSavedUid != null && message.data['chatId'] != null) {
+      try {
+        final cDoc = await FirebaseFirestore.instance.collection('chats').doc(message.data['chatId'].toString()).get();
+        final isStopped = (cDoc.data()?['stoppedBy'] as List?)?.map((e) => e.toString()).contains(currentSavedUid) ?? false;
+        final isMuted = (cDoc.data()?['mutedBy'] as List?)?.map((e) => e.toString()).contains(currentSavedUid) ?? false;
+        if (isStopped || isMuted) {
+          debugPrint('Background message ignored: user $currentSavedUid has stopped/muted chat ${message.data['chatId']}');
+          return;
+        }
+      } catch (_) {}
+    }
+
     final role = prefs.getString('role');
     final isAdminDevice = prefs.getBool('is_admin_device') ?? false;
 
@@ -511,6 +524,19 @@ class NotificationService {
           if (activeChatId != null && chatId != null && activeChatId == chatId) {
             debugPrint('[NotificationService] Suppressing foreground banner: user is already active in chat $chatId');
             return;
+          }
+
+          // 3. Suppress if chat is stopped or muted by this user
+          if (chatId != null && chatId.isNotEmpty && currentUid != null) {
+            try {
+              final cDoc = await FirebaseFirestore.instance.collection('chats').doc(chatId).get();
+              final isStopped = (cDoc.data()?['stoppedBy'] as List?)?.map((e) => e.toString()).contains(currentUid) ?? false;
+              final isMuted = (cDoc.data()?['mutedBy'] as List?)?.map((e) => e.toString()).contains(currentUid) ?? false;
+              if (isStopped || isMuted) {
+                debugPrint('[NotificationService] Foreground notification suppressed: user $currentUid has stopped/muted chat $chatId');
+                return;
+              }
+            } catch (_) {}
           }
 
           final senderName = message.data['senderName']?.toString() ??
