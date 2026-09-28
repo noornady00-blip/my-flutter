@@ -94,6 +94,22 @@ class PhoneUtils {
     return extractLocalSudanDigits(phone);
   }
 
+  /// تنظيف أي نص وحذف كافة الرموز غير الرقمية
+  static String cleanDigits(String phone) {
+    return normalizeDigits(phone.trim()).replaceAll(RegExp(r'[^0-9]'), '');
+  }
+
+  /// الصيغة الموحدة للرقم
+  static String normalizePhone(String phone, {bool withPlus = true}) {
+    return normalizeSudanPhone(phone, withPlus: withPlus);
+  }
+
+  /// تحويل الرقم للصيغة المحلية (09...)
+  static String toLocalFormat(String phone) {
+    final local = extractLocalSudanDigits(phone);
+    return local.isNotEmpty ? '0$local' : phone.trim();
+  }
+
   /// التحقق من صحة رقم الهاتف السوداني (يجب أن يكون 9 أرقام)
   static bool isValidSudanPhone(String phone) {
     final local = extractLocalSudanDigits(phone);

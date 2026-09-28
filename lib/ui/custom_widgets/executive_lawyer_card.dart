@@ -232,9 +232,9 @@ class ExecutiveLawyerCard extends StatelessWidget {
                     child: _buildExecutiveActionButton(
                       label: 'محادثة',
                       iconWidget: const Icon(
-                        Icons.chat_bubble_outline_rounded,
+                        Icons.chat_bubble_rounded,
                         color: Colors.white,
-                        size: 15,
+                        size: 17,
                       ),
                       backgroundColor: const Color(0xFFD49B1A),
                       borderColor: const Color(0xFFB8820B),
@@ -269,14 +269,14 @@ class ExecutiveLawyerCard extends StatelessWidget {
                       },
                     ),
                   ),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: _buildExecutiveActionButton(
                       label: 'اتصال',
                       iconWidget: const Icon(
-                        Icons.phone_in_talk_rounded,
+                        Icons.phone_rounded,
                         color: Color(0xFFD49B1A),
-                        size: 15,
+                        size: 17,
                       ),
                       backgroundColor: const Color(0xFF0B2A5B),
                       borderColor: const Color(0xFF1E2E5C),
@@ -284,12 +284,12 @@ class ExecutiveLawyerCard extends StatelessWidget {
                       onTap: () => _callPhone(lawyer.phone),
                     ),
                   ),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: _buildExecutiveActionButton(
                       label: 'واتساب',
                       iconWidget: const WhatsAppIcon(
-                          size: 15, color: Colors.white),
+                          size: 17, color: Colors.white),
                       backgroundColor: const Color(0xFF16A34A),
                       borderColor: const Color(0xFF15803D),
                       shadowColor: const Color(0xFF16A34A),
@@ -479,18 +479,19 @@ class ExecutiveLawyerCard extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         child: Container(
-          height: 38,
+          height: 42,
+          padding: const EdgeInsets.symmetric(horizontal: 4),
           decoration: BoxDecoration(
             color: backgroundColor,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(14),
             border: Border.all(color: borderColor, width: 1.2),
             boxShadow: [
               BoxShadow(
                 color: shadowColor.withValues(alpha: 0.18),
                 blurRadius: 8,
-                offset: const Offset(0, 3),
+                offset: const Offset(0, 2.5),
               ),
             ],
           ),
@@ -499,14 +500,18 @@ class ExecutiveLawyerCard extends StatelessWidget {
             textDirection: TextDirection.rtl,
             children: [
               iconWidget,
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: GoogleFonts.cairo(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                  letterSpacing: -0.2,
+              const SizedBox(width: 5),
+              Flexible(
+                child: Text(
+                  label,
+                  style: GoogleFonts.cairo(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                    letterSpacing: -0.2,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],

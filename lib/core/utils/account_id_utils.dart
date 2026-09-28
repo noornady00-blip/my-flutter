@@ -31,6 +31,12 @@ class AccountIdUtils {
     return clean.length == 12 && RegExp(r'^\d{12}$').hasMatch(clean);
   }
 
+  /// Extracts and cleans pure 12 digits from formatted string
+  static String clean12Digits(String? id) {
+    if (id == null) return '';
+    return id.replaceAll(RegExp(r'[^0-9]'), '').trim();
+  }
+
   /// Generates a cryptographically unique 12-digit ID with collision verification
   /// against Firestore collection 'account_ids'.
   static Future<String> generateUnique12DigitId([FirebaseFirestore? firestore]) async {

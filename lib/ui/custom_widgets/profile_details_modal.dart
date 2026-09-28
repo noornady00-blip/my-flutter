@@ -923,9 +923,9 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
             title: 'محادثة',
             iconWidget: const Icon(Icons.chat_bubble_rounded,
                 color: Colors.white, size: 17),
-            backgroundColor: const Color(0xFF0F766E),
-            borderColor: const Color(0xFF115E59),
-            shadowColor: const Color(0xFF0F766E),
+            backgroundColor: const Color(0xFFD49B1A),
+            borderColor: const Color(0xFFB8820B),
+            shadowColor: const Color(0xFFD49B1A),
             onTap: () {
               final currentUser = FirebaseAuth.instance.currentUser;
               if (currentUser == null) {
@@ -973,7 +973,7 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
           child: _ExecutiveModalActionButton(
             title: 'واتساب',
             iconWidget: const WhatsAppIcon(size: 17, color: Colors.white),
-            backgroundColor: const Color(0xFF1E8E5A),
+            backgroundColor: const Color(0xFF16A34A),
             borderColor: const Color(0xFF15803D),
             shadowColor: const Color(0xFF16A34A),
             onTap: () => ProfileDetailsModal.launchWhatsApp(targetWhatsapp),
@@ -1447,31 +1447,97 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
   Future<void> _loadFullClientData() async {
     try {
       DocumentSnapshot<Map<String, dynamic>>? userDoc;
+      Map<String, dynamic> directoryData = {};
+
       if (_client.uid.isNotEmpty && !_client.uid.startsWith('guest_')) {
-        userDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(_client.uid)
-            .get();
+        try {
+          userDoc = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(_client.uid)
+              .get()
+              .timeout(const Duration(seconds: 3));
+        } catch (_) {}
       }
+
+      final cleanDigits = PhoneUtils.cleanDigits(_client.phone);
+
+      // Check phone_directory for immediate linked data and photo
+      if (cleanDigits.isNotEmpty) {
+        try {
+          final dirDoc = await FirebaseFirestore.instance
+              .collection('phone_directory')
+              .doc(cleanDigits)
+              .get()
+              .timeout(const Duration(seconds: 3));
+          if (dirDoc.exists && dirDoc.data() != null) {
+            directoryData = dirDoc.data()!;
+            final linkedUid = directoryData['uid']?.toString();
+            if ((userDoc == null || !userDoc.exists) && linkedUid != null && linkedUid.isNotEmpty) {
+              try {
+                userDoc = await FirebaseFirestore.instance.collection('users').doc(linkedUid).get().timeout(const Duration(seconds: 3));
+              } catch (_) {}
+            }
+          }
+        } catch (_) {}
+      }
+
+      // Check users collection across all normalized phone variations
       if ((userDoc == null || !userDoc.exists) && _client.phone.isNotEmpty) {
-        final snap = await FirebaseFirestore.instance
-            .collection('users')
-            .where('phone', isEqualTo: _client.phone.trim())
-            .limit(1)
-            .get();
-        if (snap.docs.isNotEmpty) userDoc = snap.docs.first;
+        final phoneCandidates = <String>{
+          _client.phone.trim(),
+          _client.phone.replaceAll(' ', ''),
+          if (cleanDigits.isNotEmpty) cleanDigits,
+          if (cleanDigits.isNotEmpty) '0$cleanDigits',
+          if (cleanDigits.isNotEmpty) '+249$cleanDigits',
+          if (cleanDigits.isNotEmpty) '249$cleanDigits',
+        }.where((p) => p.isNotEmpty).toList();
+
+        for (final p in phoneCandidates) {
+          try {
+            final snap = await FirebaseFirestore.instance
+                .collection('users')
+                .where('phone', isEqualTo: p)
+                .limit(1)
+                .get()
+                .timeout(const Duration(seconds: 3));
+            if (snap.docs.isNotEmpty) {
+              userDoc = snap.docs.first;
+              break;
+            }
+          } catch (_) {}
+        }
+      }
+
+      // Check users collection by accountId
+      if ((userDoc == null || !userDoc.exists) && _client.accountId.isNotEmpty) {
+        final cleanAcc = AccountIdUtils.clean12Digits(_client.accountId);
+        if (cleanAcc.isNotEmpty) {
+          try {
+            final accSnap = await FirebaseFirestore.instance
+                .collection('users')
+                .where('accountId', isEqualTo: cleanAcc)
+                .limit(1)
+                .get()
+                .timeout(const Duration(seconds: 3));
+            if (accSnap.docs.isNotEmpty) {
+              userDoc = accSnap.docs.first;
+            }
+          } catch (_) {}
+        }
       }
 
       DocumentSnapshot<Map<String, dynamic>>? lawyerDoc;
       final targetUid = _client.uid.isNotEmpty && !_client.uid.startsWith('guest_')
           ? _client.uid
-          : userDoc?.id;
+          : (userDoc?.id ?? directoryData['uid']?.toString());
+
       if (targetUid != null && targetUid.isNotEmpty) {
         try {
           final lSnap = await FirebaseFirestore.instance
               .collection('lawyers')
               .doc(targetUid)
-              .get();
+              .get()
+              .timeout(const Duration(seconds: 3));
           if (lSnap.exists) lawyerDoc = lSnap;
         } catch (_) {}
       }
@@ -1480,8 +1546,9 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
         final uData = userDoc?.exists == true ? userDoc!.data() : null;
         final lData = lawyerDoc?.exists == true ? lawyerDoc!.data() : null;
 
-        if (uData != null || lData != null) {
+        if (uData != null || lData != null || directoryData.isNotEmpty) {
           final mergedMap = <String, dynamic>{
+            ...directoryData,
             ...?lData,
             ...?uData,
           };
@@ -1702,9 +1769,9 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
                       title: 'محادثة',
                       iconWidget: const Icon(Icons.chat_bubble_rounded,
                           color: Colors.white, size: 17),
-                      backgroundColor: const Color(0xFF0F766E),
-                      borderColor: const Color(0xFF115E59),
-                      shadowColor: const Color(0xFF0F766E),
+                      backgroundColor: const Color(0xFFD49B1A),
+                      borderColor: const Color(0xFFB8820B),
+                      shadowColor: const Color(0xFFD49B1A),
                       onTap: () {
                         final currentUser = FirebaseAuth.instance.currentUser;
                         if (currentUser == null) {
@@ -1758,7 +1825,7 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
                         title: 'واتساب',
                         iconWidget:
                             const WhatsAppIcon(size: 17, color: Colors.white),
-                        backgroundColor: const Color(0xFF1E8E5A),
+                        backgroundColor: const Color(0xFF16A34A),
                         borderColor: const Color(0xFF15803D),
                         shadowColor: const Color(0xFF16A34A),
                         onTap: () =>

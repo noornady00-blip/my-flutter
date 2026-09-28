@@ -14,6 +14,7 @@ import '../data/models/chat_model.dart';
 import '../data/models/chat_message_model.dart';
 import '../data/models/user_model.dart';
 import '../data/models/lawyer.dart';
+import '../core/utils/phone_utils.dart';
 import 'fcm_dispatcher_service.dart';
 
 class ChatService {
@@ -238,13 +239,31 @@ class ChatService {
   }) async {
     if (uid.isEmpty) return;
     try {
-      final snap = await _db.collection('chats').where('participants', arrayContains: uid).get();
-      if (snap.docs.isEmpty) return;
+      final isLawyer = (role == 'lawyer' || role == 'approved_lawyer');
+      final cleanDigits = phone != null ? PhoneUtils.cleanDigits(phone) : '';
+
+      // Parallel queries across participants, specific role IDs, and phone numbers
+      final queries = <Future<QuerySnapshot<Map<String, dynamic>>>>[
+        _db.collection('chats').where('participants', arrayContains: uid).get(),
+        _db.collection('chats').where(isLawyer ? 'lawyerId' : 'clientId', isEqualTo: uid).get(),
+      ];
+      if (cleanDigits.isNotEmpty) {
+        queries.add(_db.collection('chats').where(isLawyer ? 'lawyerPhone' : 'clientPhone', isEqualTo: phone).get());
+        queries.add(_db.collection('chats').where(isLawyer ? 'lawyerPhone' : 'clientPhone', isEqualTo: cleanDigits).get());
+      }
+
+      final snapshots = await Future.wait(queries);
+      final docsMap = <String, DocumentSnapshot<Map<String, dynamic>>>{};
+      for (final snap in snapshots) {
+        for (final doc in snap.docs) {
+          docsMap[doc.id] = doc;
+        }
+      }
+
+      if (docsMap.isEmpty) return;
 
       final batch = _db.batch();
-      final isLawyer = (role == 'lawyer' || role == 'approved_lawyer');
-
-      for (final doc in snap.docs) {
+      for (final doc in docsMap.values) {
         final Map<String, dynamic> updateData = {};
         if (isLawyer) {
           if (name != null && name.isNotEmpty) updateData['lawyerName'] = name;

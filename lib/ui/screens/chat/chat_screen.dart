@@ -239,6 +239,33 @@ class _ChatScreenState extends State<ChatScreen> {
           } catch (_) {}
         }
 
+        // Additional phone_directory fallback if photo or details are missing
+        if (photoUrl == null && photoBase64 == null) {
+          final fallbackPhone = _activeChat?.getOtherPartyPhone(_currentUserId) ?? phone;
+          final cleanPhone = fallbackPhone != null ? PhoneUtils.cleanDigits(fallbackPhone) : '';
+          if (cleanPhone.isNotEmpty) {
+            try {
+              final dirDoc = await FirebaseFirestore.instance
+                  .collection('phone_directory')
+                  .doc(cleanPhone)
+                  .get()
+                  .timeout(const Duration(seconds: 3));
+              if (dirDoc.exists && dirDoc.data() != null) {
+                final dData = dirDoc.data()!;
+                final dRawPhoto = dData['photo']?.toString();
+                photoUrl = dData['photoUrl']?.toString() ??
+                    dData['user_profile_photo_url']?.toString() ??
+                    (dRawPhoto != null && (dRawPhoto.startsWith('http') || dRawPhoto.startsWith('data:image')) ? dRawPhoto : null);
+                photoBase64 = dData['photoBase64']?.toString() ??
+                    dData['user_profile_photo_base64']?.toString() ??
+                    (dRawPhoto != null && !dRawPhoto.startsWith('http') && dRawPhoto.length > 50 ? dRawPhoto : null);
+                if (name == null || name.isEmpty) name = dData['name']?.toString();
+                if (accId == null || accId.isEmpty) accId = dData['accountId']?.toString();
+              }
+            } catch (_) {}
+          }
+        }
+
         if (mounted) {
           setState(() {
             if (r != null && r.isNotEmpty) _detectedOtherRole = r;
@@ -384,16 +411,34 @@ class _ChatScreenState extends State<ChatScreen> {
       LawyerModel lawyerModel;
 
       if (targetLawyerUid.isNotEmpty) {
+        final clientPhoto = widget.clientPhotoUrl ??
+            userData['photoUrl']?.toString() ??
+            userData['user_profile_photo_url']?.toString() ??
+            userData['photo']?.toString();
+        final clientBase64 = widget.clientPhotoBase64 ??
+            userData['photoBase64']?.toString() ??
+            userData['user_profile_photo_base64']?.toString();
+
         clientModel = UserModel(
           uid: _currentUserId,
           name: _currentUserName,
           phone: userData['phone']?.toString() ?? '',
           role: _currentUserRole,
           accountId: _currentUserAccountId,
+          photoUrl: clientPhoto,
+          photoBase64: clientBase64,
         );
 
         final lDoc = await FirebaseFirestore.instance.collection('lawyers').doc(targetLawyerUid).get().timeout(const Duration(seconds: 4));
         final lData = lDoc.data() ?? {};
+        final lawyerPhoto = widget.lawyerPhotoUrl ??
+            lData['photoUrl']?.toString() ??
+            lData['user_profile_photo_url']?.toString() ??
+            lData['photo']?.toString();
+        final lawyerBase64 = widget.lawyerPhotoBase64 ??
+            lData['photoBase64']?.toString() ??
+            lData['user_profile_photo_base64']?.toString();
+
         lawyerModel = LawyerModel(
           uid: targetLawyerUid,
           name: widget.lawyerName ?? lData['name']?.toString() ?? 'محامٍ',
@@ -401,21 +446,29 @@ class _ChatScreenState extends State<ChatScreen> {
           whatsapp: lData['whatsapp']?.toString() ?? '',
           city: lData['city']?.toString() ?? 'السودان',
           accountId: widget.lawyerAccountId ?? lData['accountId']?.toString() ?? '',
-          photoUrl: widget.lawyerPhotoUrl ?? lData['photoUrl']?.toString(),
-          photoBase64: widget.lawyerPhotoBase64 ?? lData['photoBase64']?.toString(),
+          photoUrl: lawyerPhoto,
+          photoBase64: lawyerBase64,
           status: 'approved',
         );
       } else {
         final cDoc = await FirebaseFirestore.instance.collection('users').doc(targetClientUid).get().timeout(const Duration(seconds: 4));
         final cData = cDoc.data() ?? {};
+        final clientPhoto = widget.clientPhotoUrl ??
+            cData['photoUrl']?.toString() ??
+            cData['user_profile_photo_url']?.toString() ??
+            cData['photo']?.toString();
+        final clientBase64 = widget.clientPhotoBase64 ??
+            cData['photoBase64']?.toString() ??
+            cData['user_profile_photo_base64']?.toString();
+
         clientModel = UserModel(
           uid: targetClientUid,
           name: widget.clientName ?? cData['name']?.toString() ?? 'عميل',
           phone: widget.clientPhone ?? cData['phone']?.toString() ?? '',
           role: 'client',
           accountId: widget.clientAccountId ?? cData['accountId']?.toString() ?? '',
-          photoUrl: widget.clientPhotoUrl ?? cData['photoUrl']?.toString(),
-          photoBase64: widget.clientPhotoBase64 ?? cData['photoBase64']?.toString(),
+          photoUrl: clientPhoto,
+          photoBase64: clientBase64,
         );
 
         Map<String, dynamic> lData = {};

@@ -34,6 +34,7 @@ class _LawyerSettingsScreenState extends State<LawyerSettingsScreen> {
   String? _uid;
   String _name = 'الأستاذ المحامي';
   String _phone = '';
+  String _accountId = '';
   String? _photoUrl;
   String? _photoBase64;
   bool _uploadingPhoto = false;
@@ -57,6 +58,7 @@ class _LawyerSettingsScreenState extends State<LawyerSettingsScreen> {
         _uid = uid;
         _name = session['name'] ?? 'الأستاذ المحامي';
         _phone = session['phone'] ?? '';
+        _accountId = session['accountId'] ?? '';
         _photoUrl = localPhotoUrl;
         _photoBase64 = localPhoto;
       });
@@ -71,6 +73,7 @@ class _LawyerSettingsScreenState extends State<LawyerSettingsScreen> {
             _photoBase64 = lawyer.photoBase64;
             if (lawyer.name.isNotEmpty) _name = lawyer.name;
             if (lawyer.phone.isNotEmpty) _phone = lawyer.phone;
+            if (lawyer.accountId.isNotEmpty) _accountId = lawyer.accountId;
           });
           if (lawyer.photoUrl != null) {
             await prefs.setString('user_profile_photo_url', lawyer.photoUrl!);
@@ -274,10 +277,30 @@ class _LawyerSettingsScreenState extends State<LawyerSettingsScreen> {
           'photoBase64': base64Photo,
           'user_profile_photo_base64': base64Photo,
           'user_profile_photo_url': downloadUrl,
+          'photo': downloadUrl,
+          'imageUrl': downloadUrl,
+          'profileImage': downloadUrl,
         };
         await FirebaseFirestore.instance.collection('users').doc(_uid!).set(updateData, SetOptions(merge: true));
         await FirebaseFirestore.instance.collection('lawyers').doc(_uid!).set(updateData, SetOptions(merge: true));
         await prefs.setString('user_profile_photo_base64', base64Photo);
+
+        if (_phone.isNotEmpty) {
+          final cleanPhone = PhoneUtils.cleanDigits(_phone);
+          if (cleanPhone.isNotEmpty) {
+            final dirData = {
+              'photoUrl': downloadUrl,
+              'photoBase64': base64Photo,
+              'photo': downloadUrl,
+              'user_profile_photo_url': downloadUrl,
+            };
+            FirebaseFirestore.instance.collection('phone_directory').doc(cleanPhone).set(dirData, SetOptions(merge: true)).catchError((_) {});
+            final norm = PhoneUtils.normalizePhone(cleanPhone);
+            if (norm.isNotEmpty && norm != cleanPhone) {
+              FirebaseFirestore.instance.collection('phone_directory').doc(norm).set(dirData, SetOptions(merge: true)).catchError((_) {});
+            }
+          }
+        }
 
         unawaited(ChatService().syncUserProfileToAllChats(
           uid: _uid!,
@@ -285,6 +308,8 @@ class _LawyerSettingsScreenState extends State<LawyerSettingsScreen> {
           photoUrl: downloadUrl,
           photoBase64: base64Photo,
           name: _name,
+          phone: _phone,
+          accountId: _accountId,
         ));
       } catch (_) {}
 

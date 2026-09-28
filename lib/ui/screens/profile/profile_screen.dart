@@ -218,6 +218,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           'photoBase64': base64Str,
           'user_profile_photo_base64': base64Str,
           'user_profile_photo_url': downloadUrl,
+          'photo': downloadUrl,
+          'imageUrl': downloadUrl,
+          'profileImage': downloadUrl,
         };
 
         try {
@@ -235,6 +238,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
               SetOptions(merge: true),
             );
           }
+
+          // Also synchronize photo into phone_directory for immediate lookup by phone
+          if (_userPhone.isNotEmpty) {
+            final cleanPhone = PhoneUtils.cleanDigits(_userPhone);
+            if (cleanPhone.isNotEmpty) {
+              final dirData = {
+                'photoUrl': downloadUrl,
+                'photoBase64': base64Str,
+                'photo': downloadUrl,
+                'user_profile_photo_url': downloadUrl,
+              };
+              batch.set(FirebaseFirestore.instance.collection('phone_directory').doc(cleanPhone), dirData, SetOptions(merge: true));
+              final norm = PhoneUtils.normalizePhone(cleanPhone);
+              if (norm.isNotEmpty && norm != cleanPhone) {
+                batch.set(FirebaseFirestore.instance.collection('phone_directory').doc(norm), dirData, SetOptions(merge: true));
+              }
+              final local = PhoneUtils.toLocalFormat(cleanPhone);
+              if (local.isNotEmpty && local != cleanPhone) {
+                batch.set(FirebaseFirestore.instance.collection('phone_directory').doc(local), dirData, SetOptions(merge: true));
+              }
+            }
+          }
+
           await batch.commit();
 
           // Sync photo to all active chats where this user participates
@@ -244,6 +270,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             photoUrl: downloadUrl,
             photoBase64: base64Str,
             name: _userName,
+            phone: _userPhone,
+            accountId: _accountId,
           ));
         } catch (dbErr) {
           debugPrint('Firestore update notice: $dbErr');

@@ -110,6 +110,9 @@ class _FacebookAccountHeaderState extends State<FacebookAccountHeader> {
     final clean = widget.phone.trim();
     if (clean.isEmpty) return;
 
+    final phoneDigits = clean.replaceAll(RegExp(r'[^0-9]'), '');
+    final normalizedPhone = PhoneUtils.normalizeSudanPhone(clean, withPlus: true);
+
     if (FacebookAccountHeader._accountCache.containsKey(clean)) {
       if (mounted) {
         setState(() {
@@ -118,17 +121,53 @@ class _FacebookAccountHeaderState extends State<FacebookAccountHeader> {
       }
       return;
     }
+    if (phoneDigits.isNotEmpty && FacebookAccountHeader._accountCache.containsKey(phoneDigits)) {
+      if (mounted) {
+        setState(() {
+          _accountData = FacebookAccountHeader._accountCache[phoneDigits];
+        });
+      }
+      return;
+    }
 
     try {
-      final res = await AuthService().checkPhoneRegistration(clean);
+      Map<String, dynamic>? res = await AuthService().checkPhoneRegistration(clean);
+      if (res == null && phoneDigits.isNotEmpty && phoneDigits != clean) {
+        res = await AuthService().checkPhoneRegistration(phoneDigits);
+      }
+      if (res == null && normalizedPhone.isNotEmpty && normalizedPhone != clean) {
+        res = await AuthService().checkPhoneRegistration(normalizedPhone);
+      }
+
+      // Check phone_directory directly if AuthService didn't find it
+      if (res == null && phoneDigits.isNotEmpty) {
+        try {
+          final pdDoc = await FirebaseFirestore.instance.collection('phone_directory').doc(phoneDigits).get();
+          if (pdDoc.exists && pdDoc.data() != null) {
+            final pData = pdDoc.data()!;
+            final pUid = pData['uid']?.toString() ?? '';
+            final pRole = pData['role']?.toString() ?? 'client';
+            res = {
+              'uid': pUid,
+              'role': pRole,
+              'data': pData,
+            };
+          }
+        } catch (_) {}
+      }
+
       if (res != null) {
         final targetUid = res['uid']?.toString() ?? '';
         final role = res['role']?.toString() ?? '';
         final data = Map<String, dynamic>.from(res['data'] as Map<String, dynamic>? ?? {});
 
-        // Fetch full profile document if photoBase64 is missing
-        if (targetUid.isNotEmpty &&
-            (data['photoBase64'] == null || data['photoBase64'].toString().trim().isEmpty)) {
+        // Fetch full profile document if photo is missing
+        final hasPhoto = (data['photoBase64'] != null && data['photoBase64'].toString().trim().isNotEmpty) ||
+            (data['user_profile_photo_base64'] != null && data['user_profile_photo_base64'].toString().trim().isNotEmpty) ||
+            (data['photoUrl'] != null && data['photoUrl'].toString().trim().isNotEmpty && data['photoUrl'] != 'default') ||
+            (data['user_profile_photo_url'] != null && data['user_profile_photo_url'].toString().trim().isNotEmpty);
+
+        if (targetUid.isNotEmpty && !hasPhoto) {
           try {
             if (role == 'lawyer') {
               final lDoc = await FirebaseFirestore.instance.collection('lawyers').doc(targetUid).get();
@@ -146,6 +185,9 @@ class _FacebookAccountHeaderState extends State<FacebookAccountHeader> {
           'data': data,
         };
         FacebookAccountHeader._accountCache[clean] = fullRes;
+        if (phoneDigits.isNotEmpty) {
+          FacebookAccountHeader._accountCache[phoneDigits] = fullRes;
+        }
         if (targetUid.isNotEmpty) {
           FacebookAccountHeader._uidCache[targetUid] = fullRes;
         }
@@ -261,12 +303,23 @@ class _FacebookAccountHeaderState extends State<FacebookAccountHeader> {
                 ? 'محامي مسجل'
                 : (isClient ? 'عميل مسجل' : 'حساب: ${widget.phone}')));
 
-    final rawBase64 = data?['photoBase64']?.toString().trim();
+    final rawBase64 = (data?['photoBase64'] ??
+            data?['user_profile_photo_base64'] ??
+            data?['photo'] ??
+            data?['profileImage'] ??
+            data?['photo_base64'])
+        ?.toString()
+        .trim();
     final photoBase64 = (rawBase64 != null && rawBase64.isNotEmpty && rawBase64 != 'default')
         ? rawBase64
         : widget.fallbackPhotoBase64;
 
-    final rawUrl = data?['photoUrl']?.toString().trim();
+    final rawUrl = (data?['photoUrl'] ??
+            data?['user_profile_photo_url'] ??
+            data?['imageUrl'] ??
+            data?['photo_url'])
+        ?.toString()
+        .trim();
     final photoUrl = (rawUrl != null && rawUrl.isNotEmpty && rawUrl != 'default')
         ? rawUrl
         : widget.fallbackPhotoUrl;
