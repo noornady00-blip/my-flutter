@@ -261,6 +261,29 @@ class FcmDispatcherService {
       final isFromAdmin = senderRole == 'admin';
       final pushTitle = isFromAdmin ? 'مشرف: $senderName' : senderName;
 
+      // ====================================================================
+      // 🛑 STOP GUARD: Verify recipient has NOT stopped this chat.
+      // This is a second-layer check — even if chat_service already checked,
+      // we re-verify here to guarantee zero notifications reach a stopped user.
+      // ====================================================================
+      try {
+        final chatDoc = await _db.collection('chats').doc(chatId).get();
+        if (chatDoc.exists && chatDoc.data() != null) {
+          final rawStopped = chatDoc.data()!['stoppedBy'];
+          final isStoppedByRecipient = rawStopped is List &&
+              rawStopped.map((e) => e.toString()).contains(cleanRecipient);
+          if (isStoppedByRecipient) {
+            debugPrint('[FcmDispatcher] ⛔ Aborting push: recipient $cleanRecipient has stopped chat $chatId');
+            return;
+          }
+        }
+      } catch (stopCheckErr) {
+        // If Firestore check fails, abort the notification to be safe
+        debugPrint('[FcmDispatcher] ⚠️ stoppedBy check failed ($stopCheckErr) — aborting push for safety');
+        return;
+      }
+
+
       final stringPayload = <String, String>{
         'type': 'chat_message',
         'chatId': chatId,

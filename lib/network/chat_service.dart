@@ -33,8 +33,14 @@ class ChatService {
 
   /// Stream all conversations relevant to the current user (Client, Lawyer, or Admin)
   Stream<List<ChatModel>> getChatsForUser(String uid, String role) {
+    // Admin sees only their own direct conversations (where they are a participant).
+    // They do NOT have oversight access to all user chats — same experience as client/lawyer.
     if (role == 'admin') {
-      return _db.collection('chats').snapshots().map((snapshot) {
+      return _db
+          .collection('chats')
+          .where('participants', arrayContains: uid)
+          .snapshots()
+          .map((snapshot) {
         final list = snapshot.docs
             .map((doc) => ChatModel.fromMap(doc.data(), doc.id))
             .where((chat) => !chat.isDeletedBy(uid))
