@@ -39,7 +39,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     try {
       final user = FirebaseAuth.instance.currentUser;
       final session = await AuthService().getSavedSession();
-      final bool isLoggedIn = user != null;
+      final hasLocalUid = session['uid'] != null && session['uid']!.trim().isNotEmpty;
+      final bool isLoggedIn = user != null && hasLocalUid;
+
+      if (user != null && !hasLocalUid) {
+        // Stray Firebase Auth user without valid local session -> clean it up!
+        try {
+          await FirebaseAuth.instance.signOut();
+        } catch (_) {}
+      }
+
       final String role = session['role'] ?? 'client';
       final String? status = session['status'];
       final String? name = session['name'];

@@ -80,7 +80,7 @@ class AuthService implements AuthContract {
         };
       }
 
-      final candidates = PhoneUtils.generatePhoneCandidates(phone);
+      final candidates = PhoneUtils.generatePhoneCandidates(phone).take(3).toList();
       if (candidates.isEmpty) return null;
 
       for (final q in candidates) {
@@ -92,11 +92,23 @@ class AuthService implements AuthContract {
               .collection('phone_directory')
               .doc(q)
               .get()
-              .timeout(const Duration(seconds: 4));
+              .timeout(const Duration(seconds: 3));
           if (dirDoc.exists && dirDoc.data() != null) {
             final data = dirDoc.data()!;
             final role = data['role']?.toString() ?? 'client';
             final uid = data['uid']?.toString() ?? dirDoc.id;
+
+            // Verify the user document actually exists to prevent orphan ghosts
+            final col = role == 'lawyer' ? 'lawyers' : 'users';
+            try {
+              final userCheck = await _db.collection(col).doc(uid).get().timeout(const Duration(seconds: 2));
+              if (!userCheck.exists) {
+                // Orphan directory record from deleted account! Clean it up immediately!
+                unawaited(dirDoc.reference.delete().catchError((_) {}));
+                continue; // Do not treat deleted user as registered!
+              }
+            } catch (_) {}
+
             return {
               'uid': uid,
               'role': role,
@@ -112,7 +124,7 @@ class AuthService implements AuthContract {
               .where('phone', isEqualTo: q)
               .limit(1)
               .get()
-              .timeout(const Duration(seconds: 4));
+              .timeout(const Duration(seconds: 3));
           if (lawyerSnap.docs.isNotEmpty) {
             final doc = lawyerSnap.docs.first;
             final st = doc.data()['status']?.toString();
@@ -134,7 +146,7 @@ class AuthService implements AuthContract {
                 .where('phone', isEqualTo: q)
                 .limit(1)
                 .get()
-                .timeout(const Duration(seconds: 4));
+                .timeout(const Duration(seconds: 3));
             if (userSnap.docs.isNotEmpty) {
               final doc = userSnap.docs.first;
               final st = doc.data()['status']?.toString();
@@ -714,99 +726,41 @@ class AuthService implements AuthContract {
         };
       }
 
-      // Check phone registration in database (if not email)
-      Map<String, dynamic>? registered;
-      if (!input.contains('@')) {
+      // Ensure clean state before authenticating new user
+      if (_auth.currentUser != null) {
         try {
-          registered = await checkPhoneRegistration(input);
-        } on SocketException catch (_) {
-          return {
-            'success': false,
-            'error':
-                'الشبكة المتصل بها لا يتوفر بها إنترنت. يرجى التأكد من اتصالك بالإنترنت والمحاولة مجدداً.',
-            'isNetworkError': true,
-          };
-        } on TimeoutException catch (_) {
-          return {
-            'success': false,
-            'error':
-                'تعذر الاتصال بالخادم، يرجى التأكد من توفر إنترنت بالشبكة والمحاولة مجدداً.',
-            'isNetworkError': true,
-          };
-        } on FirebaseException catch (e) {
-          if (e.code == 'unavailable' || e.code == 'network-request-failed') {
-            return {
-              'success': false,
-              'error':
-                  'الشبكة المتصل بها لا يتوفر بها إنترنت. يرجى التأكد من اتصالك بالإنترنت والمحاولة مجدداً.',
-              'isNetworkError': true,
-            };
-          }
+          await _auth.signOut();
         } catch (_) {}
-
-        // IF THE PHONE NUMBER IS NOT REGISTERED ANYWHERE:
-        if (registered == null) {
-          return {
-            'success': false,
-            'error': 'رقم الموبايل غير مسجل في التطبيق، يرجى إنشاء حساب جديد أولاً.',
-          };
-        }
       }
 
-      final discoveredRole = registered?['role']?.toString();
-      if (discoveredRole == 'admin') {
-        if (role == 'client' || role == 'lawyer') {
-          return {
-            'success': false,
-            'error':
-                'هذا الحساب مخصص لإدارة التطبيق، يرجى اختيار تبويب (إدارة) لتسجيل الدخول.',
-          };
-        }
-        return await adminLogin(emailOrPhone: phoneOrEmail, password: password);
-      }
-
-      // Cross-role verification
-      if (role == 'client' && discoveredRole == 'lawyer') {
-        return {
-          'success': false,
-          'error':
-              'هذا الحساب مسجل كـ (محامي)، يرجى اختيار تبويب (محامي) لتسجيل الدخول.',
-        };
-      }
-      if (role == 'lawyer' && discoveredRole == 'client') {
-        return {
-          'success': false,
-          'error':
-              'هذا الحساب مسجل كـ (عميل)، يرجى اختيار تبويب (عميل) لتسجيل الدخول.',
-        };
-      }
-
+      // Target clean digits for credentials
       final targetDigits = normPhone.replaceAll(RegExp(r'[^0-9]'), '');
       final cleanDigits = targetDigits.isNotEmpty ? targetDigits : digits;
       final fbPassword =
           password.length < 6 ? password.padRight(6, '0') : password;
       final inputHash = hashPassword(password);
 
-      // Build prioritized email list based on discovered role or parameter
+      // Build prioritized email list based on role
       final List<String> emailCandidates = [];
       if (input.contains('@')) {
-        emailCandidates.add(input);
+        emailCandidates.add(input.toLowerCase());
       } else {
         final clientEmail = '$cleanDigits@mahameek.client.com';
         final lawyerEmail = '$cleanDigits@mahameek.lawyer.com';
         final legacyEmail = '$cleanDigits@mahameek.com';
 
-        final effectiveRole = role ?? discoveredRole;
-        if (effectiveRole == 'lawyer') {
+        if (role == 'lawyer') {
           emailCandidates.add(lawyerEmail);
           if (localDigits.isNotEmpty && localDigits != cleanDigits) {
             emailCandidates.add('$localDigits@mahameek.lawyer.com');
           }
-        } else if (effectiveRole == 'client') {
+          emailCandidates.add(legacyEmail);
+        } else if (role == 'client') {
           emailCandidates.add(clientEmail);
           if (localDigits.isNotEmpty && localDigits != cleanDigits) {
             emailCandidates.add('$localDigits@mahameek.client.com');
           }
+          emailCandidates.add(legacyEmail);
         } else {
           emailCandidates.add(clientEmail);
           emailCandidates.add(lawyerEmail);
@@ -814,60 +768,27 @@ class AuthService implements AuthContract {
             emailCandidates.add('$localDigits@mahameek.client.com');
             emailCandidates.add('$localDigits@mahameek.lawyer.com');
           }
-        }
-        emailCandidates.add(legacyEmail);
-        if (localDigits.isNotEmpty && localDigits != cleanDigits) {
-          emailCandidates.add('$localDigits@mahameek.com');
+          emailCandidates.add(legacyEmail);
         }
       }
-
-      // Fetch directory record for fast verification across all possible phone formats
-      DocumentSnapshot<Map<String, dynamic>>? dirSnap;
-      final phoneFormats = [
-        cleanDigits,
-        normPhone,
-        localDigits,
-        digits,
-        if (cleanDigits.startsWith('0')) cleanDigits.substring(1),
-        if (digits.startsWith('0')) digits.substring(1),
-      ];
-      for (final key in phoneFormats) {
-        if (key.isEmpty) continue;
-        try {
-          final s = await _db.collection('phone_directory').doc(key).get();
-          if (s.exists && s.data() != null) {
-            dirSnap = s;
-            break;
-          }
-        } catch (_) {}
-      }
-
-      final Map<String, dynamic>? dirData = dirSnap?.data() ??
-          (registered?['data'] is Map<String, dynamic> ? (registered!['data'] as Map<String, dynamic>) : null);
-      final storedAdminReset = dirData?['adminResetPassword']?.toString();
-      final storedDirHash = dirData?['passwordHash']?.toString();
-      final storedDirPrevHash = dirData?['previousPasswordHash']?.toString();
 
       final authKey = cleanDigits.isNotEmpty ? internalAuthKey(cleanDigits) : '';
-      final localAuthKey = localDigits.isNotEmpty ? internalAuthKey(localDigits) : '';
+      final localAuthKey = (localDigits.isNotEmpty && localDigits != cleanDigits)
+          ? internalAuthKey(localDigits)
+          : '';
 
-      final pwCandidates = {
+      final pwCandidates = <String>[
         if (authKey.isNotEmpty) authKey,
         if (localAuthKey.isNotEmpty) localAuthKey,
         password,
         fbPassword,
-        if (storedAdminReset != null && storedAdminReset.isNotEmpty) storedAdminReset,
-        if (storedAdminReset != null && storedAdminReset.length < 6) storedAdminReset.padRight(6, '0'),
         '123456',
-        '12345678',
-        '000000',
-        if (cleanDigits.isNotEmpty) cleanDigits,
-      }.toList();
+      ];
 
       UserCredential? cred;
       FirebaseAuthException? lastAuthException;
 
-      // 1. First attempt: Authenticate directly against Firebase Auth using candidate passwords
+      // 1. Fast direct authentication against Firebase Auth
       for (final email in emailCandidates) {
         for (final pw in pwCandidates) {
           try {
@@ -886,6 +807,10 @@ class AuthService implements AuthContract {
                 'isNetworkError': true,
               };
             }
+            // If email is not found, immediately break inner loop to try next email
+            if (e.code == 'user-not-found') {
+              break;
+            }
           } catch (_) {}
         }
         if (cred?.user != null) break;
@@ -893,6 +818,8 @@ class AuthService implements AuthContract {
 
       // If authentication failed across all candidates
       if (cred == null || cred.user == null) {
+        // Fast verify if phone is registered in directory or lawyers collection
+        final registered = await checkPhoneRegistration(input);
         if (registered != null) {
           return {
             'success': false,
@@ -908,13 +835,6 @@ class AuthService implements AuthContract {
                   'كلمة المرور غير صحيحة، يرجى التأكد من كلمة المرور والمحاولة مجدداً.',
             };
           }
-          if (code == 'user-not-found') {
-            return {
-              'success': false,
-              'error':
-                  'رقم الموبايل غير مسجل في التطبيق، يرجى إنشاء حساب جديد أولاً.',
-            };
-          }
         }
         return {
           'success': false,
@@ -925,29 +845,60 @@ class AuthService implements AuthContract {
 
       // User is authenticated in Firebase Auth!
       final uid = cred.user!.uid;
-      final userDoc = await _db.collection('users').doc(uid).get();
 
-      final docHash = userDoc.data()?['passwordHash']?.toString();
-      final docAdminReset = userDoc.data()?['adminResetPassword']?.toString();
-      final prevHash = userDoc.data()?['previousPasswordHash']?.toString() ?? storedDirPrevHash;
-      final effectiveAdminReset = docAdminReset ?? storedAdminReset;
-      final effectiveHash = docHash ?? storedDirHash;
+      // 1. Fetch user profile from users collection (or lawyers collection)
+      DocumentSnapshot<Map<String, dynamic>>? userDoc;
+      try {
+        final doc = await _db.collection('users').doc(uid).get();
+        if (doc.exists) userDoc = doc;
+      } catch (_) {}
+
+      DocumentSnapshot<Map<String, dynamic>>? lawyerDoc;
+      try {
+        final doc = await _db.collection('lawyers').doc(uid).get();
+        if (doc.exists) lawyerDoc = doc;
+      } catch (_) {}
+
+      final effectiveDocData = userDoc?.data() ?? lawyerDoc?.data();
+      final docHash = effectiveDocData?['passwordHash']?.toString();
+      final docAdminReset = effectiveDocData?['adminResetPassword']?.toString();
+      final prevHash = effectiveDocData?['previousPasswordHash']?.toString();
 
       // Verify entered password against Firestore records:
       // Accepts:
       // 1) The admin reset password (e.g. 123456)
       // 2) The current active password hash
       // 3) The previous password hash (so original password works even during reset period)
-      final bool isMatch = (effectiveAdminReset != null && effectiveAdminReset == password) ||
-          (effectiveHash != null && effectiveHash == inputHash) ||
+      // 4) If no hash stored yet, allows login and stores it
+      final bool isMatch = (docAdminReset != null && docAdminReset == password) ||
+          (docHash != null && docHash == inputHash) ||
           (prevHash != null && prevHash == inputHash) ||
-          (effectiveHash == null && effectiveAdminReset == null);
+          (docHash == null && docAdminReset == null);
 
       if (!isMatch) {
         await _auth.signOut();
         return {
           'success': false,
           'error': 'كلمة المرور غير صحيحة، يرجى التأكد من كلمة المرور والمحاولة مجدداً.',
+        };
+      }
+
+      final userRole = effectiveDocData?['role']?.toString() ??
+          (lawyerDoc != null ? 'lawyer' : (role ?? 'client'));
+
+      // Cross-role verification
+      if (role == 'client' && userRole == 'lawyer') {
+        await _auth.signOut();
+        return {
+          'success': false,
+          'error': 'هذا الحساب مسجل كـ (محامي)، يرجى اختيار تبويب (محامي) لتسجيل الدخول.',
+        };
+      }
+      if (role == 'lawyer' && userRole == 'client') {
+        await _auth.signOut();
+        return {
+          'success': false,
+          'error': 'هذا الحساب مسجل كـ (عميل)، يرجى اختيار تبويب (عميل) لتسجيل الدخول.',
         };
       }
 
@@ -966,12 +917,11 @@ class AuthService implements AuthContract {
         'previousPasswordHash': FieldValue.delete(),
         'passwordUpdatedAt': FieldValue.serverTimestamp(),
       };
-      syncBatch.set(_db.collection('users').doc(uid), syncData, SetOptions(merge: true));
-
-      final lawyerDocRef = _db.collection('lawyers').doc(uid);
-      final lawyerSnap = await lawyerDocRef.get();
-      if (lawyerSnap.exists) {
-        syncBatch.set(lawyerDocRef, syncData, SetOptions(merge: true));
+      if (userDoc != null && userDoc.exists) {
+        syncBatch.set(_db.collection('users').doc(uid), syncData, SetOptions(merge: true));
+      }
+      if (lawyerDoc != null && lawyerDoc.exists) {
+        syncBatch.set(_db.collection('lawyers').doc(uid), syncData, SetOptions(merge: true));
       }
 
       if (cleanDigits.isNotEmpty) {
@@ -985,15 +935,12 @@ class AuthService implements AuthContract {
       }
       unawaited(syncBatch.commit().catchError((_) {}));
 
-      final userRole = userDoc.data()?['role']?.toString() ??
-          (discoveredRole ?? 'client');
-      final name = userDoc.data()?['name']?.toString() ?? '';
-      final photoUrl = userDoc.data()?['photoUrl']?.toString();
+      final name = effectiveDocData?['name']?.toString() ?? '';
+      final photoUrl = effectiveDocData?['photoUrl']?.toString();
 
       String? lawyerStatus;
       if (userRole == 'lawyer') {
-        final lawyerDoc = await _db.collection('lawyers').doc(uid).get();
-        lawyerStatus = lawyerDoc.data()?['status']?.toString() ?? 'pending';
+        lawyerStatus = lawyerDoc?.data()?['status']?.toString() ?? 'pending';
 
         if (lawyerStatus == 'rejected') {
           await _auth.signOut();
@@ -1014,7 +961,7 @@ class AuthService implements AuthContract {
         }
       } else if (userRole == 'client') {
         final clientStatus =
-            userDoc.data()?['status']?.toString() ?? 'active';
+            userDoc?.data()?['status']?.toString() ?? 'active';
         if (clientStatus == 'suspended') {
           await _auth.signOut();
           return {
@@ -1042,8 +989,8 @@ class AuthService implements AuthContract {
       } catch (_) {}
 
       // Ensure user has a 12-digit fixed account ID
-      final rawAccountId = userDoc.data()?['accountId']?.toString() ??
-          userDoc.data()?['memberId']?.toString();
+      final rawAccountId = effectiveDocData?['accountId']?.toString() ??
+          effectiveDocData?['memberId']?.toString();
       final effectiveAccountId = await AccountIdUtils.ensureUserHasAccountId(
         uid: uid,
         role: userRole,
@@ -2072,29 +2019,32 @@ class AuthService implements AuthContract {
 
   @override
   Future<void> signOut() async {
-    if (!kIsWeb) {
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        final currentUid = prefs.getString('uid');
-        await NotificationService().clearAllSystemNotifications();
-        await NotificationService().unregisterUserDevice(uid: currentUid);
-        await NotificationService().unregisterAdminDevice();
-      } catch (e) {
-        debugPrint('Notification cleanup error on signOut: $e');
-      }
+    // 1. Instantly clear SharedPreferences so local session is wiped first
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear();
+    } catch (e) {
+      debugPrint('Session clear notice: $e');
     }
 
+    // 2. Clear in-memory caches
+    FirestoreService.inMemoryApprovedLawyers = null;
+
+    // 3. Complete Firebase Auth sign out
     try {
       await _auth.signOut().timeout(const Duration(seconds: 4));
     } catch (e) {
       debugPrint('Auth signOut notice: $e');
     }
 
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.clear();
-    } catch (e) {
-      debugPrint('Session clear notice: $e');
+    // 4. Background cleanup for notifications
+    if (!kIsWeb) {
+      try {
+        await NotificationService().clearAllSystemNotifications();
+        await NotificationService().unregisterAdminDevice();
+      } catch (e) {
+        debugPrint('Notification cleanup error on signOut: $e');
+      }
     }
   }
 
@@ -2329,32 +2279,11 @@ class AuthService implements AuthContract {
       }
 
       // ── 5. Delete all Firestore records (while authenticated as owner) ────
-      final batch = db.batch();
-      batch.delete(db.collection('users').doc(uid));
-      batch.delete(db.collection('lawyers').doc(uid));
-      batch.delete(db.collection('lawyer_requests').doc(uid));
-      batch.delete(db.collection('admins').doc(uid));
-      batch.delete(db.collection('admin_fcm_tokens').doc(uid));
-
-      for (final q in phoneCandidates) {
-        if (q.trim().isEmpty) continue;
-        batch.delete(db.collection('phone_directory').doc(q.trim()));
-      }
-
-      try {
-        await batch.commit();
-      } catch (batchErr) {
-        debugPrint('[deleteAccount] batch delete failed: $batchErr, using direct deletes');
-        await db.collection('users').doc(uid).delete().catchError((_) {});
-        await db.collection('lawyers').doc(uid).delete().catchError((_) {});
-        await db.collection('lawyer_requests').doc(uid).delete().catchError((_) {});
-        await db.collection('admins').doc(uid).delete().catchError((_) {});
-        await db.collection('admin_fcm_tokens').doc(uid).delete().catchError((_) {});
-        for (final q in phoneCandidates) {
-          if (q.trim().isEmpty) continue;
-          await db.collection('phone_directory').doc(q.trim()).delete().catchError((_) {});
-        }
-      }
+      await db.collection('users').doc(uid).delete().catchError((_) {});
+      await db.collection('lawyers').doc(uid).delete().catchError((_) {});
+      await db.collection('lawyer_requests').doc(uid).delete().catchError((_) {});
+      await db.collection('admins').doc(uid).delete().catchError((_) {});
+      await db.collection('admin_fcm_tokens').doc(uid).delete().catchError((_) {});
 
       // Extra purge for phone_directory by uid
       try {
@@ -2367,9 +2296,16 @@ class AuthService implements AuthContract {
         }
       } catch (_) {}
 
-      // Clean up stray records by phone
+      // Clean up stray records by phone candidate keys
       for (final q in phoneCandidates) {
         if (q.trim().isEmpty) continue;
+        try {
+          final docRef = db.collection('phone_directory').doc(q.trim());
+          final snap = await docRef.get();
+          if (snap.exists) {
+            await docRef.delete().catchError((_) {});
+          }
+        } catch (_) {}
         try {
           final lawSnap = await db
               .collection('lawyers')
@@ -2390,10 +2326,9 @@ class AuthService implements AuthContract {
         } catch (_) {}
       }
 
-      // ── 6. Delete Firebase Auth account (3 strategies) ───────────────────
+      // ── 6. Delete Firebase Auth account (guaranteed purge) ───────────────
       bool authDeleted = false;
 
-      // Strategy 1: Primary app re-auth & user.delete()
       final reAuthCandidates = <String>{};
       for (final src in [cleanDigits, localDigits]) {
         if (src.isNotEmpty) reAuthCandidates.add(internalAuthKey(src));
@@ -2418,6 +2353,17 @@ class AuthService implements AuthContract {
       if (storedAdminReset != null && storedAdminReset.isNotEmpty) {
         reAuthCandidates.add(storedAdminReset.trim());
         reAuthCandidates.add(PhoneUtils.normalizeDigits(storedAdminReset.trim()));
+      }
+
+      // Pre-reauthenticate before deleting to eliminate requires-recent-login errors
+      if (email.isNotEmpty) {
+        for (final pwd in reAuthCandidates) {
+          try {
+            final cred = EmailAuthProvider.credential(email: email, password: pwd);
+            await user.reauthenticateWithCredential(cred);
+            break;
+          } catch (_) {}
+        }
       }
 
       try {

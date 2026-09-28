@@ -1,42 +1,66 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import '../../network/auth_service.dart';
-import '../../ui/screens/onboarding/onboarding_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../network/firestore_service.dart';
+import '../../network/notification_service.dart';
+import '../../ui/screens/auth/auth_gateway_screen.dart';
 
 /// Navigation utilities with 60/120fps smooth animations and zero UI lag
 class NavigationUtils {
-  /// Navigates to OnboardingScreen with a smooth slide-and-fade transition,
-  /// executing backend sign-out in the background without freezing the UI.
-  static void smoothSignOut(BuildContext context) {
-    // 1. Immediately push the route with custom smooth slide animation
-    Navigator.pushAndRemoveUntil(
-      context,
-      PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) => const OnboardingScreen(),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          final curve = CurvedAnimation(
-            parent: animation,
-            curve: Curves.easeInOutCubic,
-          );
-          return SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(-1.0, 0.0), // Smooth slide from left (RTL natural exit)
-              end: Offset.zero,
-            ).animate(curve),
-            child: FadeTransition(
-              opacity: curve,
-              child: child,
-            ),
-          );
-        },
-        transitionDuration: const Duration(milliseconds: 380),
-        reverseTransitionDuration: const Duration(milliseconds: 300),
-      ),
-      (_) => false,
-    );
+  /// Signs out cleanly: purges local SharedPreferences, resets Firebase Auth,
+  /// clears cache, and smoothly transitions to AuthGatewayScreen.
+  static Future<void> smoothSignOut(BuildContext context) async {
+    // 1. Immediately wipe SharedPreferences so old session cannot be read
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear();
+    } catch (e) {
+      debugPrint('[smoothSignOut] SharedPreferences clear notice: $e');
+    }
 
-    // 2. Perform backend sign-out asynchronously
-    unawaited(AuthService().signOut());
+    // 2. Clear memory cache
+    FirestoreService.inMemoryApprovedLawyers = null;
+
+    // 3. Complete Firebase Auth sign out
+    try {
+      await FirebaseAuth.instance.signOut();
+    } catch (e) {
+      debugPrint('[smoothSignOut] FirebaseAuth signOut notice: $e');
+    }
+
+    // 4. Background cleanup for push notifications
+    unawaited(NotificationService().clearAllSystemNotifications().catchError((_) {}));
+    unawaited(NotificationService().unregisterAdminDevice().catchError((_) {}));
+
+    // 5. Navigate cleanly to AuthGatewayScreen
+    if (context.mounted) {
+      Navigator.pushAndRemoveUntil(
+        context,
+        PageRouteBuilder(
+          pageBuilder: (context, animation, secondaryAnimation) => const AuthGatewayScreen(),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            final curve = CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeInOutCubic,
+            );
+            return SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(-1.0, 0.0), // Smooth slide from left (RTL natural exit)
+                end: Offset.zero,
+              ).animate(curve),
+              child: FadeTransition(
+                opacity: curve,
+                child: child,
+              ),
+            );
+          },
+          transitionDuration: const Duration(milliseconds: 320),
+          reverseTransitionDuration: const Duration(milliseconds: 260),
+        ),
+        (_) => false,
+      );
+    }
   }
 
   /// General smooth slide transition for opening child screens

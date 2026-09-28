@@ -145,8 +145,8 @@ service cloud.firestore {
     match /phone_directory/{phoneKey} {
       allow read: if true;
       allow create, update: if isAuthenticated() || isAdmin();
-      // Owner can delete their own phone_directory entry (verified by uid field), admins can delete any
-      allow delete: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
+      // Owner can delete their own phone_directory entry, admins can delete any
+      allow delete: if isAdmin() || (isAuthenticated() && (resource == null || !('uid' in resource.data) || resource.data.uid == request.auth.uid));
     }
 
     // ==================== ADMIN NOTIFICATIONS COLLECTION ====================

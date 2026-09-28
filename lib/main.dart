@@ -120,17 +120,22 @@ void main() async {
       }
     }
 
-    // Radical Session Persistence: If savedUid or currentUser exists, user is logged in
+    // Robust Session Persistence: User is only logged in if BOTH local session and Firebase Auth exist
     final bool hasLocalSession = savedUid != null && savedUid.trim().isNotEmpty;
     final bool hasFirebaseUser = currentUser != null;
-    final bool isLoggedIn = hasLocalSession || hasFirebaseUser;
+    final bool isLoggedIn = hasLocalSession && hasFirebaseUser;
+
+    if (hasFirebaseUser && !hasLocalSession) {
+      // User signed out locally -> clean up orphaned Firebase Auth session
+      try {
+        await FirebaseAuth.instance.signOut();
+      } catch (_) {}
+    }
 
     if (isLoggedIn) {
       final String role = effectiveRole ?? 'client';
-      final currentUid = savedUid ?? currentUser?.uid;
-      if (currentUid != null && currentUid.isNotEmpty) {
-        unawaited(NotificationService().registerUserDevice(uid: currentUid, role: role));
-      }
+      final currentUid = savedUid;
+      unawaited(NotificationService().registerUserDevice(uid: currentUid, role: role));
       if (role == 'admin') {
         initialScreen = const AdminDashboard();
         try {
