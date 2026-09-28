@@ -997,6 +997,13 @@ class _SwipeableChatTileState extends State<_SwipeableChatTile>
                         _snapTo(0.0);
                         return;
                       }
+                      if (unread > 0) {
+                        ChatService().markChatAsRead(
+                          chatId: chat.id,
+                          currentUserId: widget.currentUserId,
+                          currentUserRole: widget.currentUserRole,
+                        );
+                      }
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => ChatScreen(
@@ -1007,7 +1014,9 @@ class _SwipeableChatTileState extends State<_SwipeableChatTile>
                             currentUserAccountId: widget.currentUserAccountId,
                           ),
                         ),
-                      );
+                      ).then((_) {
+                        if (mounted) setState(() {});
+                      });
                     },
                     borderRadius: BorderRadius.circular(16),
                     child: Container(

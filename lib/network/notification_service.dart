@@ -1097,6 +1097,12 @@ class NotificationService {
         // Strictly ignore messages sent by the current user
         if (lastSenderId == uid || lastSenderId.isEmpty) continue;
 
+        // Strictly suppress notification if chat is stopped or muted by the current user
+        final rawStopped = data['stoppedBy'];
+        if (rawStopped is List && rawStopped.map((e) => e.toString()).contains(uid)) continue;
+        final rawMuted = data['mutedBy'];
+        if (rawMuted is List && rawMuted.map((e) => e.toString()).contains(uid)) continue;
+
         // Skip if already processed
         final sig = '${chatId}_${timeMs}_$lastMessage';
         if (_seenChatSignatures.contains(sig)) continue;

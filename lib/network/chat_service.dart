@@ -518,7 +518,11 @@ class ChatService {
     required bool markUnread,
   }) async {
     try {
-      final field = role == 'lawyer' ? 'unreadByLawyer' : 'unreadByClient';
+      final chatDoc = await _db.collection('chats').doc(chatId).get();
+      final data = chatDoc.data() ?? {};
+      final clientId = data['clientId']?.toString() ?? '';
+      final isClient = currentUserId == clientId || role == 'client';
+      final field = isClient ? 'unreadByClient' : 'unreadByLawyer';
       await _db.collection('chats').doc(chatId).update({
         field: markUnread ? 1 : 0,
       });
@@ -593,19 +597,40 @@ class ChatService {
     required String currentUserId,
     required String currentUserRole,
   }) async {
+    if (chatId.isEmpty || currentUserId.isEmpty) return;
     try {
       final chatRef = _db.collection('chats').doc(chatId);
-      final Map<String, dynamic> update = {};
+      final chatDoc = await chatRef.get();
+      final data = chatDoc.data() ?? {};
+      final clientId = data['clientId']?.toString() ?? '';
+      final lawyerId = data['lawyerId']?.toString() ?? '';
 
-      if (currentUserRole == 'lawyer') {
+      final Map<String, dynamic> update = {};
+      if (currentUserId == clientId) {
+        update['unreadByClient'] = 0;
+      }
+      if (currentUserId == lawyerId) {
+        update['unreadByLawyer'] = 0;
+      }
+
+      final isLawyer = currentUserRole == 'lawyer' || currentUserRole == 'approved_lawyer';
+      if (isLawyer) {
         update['unreadByLawyer'] = 0;
       } else if (currentUserRole == 'client') {
         update['unreadByClient'] = 0;
+      } else if (currentUserRole == 'admin') {
+        // Admin chat: clear both counters or whichever is non-zero
+        update['unreadByClient'] = 0;
+        update['unreadByLawyer'] = 0;
       }
 
-      if (update.isNotEmpty) {
-        await chatRef.update(update).catchError((_) {});
+      // If user matched neither clientId nor lawyerId explicitly, clear both for safety
+      if (update.isEmpty) {
+        update['unreadByClient'] = 0;
+        update['unreadByLawyer'] = 0;
       }
+
+      await chatRef.update(update).catchError((_) {});
 
       // Also mark unread messages sent by the other party as read
       try {
@@ -614,15 +639,15 @@ class ChatService {
             .doc(chatId)
             .collection('messages')
             .where('isRead', isEqualTo: false)
-            .limit(100)
+            .limit(50)
             .get();
 
         if (unreadMsgsSnap.docs.isNotEmpty) {
           final batch = _db.batch();
           bool hasChanges = false;
           for (final doc in unreadMsgsSnap.docs) {
-            final data = doc.data();
-            if (data['senderId'] != currentUserId) {
+            final mData = doc.data();
+            if (mData['senderId'] != currentUserId) {
               batch.update(doc.reference, {'isRead': true});
               hasChanges = true;
             }

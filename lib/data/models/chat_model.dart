@@ -214,7 +214,10 @@ class ChatModel {
   }
 
   int getUnreadCount(String currentUserId) {
-    return currentUserId == clientId ? unreadByClient : unreadByLawyer;
+    if (currentUserId.isEmpty) return 0;
+    if (currentUserId == clientId) return unreadByClient;
+    if (currentUserId == lawyerId) return unreadByLawyer;
+    return unreadByClient > 0 ? unreadByClient : unreadByLawyer;
   }
 
   /// Helper to get the other party's UID

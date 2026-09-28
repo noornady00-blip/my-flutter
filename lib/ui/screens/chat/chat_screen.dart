@@ -101,6 +101,8 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isPinned = false;
   bool _isStoppedByMe = false;
   StreamSubscription<DocumentSnapshot>? _chatDocSubscription;
+  Stream<List<ChatMessageModel>>? _messagesStream;
+  bool _isMarkingRead = false;
 
   // Live profile details of the other party (especially for client photos & updated roles)
   String? _liveOtherPhotoUrl;
@@ -121,8 +123,14 @@ class _ChatScreenState extends State<ChatScreen> {
       _activeChat = widget.chat;
       NotificationService.activeChatId = widget.chat!.id;
       _setupChatDocListener(widget.chat!.id);
+      _updateMessagesStream();
     }
     _initChat();
+  }
+
+  void _updateMessagesStream() {
+    if (_activeChat == null || _activeChat!.id.isEmpty) return;
+    _messagesStream = _chatService.getMessagesStream(_activeChat!.id, currentUserId: _currentUserId);
   }
 
   void _setupChatDocListener(String chatId) {
@@ -300,6 +308,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _activeChat = widget.chat;
       NotificationService.activeChatId = widget.chat!.id;
       _setupChatDocListener(widget.chat!.id);
+      _updateMessagesStream();
       if (mounted) setState(() {});
       _markRead();
       _fetchOtherPartyInfoIfNeeded();
@@ -352,6 +361,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
     NotificationService.activeChatId = _activeChat!.id;
     _setupChatDocListener(_activeChat!.id);
+    _updateMessagesStream();
     if (mounted) setState(() {});
     _markRead();
     _fetchOtherPartyInfoIfNeeded();
@@ -519,6 +529,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _toggleStopUser() async {
     if (_activeChat == null || _currentUserId.isEmpty) return;
+    // Dismiss keyboard immediately to prevent IME deadlock during widget tree swapping
+    FocusScope.of(context).unfocus();
     final nextState = !_isStoppedByMe;
     setState(() => _isStoppedByMe = nextState);
     try {
@@ -546,15 +558,21 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  void _markRead() {
+  Future<void> _markRead() async {
     // Don't mark messages as read if we've stopped this user — their messages
     // are already hidden (deletedFor) and should not show as seen.
-    if (_activeChat == null || _isStoppedByMe) return;
-    _chatService.markChatAsRead(
-      chatId: _activeChat!.id,
-      currentUserId: _currentUserId,
-      currentUserRole: _currentUserRole,
-    );
+    if (_activeChat == null || _isStoppedByMe || _currentUserId.isEmpty || _isMarkingRead) return;
+    _isMarkingRead = true;
+    try {
+      await _chatService.markChatAsRead(
+        chatId: _activeChat!.id,
+        currentUserId: _currentUserId,
+        currentUserRole: _currentUserRole,
+      );
+    } catch (_) {
+    } finally {
+      _isMarkingRead = false;
+    }
   }
 
   void _onReplyToMessage(ChatMessageModel message) {
@@ -888,185 +906,231 @@ class _ChatScreenState extends State<ChatScreen> {
           borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
         ),
         automaticallyImplyLeading: false,
-        titleSpacing: 8,
-        title: Row(
-          children: [
-            // Back Button
-            IconButton(
-              icon: const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 20),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-
-            // Avatar & Name with interactive profile opening (Privacy protected for supervisors)
-            Expanded(
-              child: InkWell(
-                onTap: _openOtherProfile,
-                borderRadius: BorderRadius.circular(12),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
-                  child: Row(
-                    children: [
-                      // Avatar with Live Client/Lawyer Photo Support
-                      Container(
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(color: brandGold.withValues(alpha: 0.7), width: 1.5),
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: Container(
-                            width: 40,
-                            height: 40,
-                            color: brandGold.withValues(alpha: 0.2),
-                            child: AppImageUtils.buildAvatarImage(
-                              photoBase64: _liveOtherPhotoBase64 ?? widget.clientPhotoBase64 ?? widget.lawyerPhotoBase64,
-                              photoUrl: _liveOtherPhotoUrl ?? otherPhoto ?? widget.clientPhotoUrl ?? widget.lawyerPhotoUrl,
-                              width: 40,
-                              height: 40,
-                              fallback: Center(
-                                child: Text(
-                                  displayOtherName.isNotEmpty ? displayOtherName.substring(0, 1) : 'م',
-                                  style: GoogleFonts.cairo(
-                                    color: Colors.white,
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 20),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        titleSpacing: 0,
+        title: InkWell(
+          onTap: _openOtherProfile,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+            child: Row(
+              children: [
+                // Avatar with Live Client/Lawyer Photo Support
+                Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: brandGold.withValues(alpha: 0.7), width: 1.5),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      width: 38,
+                      height: 38,
+                      color: brandGold.withValues(alpha: 0.2),
+                      child: AppImageUtils.buildAvatarImage(
+                        photoBase64: _liveOtherPhotoBase64 ?? widget.clientPhotoBase64 ?? widget.lawyerPhotoBase64,
+                        photoUrl: _liveOtherPhotoUrl ?? otherPhoto ?? widget.clientPhotoUrl ?? widget.lawyerPhotoUrl,
+                        width: 38,
+                        height: 38,
+                        fallback: Center(
+                          child: Text(
+                            displayOtherName.isNotEmpty ? displayOtherName.substring(0, 1) : 'م',
+                            style: GoogleFonts.cairo(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
                         ),
                       ),
-                      const SizedBox(width: 10),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
 
-                      // Name and Subtitle
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Row(
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    displayOtherName,
-                                    style: GoogleFonts.cairo(
-                                      fontSize: 14.5,
-                                      fontWeight: FontWeight.w800,
-                                      color: Colors.white,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                _buildRoleBadge(otherRole),
-                              ],
+                // Name and Subtitle
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              displayOtherName,
+                              style: GoogleFonts.cairo(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            const SizedBox(height: 2),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  'اضغط لعرض الملف الشخصي',
-                                  style: GoogleFonts.cairo(
-                                    fontSize: 10.5,
-                                    color: Colors.white.withValues(alpha: 0.8),
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                const SizedBox(width: 3),
-                                Icon(
-                                  Icons.arrow_forward_ios_rounded,
-                                  size: 9,
-                                  color: Colors.white.withValues(alpha: 0.8),
-                                ),
-                              ],
-                            ),
-                          ],
+                          ),
+                          const SizedBox(width: 5),
+                          _buildRoleBadge(otherRole),
+                        ],
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        'اضغط لعرض الملف الشخصي',
+                        style: GoogleFonts.cairo(
+                          fontSize: 9.5,
+                          color: Colors.white.withValues(alpha: 0.8),
+                          fontWeight: FontWeight.w600,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
                 ),
-              ),
+              ],
             ),
-
-            // Pin / Unpin Action (Gold filled when pinned, white outline when unpinned)
-            IconButton(
-              icon: Icon(
-                _isPinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
-                color: _isPinned ? brandGold : Colors.white,
-                size: 21,
-              ),
-              tooltip: _isPinned ? 'إلغاء تثبيت المحادثة' : 'تثبيت المحادثة في الأعلى',
-              onPressed: _togglePinChat,
-            ),
-
-            // Stop / Pause User Action (Red/Amber filled when stopped, white outline when active)
-            IconButton(
-              icon: Icon(
-                _isStoppedByMe ? Icons.pause_circle_filled_rounded : Icons.pause_circle_outline_rounded,
-                color: _isStoppedByMe ? const Color(0xFFF87171) : Colors.white,
-                size: 22,
-              ),
-              tooltip: _isStoppedByMe ? 'تنشيط الحساب وإلغاء الإيقاف' : 'إيقاف هذا المستخدم ومنع وصول رسائله',
-              onPressed: _toggleStopUser,
-            ),
-
-            // Call Action if available AND NOT an Admin/Supervisor AND not stopped
-            if (otherPhone.isNotEmpty && otherRole != 'admin' && !_isStoppedByMe)
-              IconButton(
-                icon: const Icon(Icons.phone_rounded, color: Colors.white, size: 21),
-                tooltip: 'اتصال هاتفياً',
-                onPressed: () => _callOtherParty(otherPhone),
-              ),
-          ],
+          ),
         ),
+        actions: [
+          // Pin / Unpin Action (Gold filled when pinned, white outline when unpinned)
+          IconButton(
+            icon: Icon(
+              _isPinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+              color: _isPinned ? brandGold : Colors.white,
+              size: 20,
+            ),
+            tooltip: _isPinned ? 'إلغاء تثبيت المحادثة' : 'تثبيت المحادثة في الأعلى',
+            onPressed: _togglePinChat,
+          ),
+
+          // Stop / Pause User Action (Red filled when stopped, white outline when active)
+          IconButton(
+            icon: Icon(
+              _isStoppedByMe ? Icons.pause_circle_filled_rounded : Icons.pause_circle_outline_rounded,
+              color: _isStoppedByMe ? const Color(0xFFF87171) : Colors.white,
+              size: 21,
+            ),
+            tooltip: _isStoppedByMe ? 'تنشيط الحساب وإلغاء الإيقاف' : 'إيقاف هذا المستخدم ومنع وصول رسائله',
+            onPressed: _toggleStopUser,
+          ),
+
+          // Call Action if available AND NOT an Admin/Supervisor AND not stopped
+          if (otherPhone.isNotEmpty && otherRole != 'admin' && !_isStoppedByMe)
+            IconButton(
+              icon: const Icon(Icons.phone_rounded, color: Colors.white, size: 20),
+              tooltip: 'اتصال هاتفياً',
+              onPressed: () => _callOtherParty(otherPhone),
+            ),
+          const SizedBox(width: 4),
+        ],
       ),
       body: SafeArea(
         child: Column(
           children: [
-            // Messages Stream Area
-            Expanded(
-              child: StreamBuilder<List<ChatMessageModel>>(
-                initialData: const <ChatMessageModel>[],
-                stream: _chatService.getMessagesStream(_activeChat!.id, currentUserId: _currentUserId),
-                builder: (context, snapshot) {
-                  final messages = snapshot.data ?? [];
-                  if (messages.any((m) => m.senderId != _currentUserId && !m.isRead)) {
-                    WidgetsBinding.instance.addPostFrameCallback((_) => _markRead());
-                  }
-
-                  if (messages.isEmpty) {
-                    if (snapshot.connectionState == ConnectionState.waiting && snapshot.data == null) {
-                      return const Center(
-                        child: CircularProgressIndicator(color: brandNavy),
-                      );
-                    }
-
-                    if (snapshot.hasError) {
-                      return Center(
-                        child: Padding(
+            // If the chat is stopped by me, show the stopped UI in the center
+            if (_isStoppedByMe)
+              Expanded(
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
                           padding: const EdgeInsets.all(24),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.wifi_off_rounded, size: 40, color: Color(0xFF94A3B8)),
-                              const SizedBox(height: 10),
-                              Text(
-                                'تعذر تحميل الرسائل، يرجى التأكد من اتصالك بالإنترنت.',
-                                style: GoogleFonts.cairo(fontSize: 13.5, color: const Color(0xFF64748B)),
-                                textAlign: TextAlign.center,
-                              ),
-                            ],
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFEE2E2),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.3), width: 2),
+                          ),
+                          child: const Icon(
+                            Icons.pause_circle_filled_rounded,
+                            size: 56,
+                            color: Color(0xFFDC2626),
                           ),
                         ),
-                      );
+                        const SizedBox(height: 20),
+                        Text(
+                          'تم إيقاف هذا الحساب',
+                          style: GoogleFonts.cairo(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0xFF991B1B),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'لن تصلك أي رسائل أو إشعارات من هذا الشخص.\nاضغط على "تنشيط" لاستئناف المحادثة في أي وقت.',
+                          style: GoogleFonts.cairo(
+                            fontSize: 13,
+                            color: const Color(0xFF64748B),
+                            height: 1.6,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 24),
+                        ElevatedButton.icon(
+                          onPressed: _toggleStopUser,
+                          icon: const Icon(Icons.play_circle_outline_rounded, size: 20),
+                          label: Text(
+                            'تنشيط الحساب',
+                            style: GoogleFonts.cairo(fontWeight: FontWeight.w800, fontSize: 14),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: brandGold,
+                            foregroundColor: brandNavy,
+                            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            elevation: 2,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              )
+            else ...[
+              // Messages Stream Area
+              Expanded(
+                child: StreamBuilder<List<ChatMessageModel>>(
+                  initialData: const <ChatMessageModel>[],
+                  stream: _messagesStream ?? (_activeChat != null ? _chatService.getMessagesStream(_activeChat!.id, currentUserId: _currentUserId) : const Stream.empty()),
+                  builder: (context, snapshot) {
+                    final messages = snapshot.data ?? [];
+                    if (!_isStoppedByMe && !_isMarkingRead && messages.any((m) => m.senderId != _currentUserId && !m.isRead)) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) => _markRead());
                     }
 
-                    // If we stopped this user, show the stopped state placeholder
-                    if (_isStoppedByMe) {
+                    if (messages.isEmpty) {
+                      if (snapshot.connectionState == ConnectionState.waiting && snapshot.data == null) {
+                        return const Center(
+                          child: CircularProgressIndicator(color: brandNavy),
+                        );
+                      }
+
+                      if (snapshot.hasError) {
+                        return Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.wifi_off_rounded, size: 40, color: Color(0xFF94A3B8)),
+                                const SizedBox(height: 10),
+                                Text(
+                                  'تعذر تحميل الرسائل، يرجى التأكد من اتصالك بالإنترنت.',
+                                  style: GoogleFonts.cairo(fontSize: 13.5, color: const Color(0xFF64748B)),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }
+
                       return Center(
                         child: Padding(
                           padding: const EdgeInsets.all(32),
@@ -1074,52 +1138,35 @@ class _ChatScreenState extends State<ChatScreen> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Container(
-                                padding: const EdgeInsets.all(24),
+                                padding: const EdgeInsets.all(20),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFFEE2E2),
+                                  color: brandNavy.withValues(alpha: 0.06),
                                   shape: BoxShape.circle,
-                                  border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.3), width: 2),
                                 ),
                                 child: const Icon(
-                                  Icons.pause_circle_filled_rounded,
-                                  size: 52,
-                                  color: Color(0xFFDC2626),
+                                  Icons.chat_bubble_outline_rounded,
+                                  size: 44,
+                                  color: brandNavy,
                                 ),
                               ),
-                              const SizedBox(height: 20),
+                              const SizedBox(height: 16),
                               Text(
-                                'تم إيقاف هذا الحساب',
+                                'محادثة آمنة ومباشرة',
                                 style: GoogleFonts.cairo(
-                                  fontSize: 18,
+                                  fontSize: 16,
                                   fontWeight: FontWeight.w800,
-                                  color: const Color(0xFF991B1B),
+                                  color: brandNavy,
                                 ),
                               ),
-                              const SizedBox(height: 8),
+                              const SizedBox(height: 6),
                               Text(
-                                'لن تصلك أي رسائل أو إشعارات من هذا الشخص.\nاضغط على "تنشيط" لاستئناف المحادثة.',
+                                'اسحب الرسالة لليسار للرد، أو لليمين للحذف.\nالمحادثة مشفرة ومحمية ضمن سياسة المنصة.',
                                 style: GoogleFonts.cairo(
                                   fontSize: 13,
                                   color: const Color(0xFF64748B),
-                                  height: 1.6,
+                                  height: 1.5,
                                 ),
                                 textAlign: TextAlign.center,
-                              ),
-                              const SizedBox(height: 24),
-                              ElevatedButton.icon(
-                                onPressed: _toggleStopUser,
-                                icon: const Icon(Icons.play_circle_outline_rounded, size: 20),
-                                label: Text(
-                                  'تنشيط الحساب',
-                                  style: GoogleFonts.cairo(fontWeight: FontWeight.w800, fontSize: 14),
-                                ),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: brandGold,
-                                  foregroundColor: brandNavy,
-                                  padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                                  elevation: 2,
-                                ),
                               ),
                             ],
                           ),
@@ -1127,69 +1174,23 @@ class _ChatScreenState extends State<ChatScreen> {
                       );
                     }
 
-                    return Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(32),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(20),
-                              decoration: BoxDecoration(
-                                color: brandNavy.withValues(alpha: 0.06),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.chat_bubble_outline_rounded,
-                                size: 44,
-                                color: brandNavy,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'محادثة آمنة ومباشرة',
-                              style: GoogleFonts.cairo(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
-                                color: brandNavy,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'اسحب الرسالة لليسار للرد، أو لليمين للحذف.\nالمحادثة مشفرة ومحمية ضمن سياسة المنصة.',
-                              style: GoogleFonts.cairo(
-                                fontSize: 13,
-                                color: const Color(0xFF64748B),
-                                height: 1.5,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                        ),
-                      ),
+                    return ListView.builder(
+                      controller: _scrollCtrl,
+                      reverse: true, // newest messages at the bottom
+                      physics: const BouncingScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      itemCount: messages.length,
+                      itemBuilder: (context, index) {
+                        final message = messages[index];
+                        final isMe = message.senderId == _currentUserId;
+
+                        return _buildDismissibleBubble(message, isMe);
+                      },
                     );
-                  }
-
-                  return ListView.builder(
-                    controller: _scrollCtrl,
-                    reverse: true, // newest messages at the bottom
-                    physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    itemCount: messages.length,
-                    itemBuilder: (context, index) {
-                      final message = messages[index];
-                      final isMe = message.senderId == _currentUserId;
-
-                      return _buildDismissibleBubble(message, isMe);
-                    },
-                  );
-                },
+                  },
+                ),
               ),
-            ),
 
-            if (_isStoppedByMe)
-              _buildStoppedUserBanner(brandNavy, brandGold)
-            else ...[
               // Active Reply Bar (shown when swiping left or clicking reply)
               _buildReplyBar(),
 
@@ -1670,94 +1671,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildStoppedUserBanner(Color brandNavy, Color brandGold) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(
-          top: BorderSide(color: const Color(0xFFFCA5A5), width: 2),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 12,
-            offset: const Offset(0, -4),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // Stopped icon
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFEE2E2),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.4), width: 1.5),
-                ),
-                child: const Icon(
-                  Icons.pause_circle_filled_rounded,
-                  color: Color(0xFFDC2626),
-                  size: 26,
-                ),
-              ),
-              const SizedBox(width: 14),
-              // Text content
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'تم إيقاف هذا الحساب',
-                      style: GoogleFonts.cairo(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: const Color(0xFF991B1B),
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'لن تصلك رسائل أو إشعارات منه نهائياً.',
-                      style: GoogleFonts.cairo(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w600,
-                        color: const Color(0xFF64748B),
-                        height: 1.4,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              // Activate button
-              ElevatedButton.icon(
-                onPressed: _toggleStopUser,
-                icon: const Icon(Icons.play_circle_outline_rounded, size: 16),
-                label: Text(
-                  'تنشيط',
-                  style: GoogleFonts.cairo(fontSize: 13, fontWeight: FontWeight.w800),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: brandGold,
-                  foregroundColor: brandNavy,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  elevation: 2,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   Widget _buildInputBar(Color brandNavy, Color brandGold) {
     return Container(
