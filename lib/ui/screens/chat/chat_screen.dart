@@ -547,7 +547,9 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _markRead() {
-    if (_activeChat == null) return;
+    // Don't mark messages as read if we've stopped this user — their messages
+    // are already hidden (deletedFor) and should not show as seen.
+    if (_activeChat == null || _isStoppedByMe) return;
     _chatService.markChatAsRead(
       chatId: _activeChat!.id,
       currentUserId: _currentUserId,
@@ -1063,6 +1065,68 @@ class _ChatScreenState extends State<ChatScreen> {
                       );
                     }
 
+                    // If we stopped this user, show the stopped state placeholder
+                    if (_isStoppedByMe) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(24),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFEE2E2),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.3), width: 2),
+                                ),
+                                child: const Icon(
+                                  Icons.pause_circle_filled_rounded,
+                                  size: 52,
+                                  color: Color(0xFFDC2626),
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              Text(
+                                'تم إيقاف هذا الحساب',
+                                style: GoogleFonts.cairo(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                  color: const Color(0xFF991B1B),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'لن تصلك أي رسائل أو إشعارات من هذا الشخص.\nاضغط على "تنشيط" لاستئناف المحادثة.',
+                                style: GoogleFonts.cairo(
+                                  fontSize: 13,
+                                  color: const Color(0xFF64748B),
+                                  height: 1.6,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 24),
+                              ElevatedButton.icon(
+                                onPressed: _toggleStopUser,
+                                icon: const Icon(Icons.play_circle_outline_rounded, size: 20),
+                                label: Text(
+                                  'تنشيط الحساب',
+                                  style: GoogleFonts.cairo(fontWeight: FontWeight.w800, fontSize: 14),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: brandGold,
+                                  foregroundColor: brandNavy,
+                                  padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                  elevation: 2,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }
+
                     return Center(
                       child: Padding(
                         padding: const EdgeInsets.all(32),
@@ -1132,6 +1196,7 @@ class _ChatScreenState extends State<ChatScreen> {
               // Bottom Input Bar
               _buildInputBar(brandNavy, brandGold),
             ],
+
           ],
         ),
       ),
@@ -1608,75 +1673,87 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildStoppedUserBanner(Color brandNavy, Color brandGold) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border(
-          top: BorderSide(color: const Color(0xFFFCA5A5), width: 1.5),
+          top: BorderSide(color: const Color(0xFFFCA5A5), width: 2),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 8,
-            offset: const Offset(0, -3),
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 12,
+            offset: const Offset(0, -4),
           ),
         ],
       ),
       child: SafeArea(
         top: false,
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFEE2E2),
-                shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.3), width: 1),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Stopped icon
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEE2E2),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.4), width: 1.5),
+                ),
+                child: const Icon(
+                  Icons.pause_circle_filled_rounded,
+                  color: Color(0xFFDC2626),
+                  size: 26,
+                ),
               ),
-              child: const Icon(Icons.pause_circle_filled_rounded, color: Color(0xFFDC2626), size: 22),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'لقد قمت بإيقاف هذا الحساب',
-                    style: GoogleFonts.cairo(
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFF991B1B),
+              const SizedBox(width: 14),
+              // Text content
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'تم إيقاف هذا الحساب',
+                      style: GoogleFonts.cairo(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF991B1B),
+                      ),
                     ),
-                  ),
-                  Text(
-                    'لن تصلك أي رسائل أو إشعارات جديدة من هذا الحساب.',
-                    style: GoogleFonts.cairo(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: const Color(0xFF64748B),
-                      height: 1.3,
+                    const SizedBox(height: 2),
+                    Text(
+                      'لن تصلك رسائل أو إشعارات منه نهائياً.',
+                      style: GoogleFonts.cairo(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF64748B),
+                        height: 1.4,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(width: 10),
-            ElevatedButton(
-              onPressed: _toggleStopUser,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: brandGold,
-                foregroundColor: brandNavy,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                elevation: 1,
+              const SizedBox(width: 12),
+              // Activate button
+              ElevatedButton.icon(
+                onPressed: _toggleStopUser,
+                icon: const Icon(Icons.play_circle_outline_rounded, size: 16),
+                label: Text(
+                  'تنشيط',
+                  style: GoogleFonts.cairo(fontSize: 13, fontWeight: FontWeight.w800),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: brandGold,
+                  foregroundColor: brandNavy,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 2,
+                ),
               ),
-              child: Text(
-                'تنشيط',
-                style: GoogleFonts.cairo(fontSize: 12.5, fontWeight: FontWeight.w800),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
