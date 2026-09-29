@@ -1226,12 +1226,18 @@ class NotificationService {
   Stream<List<AdminNotificationModel>> getAdminNotificationsStream() {
     return _db
         .collection('admin_notifications')
-        .orderBy('createdAt', descending: true)
-        .limit(50)
         .snapshots()
-        .map((snap) => snap.docs
-            .map((doc) => AdminNotificationModel.fromMap(doc.data(), doc.id))
-            .toList());
+        .map((snap) {
+          final list = snap.docs
+              .map((doc) => AdminNotificationModel.fromMap(doc.data(), doc.id))
+              .toList();
+          list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          return list;
+        })
+        .handleError((e) {
+          debugPrint('getAdminNotificationsStream error: $e');
+          return <AdminNotificationModel>[];
+        });
   }
 
   Future<void> markAsRead(String notificationId) async {

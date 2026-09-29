@@ -248,11 +248,7 @@ class _ContactAdminScreenState extends State<ContactAdminScreen> {
         title: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            // Logo Badge
-            const AppLogoBadge(
-              height: 30,
-              withPillBackground: true,
-            ),
+            const AppLogoBadge.header(),
 
             // Back Button
             InkWell(

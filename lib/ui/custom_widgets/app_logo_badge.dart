@@ -9,16 +9,26 @@ import '../../core/constants/app_assets.dart';
 
 /// Renders the official logo inside an eye-pleasing pill container with soft shadow.
 class AppLogoBadge extends StatelessWidget {
+  /// Unified standard height for all header AppBars across client, lawyer, and admin
+  static const double defaultHeaderHeight = 26.0;
+
   final double height;
   final bool withPillBackground;
   final bool isGlass;
 
   const AppLogoBadge({
     super.key,
-    this.height = 26,
+    this.height = defaultHeaderHeight,
     this.withPillBackground = true,
     this.isGlass = false,
   });
+
+  /// Standardized constructor specifically for header AppBars
+  const AppLogoBadge.header({
+    super.key,
+    this.isGlass = false,
+  })  : height = defaultHeaderHeight,
+        withPillBackground = true;
 
   @override
   Widget build(BuildContext context) {

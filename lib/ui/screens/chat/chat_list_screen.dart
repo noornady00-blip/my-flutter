@@ -585,10 +585,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const AppLogoBadge(
-                height: 26,
-                withPillBackground: true,
-              ),
+              const AppLogoBadge.header(),
               const SizedBox(width: 8),
               const Awake247Badge(),
             ],

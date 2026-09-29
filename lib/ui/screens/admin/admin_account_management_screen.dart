@@ -74,10 +74,7 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
         title: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const AppLogoBadge(
-              height: 30,
-              withPillBackground: true,
-            ),
+            const AppLogoBadge.header(),
             Row(
               children: [
                 Text(

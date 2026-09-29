@@ -15,7 +15,6 @@ import '../../custom_widgets/profile_details_modal.dart';
 import '../../../core/utils/phone_utils.dart';
 import '../../../core/utils/account_id_utils.dart';
 import '../../custom_widgets/sudan_phone_field.dart';
-import '../chat/chat_list_screen.dart';
 
 class LawyerHomeScreen extends StatefulWidget {
   final VoidCallback? onNavigateSettings;
@@ -417,7 +416,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
                   ),
                   const SizedBox(width: 10),
                 ],
-                const AppLogoBadge(height: 25, withPillBackground: true),
+                const AppLogoBadge.header(),
                 const SizedBox(width: 8),
                 const Awake247Badge(),
               ],
@@ -494,9 +493,6 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
                 ),
                 const SizedBox(height: 14),
 
-                // 2. Direct Chats Entry Card
-                _buildDirectChatsEntryCard(),
-                const SizedBox(height: 14),
 
                 // 3. Client Live Interaction Preview Card
                 _buildLiveClientInteractionCard(
@@ -703,7 +699,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
                           Clipboard.setData(ClipboardData(text: accountId));
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('تم نسخ المعرّف الموحد (12 رقم) بنجاح',
+                              content: Text('تم نسخ الـ ID الموحد (12 رقم) بنجاح',
                                   style: GoogleFonts.cairo(fontWeight: FontWeight.w700)),
                               backgroundColor: const Color(0xFF0B2A5B),
                               duration: const Duration(seconds: 2),
@@ -724,7 +720,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
                               const Icon(Icons.badge_rounded, color: Color(0xFFD49B1A), size: 13),
                               const SizedBox(width: 4),
                               Text(
-                                'المعرّف: ${AccountIdUtils.formatForDisplay(accountId)}',
+                                'الـ ID: ${AccountIdUtils.formatForDisplay(accountId)}',
                                 style: GoogleFonts.cairo(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w700,
@@ -964,74 +960,6 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
   }
 
   // ─────────────────────────────────────────────────────────────
-  // 2. Direct Chats Entry Card
-  // ─────────────────────────────────────────────────────────────
-  Widget _buildDirectChatsEntryCard() {
-    return InkWell(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const ChatListScreen()),
-        );
-      },
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topRight,
-            end: Alignment.bottomLeft,
-            colors: [Color(0xFF0F766E), Color(0xFF115E59)],
-          ),
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF0F766E).withValues(alpha: 0.25),
-              blurRadius: 14,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.2),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.forum_rounded, color: Colors.white, size: 22),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'محادثات المراجعين والاستشارات',
-                    style: GoogleFonts.cairo(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                    ),
-                  ),
-                  Text(
-                    'تواصل فوري مباشر عبر المنصة مع الموكلين والمشرفين',
-                    style: GoogleFonts.cairo(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white70,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 16),
-          ],
-        ),
-      ),
-    );
-  }
 
   // ─────────────────────────────────────────────────────────────
   // 3. Unified Data Management Suite (Sleek List Layout)

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../data/models/lawyer.dart';
 import '../../../data/models/user_model.dart';
 import '../../../network/firestore_service.dart';
@@ -94,9 +95,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
   // 3. التمرير في التبويب الرئيسي
   final ScrollController _overviewScrollCtrl = ScrollController();
 
+  // 4. مفاتيح الأقسام المثبتة في أعلى أقسام الإدارة والطلبات
+  List<String> _pinnedDepartmentKeys = [];
+
   @override
   void initState() {
     super.initState();
+    _loadPinnedDepartments();
     _statsFuture = _firestoreService.getStats();
     _accountsSearchCtrl.addListener(() {
       setState(() => _accountsSearchQuery = _accountsSearchCtrl.text.trim().toLowerCase());
@@ -124,6 +129,63 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
     // 3. Perform silent background profile sync (Never blocks UI or drops notifications)
     _syncAdminInfoInBackground();
+  }
+
+  /// تحميل الأقسام المثبتة في لوحة التحكم
+  Future<void> _loadPinnedDepartments() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final keys = prefs.getStringList('admin_pinned_department_keys') ?? [];
+      if (mounted) {
+        setState(() => _pinnedDepartmentKeys = keys);
+      }
+    } catch (e) {
+      debugPrint('Admin pinned load error: $e');
+    }
+  }
+
+  /// تبديل تثبيت أي قسم ونقله لأعلى القائمة مع حفظ التفضيل
+  Future<void> _togglePinDepartment(String key, String title) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final isPinnedNow = _pinnedDepartmentKeys.contains(key);
+      setState(() {
+        if (isPinnedNow) {
+          _pinnedDepartmentKeys.remove(key);
+        } else {
+          _pinnedDepartmentKeys.insert(0, key);
+        }
+      });
+      await prefs.setStringList('admin_pinned_department_keys', _pinnedDepartmentKeys);
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              textDirection: TextDirection.rtl,
+              children: [
+                Icon(
+                  isPinnedNow ? Icons.push_pin_outlined : Icons.push_pin_rounded,
+                  color: Colors.white,
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  isPinnedNow ? 'تم إلغاء تثبيت "$title"' : 'تم تثبيت "$title" في أعلى القائمة بنجاح',
+                  style: GoogleFonts.cairo(fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+            backgroundColor: const Color(0xFF0B2A5B),
+            duration: const Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error toggling pin: $e');
+    }
   }
 
   bool _isLoggingOut = false;
@@ -334,10 +396,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
         children: [
           Row(
             children: [
-              const AppLogoBadge(
-                height: 30,
-                withPillBackground: true,
-              ),
+              const AppLogoBadge.header(),
               const SizedBox(width: 8),
               const Awake247Badge(),
             ],
@@ -458,121 +517,187 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  // 3. الأقسام الأربعة الرئيسية في لوحة التحكم (نظام أربع خانات تحت بعض بالطول)
+  // 3. الأقسام الرئيسية في لوحة التحكم مع دعم التثبيت والإشعارات الحية
   Widget _buildFourDepartmentCards() {
+    final Map<String, Widget> departmentCards = {
+      // 1. طلبات الانضمام
+      'join_requests': _buildDepartmentNavCard(
+        keyName: 'join_requests',
+        title: 'طلبات الانضمام',
+        subtitle: 'مراجعة واعتماد طلبات وتراخيص المحامين الجدد',
+        icon: Icons.gavel_rounded,
+        iconColor: const Color(0xFFD97706),
+        iconBg: const Color(0xFFFFFBEB),
+        isPinned: _pinnedDepartmentKeys.contains('join_requests'),
+        onTogglePin: () => _togglePinDepartment('join_requests', 'طلبات الانضمام'),
+        bellWidget: StreamBuilder<List<LawyerModel>>(
+          stream: _firestoreService.getPendingLawyers(),
+          builder: (context, snap) {
+            final count = snap.data?.length ?? 0;
+            return _buildNotificationBellBadge(
+              count: count,
+              bellColor: const Color(0xFFD97706),
+              containerBg: const Color(0xFFFFFBEB),
+            );
+          },
+        ),
+        onTap: () => _pushSmoothRoute(const AdminPendingLawyersScreen()),
+      ),
+
+      // 2. طلبات استعادة كلمة المرور
+      'password_resets': _buildDepartmentNavCard(
+        keyName: 'password_resets',
+        title: 'طلبات استعادة كلمة المرور',
+        subtitle: 'إعادة ضبط وتوليد كلمات المرور وتواصل واتساب',
+        icon: Icons.key_rounded,
+        iconColor: const Color(0xFFEA580C),
+        iconBg: const Color(0xFFFFF7ED),
+        isPinned: _pinnedDepartmentKeys.contains('password_resets'),
+        onTogglePin: () => _togglePinDepartment('password_resets', 'طلبات استعادة كلمة المرور'),
+        bellWidget: StreamBuilder<List<PasswordResetModel>>(
+          stream: _firestoreService.getPasswordResetsStream(),
+          builder: (context, snap) {
+            final count = snap.data?.length ?? 0;
+            return _buildNotificationBellBadge(
+              count: count,
+              bellColor: const Color(0xFFEA580C),
+              containerBg: const Color(0xFFFFF7ED),
+            );
+          },
+        ),
+        onTap: () => _pushSmoothRoute(const AdminPasswordResetsScreen()),
+      ),
+
+      // 3. رسائل التواصل والدعم
+      'support_messages': _buildDepartmentNavCard(
+        keyName: 'support_messages',
+        title: 'رسائل التواصل والدعم',
+        subtitle: 'متابعة استفسارات وملاحظات العملاء والمحامين',
+        icon: Icons.chat_bubble_outline_rounded,
+        iconColor: const Color(0xFF2563EB),
+        iconBg: const Color(0xFFEFF6FF),
+        isPinned: _pinnedDepartmentKeys.contains('support_messages'),
+        onTogglePin: () => _togglePinDepartment('support_messages', 'رسائل التواصل والدعم'),
+        bellWidget: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance
+              .collection('support_messages')
+              .snapshots(),
+          builder: (context, snap) {
+            final docs = snap.data?.docs ?? [];
+            final count = docs.where((d) {
+              final data = d.data();
+              final status = data['status']?.toString().toLowerCase();
+              final read = data['read'];
+              final isRead = data['isRead'];
+              if (read == true || isRead == true || status == 'read') return false;
+              return true;
+            }).length;
+            return _buildNotificationBellBadge(
+              count: count,
+              bellColor: const Color(0xFF2563EB),
+              containerBg: const Color(0xFFEFF6FF),
+            );
+          },
+        ),
+        onTap: () => _pushSmoothRoute(const AdminSupportMessagesScreen()),
+      ),
+
+      // 4. آخر المحامين المنضمين
+      'recent_lawyers': _buildDepartmentNavCard(
+        keyName: 'recent_lawyers',
+        title: 'آخر المحامين المنضمين',
+        subtitle: 'سجل المحامين المعتمدين والمفعلين بالمنصة',
+        icon: Icons.verified_user_rounded,
+        iconColor: const Color(0xFF059669),
+        iconBg: const Color(0xFFECFDF5),
+        isPinned: _pinnedDepartmentKeys.contains('recent_lawyers'),
+        onTogglePin: () => _togglePinDepartment('recent_lawyers', 'آخر المحامين المنضمين'),
+        bellWidget: StreamBuilder<List<LawyerModel>>(
+          stream: _firestoreService.getAllLawyers(),
+          builder: (context, snap) {
+            final lawyers = snap.data ?? [];
+            final now = DateTime.now();
+            final sevenDaysAgo = now.subtract(const Duration(days: 7));
+            final recentApproved = lawyers.where((l) {
+              if (l.status != 'approved') return false;
+              if (l.createdAt.isAfter(sevenDaysAgo)) return true;
+              return false;
+            }).length;
+            return _buildNotificationBellBadge(
+              count: recentApproved,
+              bellColor: const Color(0xFF059669),
+              containerBg: const Color(0xFFECFDF5),
+            );
+          },
+        ),
+        onTap: () => _pushSmoothRoute(const AdminRecentLawyersScreen()),
+      ),
+
+      // 5. إدارة المحادثات المباشرة
+      'chat_management': _buildDepartmentNavCard(
+        keyName: 'chat_management',
+        title: 'إدارة المحادثات المباشرة',
+        subtitle: 'متابعة وإشراف محادثات العملاء والمحامين والتدخل',
+        icon: Icons.forum_rounded,
+        iconColor: const Color(0xFFD49B1A),
+        iconBg: const Color(0xFFFFFBEB),
+        isPinned: _pinnedDepartmentKeys.contains('chat_management'),
+        onTogglePin: () => _togglePinDepartment('chat_management', 'إدارة المحادثات المباشرة'),
+        bellWidget: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance.collection('chats').snapshots(),
+          builder: (context, snap) {
+            final docs = snap.data?.docs ?? [];
+            int count = 0;
+            for (final doc in docs) {
+              final d = doc.data();
+              final unreadByAdmin = (d['unreadByAdmin'] as num?)?.toInt() ?? 0;
+              final unreadCount = (d['unreadCount'] as num?)?.toInt() ?? 0;
+              if (unreadByAdmin > 0 || unreadCount > 0) {
+                count++;
+              }
+            }
+            return _buildNotificationBellBadge(
+              count: count,
+              bellColor: const Color(0xFFD49B1A),
+              containerBg: const Color(0xFFFFFBEB),
+            );
+          },
+        ),
+        onTap: () => _pushSmoothRoute(const AdminChatManagementScreen()),
+      ),
+    };
+
+    const defaultOrder = [
+      'join_requests',
+      'password_resets',
+      'support_messages',
+      'recent_lawyers',
+      'chat_management',
+    ];
+
+    // ترتيب العناصر بحيث تظهر الأقسام المثبتة في أعلى القائمة تماماً فوق الباقيين
+    final List<Widget> sortedWidgets = [];
+
+    // أولاً: الأقسام المثبتة بحسب ترتيب تثبيتها
+    for (final key in _pinnedDepartmentKeys) {
+      if (departmentCards.containsKey(key)) {
+        sortedWidgets.add(departmentCards[key]!);
+      }
+    }
+
+    // ثانياً: بقية الأقسام غير المثبتة بالترتيب الافتراضي
+    for (final key in defaultOrder) {
+      if (!_pinnedDepartmentKeys.contains(key) && departmentCards.containsKey(key)) {
+        sortedWidgets.add(departmentCards[key]!);
+      }
+    }
+
     return Column(
-      children: [
-        // 1. طلبات الانضمام
-        _buildDepartmentNavCard(
-          title: 'طلبات الانضمام',
-          subtitle: 'مراجعة واعتماد طلبات وتراخيص المحامين الجدد',
-          icon: Icons.gavel_rounded,
-          iconColor: const Color(0xFFD97706),
-          iconBg: const Color(0xFFFFFBEB),
-          bellWidget: StreamBuilder<List<LawyerModel>>(
-            stream: _firestoreService.getPendingLawyers(),
-            builder: (context, snap) {
-              final count = snap.data?.length ?? 0;
-              return _buildNotificationBellBadge(
-                count: count,
-                bellColor: const Color(0xFFD97706),
-                containerBg: const Color(0xFFFFFBEB),
-              );
-            },
-          ),
-          onTap: () => _pushSmoothRoute(const AdminPendingLawyersScreen()),
-        ),
-
-        // 2. طلبات استعادة كلمة المرور
-        _buildDepartmentNavCard(
-          title: 'طلبات استعادة كلمة المرور',
-          subtitle: 'إعادة ضبط وتوليد كلمات المرور وتواصل واتساب',
-          icon: Icons.key_rounded,
-          iconColor: const Color(0xFFEA580C),
-          iconBg: const Color(0xFFFFF7ED),
-          bellWidget: StreamBuilder<List<PasswordResetModel>>(
-            stream: _firestoreService.getPasswordResetsStream(),
-            builder: (context, snap) {
-              final count = snap.data?.length ?? 0;
-              return _buildNotificationBellBadge(
-                count: count,
-                bellColor: const Color(0xFFEA580C),
-                containerBg: const Color(0xFFFFF7ED),
-              );
-            },
-          ),
-          onTap: () => _pushSmoothRoute(const AdminPasswordResetsScreen()),
-        ),
-
-        // 3. رسائل التواصل والدعم
-        _buildDepartmentNavCard(
-          title: 'رسائل التواصل والدعم',
-          subtitle: 'متابعة استفسارات وملاحظات العملاء والمحامين',
-          icon: Icons.chat_bubble_outline_rounded,
-          iconColor: const Color(0xFF2563EB),
-          iconBg: const Color(0xFFEFF6FF),
-          bellWidget: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream: FirebaseFirestore.instance
-                .collection('support_messages')
-                .where('status', isEqualTo: 'unread')
-                .snapshots(),
-            builder: (context, snap) {
-              final count = snap.data?.docs.length ?? 0;
-              return _buildNotificationBellBadge(
-                count: count,
-                bellColor: const Color(0xFF2563EB),
-                containerBg: const Color(0xFFEFF6FF),
-              );
-            },
-          ),
-          onTap: () => _pushSmoothRoute(const AdminSupportMessagesScreen()),
-        ),
-
-        // 4. آخر المحامين المنضمين
-        _buildDepartmentNavCard(
-          title: 'آخر المحامين المنضمين',
-          subtitle: 'سجل المحامين المعتمدين والمفعلين بالمنصة',
-          icon: Icons.verified_user_rounded,
-          iconColor: const Color(0xFF059669),
-          iconBg: const Color(0xFFECFDF5),
-          bellWidget: _buildNotificationBellBadge(
-            count: 0,
-            bellColor: const Color(0xFF059669),
-            containerBg: const Color(0xFFECFDF5),
-            showBadge: false,
-          ),
-          onTap: () => _pushSmoothRoute(const AdminRecentLawyersScreen()),
-        ),
-
-        // 5. إدارة المحادثات المباشرة
-        _buildDepartmentNavCard(
-          title: 'إدارة المحادثات المباشرة',
-          subtitle: 'متابعة وإشراف محادثات العملاء والمحامين والتدخل',
-          icon: Icons.forum_rounded,
-          iconColor: const Color(0xFFD49B1A),
-          iconBg: const Color(0xFFFFFBEB),
-          bellWidget: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream: FirebaseFirestore.instance
-                .collection('chats')
-                .where('unreadCount', isGreaterThan: 0)
-                .snapshots(),
-            builder: (context, snap) {
-              final count = snap.data?.docs.length ?? 0;
-              return _buildNotificationBellBadge(
-                count: count,
-                bellColor: const Color(0xFFD49B1A),
-                containerBg: const Color(0xFFFFFBEB),
-                showBadge: count > 0,
-              );
-            },
-          ),
-          onTap: () => _pushSmoothRoute(const AdminChatManagementScreen()),
-        ),
-      ],
+      children: sortedWidgets,
     );
   }
 
-  /// ويدجت جرس التنبيهات المخصص بتصميم الصورة 2 مع شارة حمراء دائرية وإظهار +99 عند تجاوز 99
+  /// ويدجت جرس التنبيهات المخصص مع شارة حمراء دائرية وإظهار عدد الإشعارات بدقة
   Widget _buildNotificationBellBadge({
     required int count,
     required Color bellColor,
@@ -589,7 +714,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
         color: containerBg,
         borderRadius: BorderRadius.circular(13),
         border: Border.all(
-          color: bellColor.withValues(alpha: (hasNew || !showBadge) ? 0.28 : 0.15),
+          color: bellColor.withValues(alpha: hasNew ? 0.35 : 0.15),
           width: 1.2,
         ),
       ),
@@ -598,14 +723,14 @@ class _AdminDashboardState extends State<AdminDashboard> {
           clipBehavior: Clip.none,
           alignment: Alignment.center,
           children: [
-            // أيقونة الجرس بلون القسم المخصص
+            // أيقونة الجرس: ملونة عند وجود إشعارات، ورمادية عند عدم وجود إشعارات
             Icon(
-              (hasNew || !showBadge) ? Icons.notifications_rounded : Icons.notifications_none_rounded,
-              color: (hasNew || !showBadge) ? bellColor : const Color(0xFF94A3B8),
+              hasNew ? Icons.notifications_rounded : Icons.notifications_none_rounded,
+              color: hasNew ? bellColor : const Color(0xFF94A3B8),
               size: 24,
             ),
 
-            // الشارة الحمراء الدائرية المماثلة تماماً للصورة مع حدود بيضاء
+            // الشارة الحمراء الدائرية المماثلة تماماً للتصميم مع حدود بيضاء
             if (hasNew)
               Positioned(
                 top: -6,
@@ -652,6 +777,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   Widget _buildDepartmentNavCard({
+    required String keyName,
     required String title,
     required String subtitle,
     required IconData icon,
@@ -659,17 +785,24 @@ class _AdminDashboardState extends State<AdminDashboard> {
     required Color iconBg,
     required Widget bellWidget,
     required VoidCallback onTap,
+    required bool isPinned,
+    required VoidCallback onTogglePin,
   }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
+        border: Border.all(
+          color: isPinned ? const Color(0xFFD49B1A).withValues(alpha: 0.55) : const Color(0xFFE2E8F0),
+          width: isPinned ? 1.6 : 1.2,
+        ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF0B2A5B).withValues(alpha: 0.035),
-            blurRadius: 10,
+            color: isPinned
+                ? const Color(0xFFD49B1A).withValues(alpha: 0.08)
+                : const Color(0xFF0B2A5B).withValues(alpha: 0.035),
+            blurRadius: isPinned ? 12 : 10,
             offset: const Offset(0, 3),
           ),
         ],
@@ -678,6 +811,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
+          onLongPress: onTogglePin,
           borderRadius: BorderRadius.circular(18),
           splashColor: iconColor.withValues(alpha: 0.08),
           highlightColor: iconColor.withValues(alpha: 0.04),
@@ -699,21 +833,57 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 ),
                 const SizedBox(width: 12),
 
-                // 2. الاسم والوصف (Expanded لمنع أي Overflow نهائياً على كل الشاشات)
+                // 2. الاسم والوصف مع شارة التثبيت عند التثبيت
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        title,
-                        style: GoogleFonts.cairo(
-                          fontSize: 14.5,
-                          fontWeight: FontWeight.w800,
-                          color: const Color(0xFF0B2A5B),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              title,
+                              style: GoogleFonts.cairo(
+                                fontSize: 14.5,
+                                fontWeight: FontWeight.w800,
+                                color: const Color(0xFF0B2A5B),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (isPinned) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFFBEB),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: const Color(0xFFD49B1A).withValues(alpha: 0.4), width: 0.8),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Transform.rotate(
+                                    angle: 0.4,
+                                    child: const Icon(Icons.push_pin_rounded, color: Color(0xFFD49B1A), size: 10),
+                                  ),
+                                  const SizedBox(width: 2),
+                                  Text(
+                                    'مثبت',
+                                    style: GoogleFonts.cairo(
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.w800,
+                                      color: const Color(0xFF92400E),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                       const SizedBox(height: 2),
                       Text(
@@ -729,9 +899,41 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     ],
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
 
-                // 3. جرس التنبيهات مع الشارة الحمراء (مستبدلاً السهم بنفس موقعه تماماً)
+                // 3. زر تثبيت القسم (Push Pin Button)
+                Tooltip(
+                  message: isPinned ? 'إلغاء التثبيت من الأعلى' : 'تثبيت القسم في أعلى القائمة',
+                  child: InkWell(
+                    onTap: onTogglePin,
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: isPinned ? const Color(0xFFFFFBEB) : const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: isPinned ? const Color(0xFFD49B1A) : const Color(0xFFE2E8F0),
+                          width: 1.0,
+                        ),
+                      ),
+                      child: Center(
+                        child: Transform.rotate(
+                          angle: isPinned ? 0.4 : 0,
+                          child: Icon(
+                            isPinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+                            color: isPinned ? const Color(0xFFD49B1A) : const Color(0xFF94A3B8),
+                            size: 17,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+
+                // 4. جرس التنبيهات مع الشارة الحمراء
                 bellWidget,
               ],
             ),
@@ -4920,10 +5122,17 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   trailing: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                     stream: FirebaseFirestore.instance
                         .collection('support_messages')
-                        .where('status', isEqualTo: 'unread')
                         .snapshots(),
                     builder: (context, snap) {
-                      final count = snap.data?.docs.length ?? 0;
+                      final docs = snap.data?.docs ?? [];
+                      final count = docs.where((d) {
+                        final data = d.data();
+                        final status = data['status']?.toString().toLowerCase();
+                        final read = data['read'];
+                        final isRead = data['isRead'];
+                        if (read == true || isRead == true || status == 'read') return false;
+                        return true;
+                      }).length;
                       if (count == 0) return const SizedBox.shrink();
                       return Container(
                         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1.5),

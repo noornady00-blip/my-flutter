@@ -66,10 +66,7 @@ class _AllLawyersScreenState extends State<AllLawyersScreen> {
         title: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const AppLogoBadge(
-              height: 26,
-              withPillBackground: true,
-            ),
+            const AppLogoBadge.header(),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(

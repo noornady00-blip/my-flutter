@@ -24,7 +24,6 @@ import '../../../core/utils/image_utils.dart';
 import '../../../core/utils/app_error_translator.dart';
 import '../../../core/utils/account_id_utils.dart';
 import '../../../network/chat_service.dart';
-import '../chat/chat_list_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final bool isStandalone;
@@ -982,10 +981,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const AppLogoBadge(
-                  height: 26,
-                  withPillBackground: true,
-                ),
+                const AppLogoBadge.header(),
                 const SizedBox(width: 8),
                 const Awake247Badge(),
               ],
@@ -1059,24 +1055,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _buildProfileHeaderCard(),
               const SizedBox(height: 22),
 
-              // Chat & Messaging Section
-              if (_isLoggedIn) ...[
-                _buildSectionTitle('المحادثات والتواصل', const Color(0xFF0F766E)),
-                const SizedBox(height: 12),
-                _buildActionCard(
-                  icon: Icons.chat_bubble_rounded,
-                  title: 'المحادثات المباشرة',
-                  subtitle: 'التواصل الفوري والآمن مع المحامين والمشرفين',
-                  iconColor: const Color(0xFF0F766E),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const ChatListScreen()),
-                    );
-                  },
-                ),
-                const SizedBox(height: 22),
-              ],
 
               // 2. Account & Security Section
               _buildSectionTitle('الحساب والأمان', const Color(0xFFF59E0B)),
@@ -1537,7 +1515,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              'المعرّف: ${AccountIdUtils.formatForDisplay(_accountId!)}',
+                              'الـ ID: ${AccountIdUtils.formatForDisplay(_accountId!)}',
                               style: GoogleFonts.cairo(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w800,
@@ -1557,7 +1535,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       children: [
                                         const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
                                         const SizedBox(width: 8),
-                                        Text('تم نسخ المعرّف الموحد (12 رقم) بنجاح', style: GoogleFonts.cairo(fontWeight: FontWeight.w700)),
+                                        Text('تم نسخ الـ ID الموحد (12 رقم) بنجاح', style: GoogleFonts.cairo(fontWeight: FontWeight.w700)),
                                       ],
                                     ),
                                     duration: const Duration(seconds: 2),
