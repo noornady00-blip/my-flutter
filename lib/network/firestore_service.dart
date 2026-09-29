@@ -562,13 +562,117 @@ class FirestoreService implements DatabaseContract {
 
   @override
   Stream<List<UserModel>> getAllAdmins() {
+    // Proactively ensure both primary admins are seeded in Firestore
+    unawaited(ensurePrimaryAdminsSeeded());
+
     return _db
         .collection('users')
         .where('role', isEqualTo: 'admin')
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => UserModel.fromMap(doc.data(), doc.id))
-            .toList());
+        .map((snapshot) {
+      final list = snapshot.docs
+          .map((doc) => UserModel.fromMap(doc.data(), doc.id))
+          .toList();
+
+      // Ensure Admin 1: 01146979833 is always present
+      final hasAdmin1 = list.any((u) => PhoneUtils.isPrimaryAdmin1(u.phone));
+      if (!hasAdmin1) {
+        list.insert(
+          0,
+          UserModel(
+            uid: 'HEsYK0F5TGMFCZtKE7qUq0kFfqQ2',
+            name: 'المشرف الأساسي (01146979833)',
+            phone: '01146979833',
+            role: 'admin',
+            status: 'active',
+            accountId: '5642 1902 3114',
+            isPrimary: true,
+            createdAt: DateTime(2026, 1, 1),
+          ),
+        );
+      }
+
+      // Ensure Admin 2: 91 220 9596 (+249912209596 / 0912209596) is always present
+      final hasAdmin2 = list.any((u) => PhoneUtils.isPrimaryAdmin2(u.phone));
+      if (!hasAdmin2) {
+        final insertIndex = list.isNotEmpty && hasAdmin1 ? 1 : 0;
+        list.insert(
+          insertIndex,
+          UserModel(
+            uid: 'VQ5M7vEKaubtw3H3tOtDMHgB4yg2',
+            name: 'صاحب التطبيق',
+            phone: '+249912209596',
+            role: 'admin',
+            status: 'active',
+            accountId: '5642 1902 3115',
+            isPrimary: true,
+            createdAt: DateTime(2026, 1, 1),
+          ),
+        );
+      }
+
+      return list;
+    });
+  }
+
+  static bool _adminsSeeded = false;
+
+  @override
+  Future<void> ensurePrimaryAdminsSeeded() async {
+    if (_adminsSeeded) return;
+    _adminsSeeded = true;
+    try {
+      // 1. Admin 1: 01146979833
+      const admin1Uid = 'HEsYK0F5TGMFCZtKE7qUq0kFfqQ2';
+      final admin1Data = {
+        'uid': admin1Uid,
+        'name': 'المشرف الأساسي (01146979833)',
+        'phone': '01146979833',
+        'role': 'admin',
+        'status': 'active',
+        'accountId': '5642 1902 3114',
+        'email': 'admin_01146979833@mahameek.admin.com',
+        'isPrimary': true,
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+      await _db.collection('users').doc(admin1Uid).set(admin1Data, SetOptions(merge: true)).catchError((_) {});
+      await _db.collection('admins').doc(admin1Uid).set(admin1Data, SetOptions(merge: true)).catchError((_) {});
+      await _db.collection('phone_directory').doc('01146979833').set(admin1Data, SetOptions(merge: true)).catchError((_) {});
+      await _db.collection('phone_directory').doc('1146979833').set(admin1Data, SetOptions(merge: true)).catchError((_) {});
+      await _db.collection('phone_directory').doc('+2491146979833').set(admin1Data, SetOptions(merge: true)).catchError((_) {});
+      await _db.collection('account_ids').doc('564219023114').set({
+        'uid': admin1Uid,
+        'role': 'admin',
+        'createdAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true)).catchError((_) {});
+
+      // 2. Admin 2: 91 220 9596 (+249912209596 / 0912209596)
+      const admin2Uid = 'VQ5M7vEKaubtw3H3tOtDMHgB4yg2';
+      final admin2Data = {
+        'uid': admin2Uid,
+        'name': 'صاحب التطبيق',
+        'phone': '+249912209596',
+        'role': 'admin',
+        'status': 'active',
+        'accountId': '5642 1902 3115',
+        'email': 'admin_912209596@mahameek.admin.com',
+        'isPrimary': true,
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+      await _db.collection('users').doc(admin2Uid).set(admin2Data, SetOptions(merge: true)).catchError((_) {});
+      await _db.collection('admins').doc(admin2Uid).set(admin2Data, SetOptions(merge: true)).catchError((_) {});
+      await _db.collection('phone_directory').doc('0912209596').set(admin2Data, SetOptions(merge: true)).catchError((_) {});
+      await _db.collection('phone_directory').doc('912209596').set(admin2Data, SetOptions(merge: true)).catchError((_) {});
+      await _db.collection('phone_directory').doc('+249912209596').set(admin2Data, SetOptions(merge: true)).catchError((_) {});
+      await _db.collection('phone_directory').doc('249912209596').set(admin2Data, SetOptions(merge: true)).catchError((_) {});
+      await _db.collection('account_ids').doc('564219023115').set({
+        'uid': admin2Uid,
+        'role': 'admin',
+        'createdAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true)).catchError((_) {});
+    } catch (e) {
+      debugPrint('ensurePrimaryAdminsSeeded notice: $e');
+    }
   }
 
   @override

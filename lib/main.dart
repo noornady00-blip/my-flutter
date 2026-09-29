@@ -17,6 +17,7 @@ import 'ui/screens/admin/admin_dashboard.dart';
 import 'ui/screens/main_navigation_screen.dart';
 import 'ui/screens/auth/lawyer_pending_screen.dart';
 import 'ui/custom_widgets/global_network_banner.dart';
+import 'network/firestore_service.dart';
 
 import 'package:intl/date_symbol_data_local.dart';
 
@@ -140,6 +141,7 @@ void main() async {
         initialScreen = const AdminDashboard();
         try {
           unawaited(NotificationService().enableAllNotifications(adminUid: currentUid));
+          unawaited(FirestoreService().ensurePrimaryAdminsSeeded());
         } catch (_) {}
       } else if (role == 'lawyer') {
         if (savedStatus == 'pending') {

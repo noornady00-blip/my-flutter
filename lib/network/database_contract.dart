@@ -55,6 +55,7 @@ abstract class DatabaseContract {
   // Admins
   // ---------------------------------------------------------------------------
   Stream<List<UserModel>> getAllAdmins();
+  Future<void> ensurePrimaryAdminsSeeded();
   Future<void> suspendAdmin(String uid);
   Future<void> activateAdmin(String uid);
   Future<void> deleteAdmin(String uid);

@@ -104,6 +104,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
   void initState() {
     super.initState();
     _loadPinnedDepartments();
+    _firestoreService.ensurePrimaryAdminsSeeded();
     _statsFuture = _firestoreService.getStats();
     _accountsSearchCtrl.addListener(() {
       setState(() => _accountsSearchQuery = _accountsSearchCtrl.text.trim().toLowerCase());

@@ -47,6 +47,7 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
   @override
   void initState() {
     super.initState();
+    _firestoreService.ensurePrimaryAdminsSeeded();
     _activeFilter = widget.initialFilter ?? 'all';
     _searchCtrl.addListener(() {
       setState(() => _searchQuery = _searchCtrl.text.trim().toLowerCase());
