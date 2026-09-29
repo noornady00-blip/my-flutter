@@ -1246,12 +1246,12 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                     _showChangePasswordDialog(phone: a.phone, name: a.name, uid: a.uid);
                   },
                   icon: Icon(
-                    isPrimary && !isSelf ? Icons.lock_outline_rounded : Icons.key_rounded,
+                    isPrimary ? Icons.lock_outline_rounded : Icons.key_rounded,
                     size: 15,
                     color: const Color(0xFFD49B1A),
                   ),
                   label: Text(
-                    isPrimary ? (isSelf ? 'تغيير كلمة المرور' : 'محمي (ذاتي)') : 'كلمة السر',
+                    isPrimary ? 'محمي (ذاتي)' : 'كلمة السر',
                     style: GoogleFonts.cairo(fontSize: 11.5, fontWeight: FontWeight.w800),
                   ),
                   style: ElevatedButton.styleFrom(
@@ -1309,14 +1309,22 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                     decoration: BoxDecoration(
                       color: const Color(0xFFF1F5F9),
                       borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
                     ),
-                    child: Text(
-                      'حساب أساسي محمي',
-                      style: GoogleFonts.cairo(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xFF64748B),
-                      ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.verified_user_rounded, size: 14, color: Color(0xFFD49B1A)),
+                        const SizedBox(width: 4),
+                        Text(
+                          'مشرف أساسي محمي',
+                          style: GoogleFonts.cairo(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0xFF0B2A5B),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),

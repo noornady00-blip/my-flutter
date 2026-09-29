@@ -570,47 +570,74 @@ class FirestoreService implements DatabaseContract {
         .where('role', isEqualTo: 'admin')
         .snapshots()
         .map((snapshot) {
-      final list = snapshot.docs
-          .map((doc) => UserModel.fromMap(doc.data(), doc.id))
-          .toList();
+      UserModel? primary1;
+      UserModel? primary2;
+      final List<UserModel> secondaryAdmins = [];
+      final Set<String> seenSecondaryPhones = {};
+
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        final admin = UserModel.fromMap(data, doc.id);
+        final rawPhone = admin.phone;
+
+        if (PhoneUtils.isPrimaryAdmin1(rawPhone)) {
+          // Keep only one primary 1 - prefer the standard doc or the one with complete data
+          if (primary1 == null || doc.id == 'HEsYK0F5TGMFCZtKE7qUq0kFfqQ2') {
+            primary1 = admin.copyWith(
+              name: 'المشرف الأساسي (01146979833)',
+              phone: '01146979833',
+              accountId: admin.accountId.isNotEmpty ? admin.accountId : '5642 1902 3114',
+              isPrimary: true,
+              status: 'active',
+            );
+          }
+        } else if (PhoneUtils.isPrimaryAdmin2(rawPhone)) {
+          // Keep only one primary 2
+          if (primary2 == null || doc.id == 'VQ5M7vEKaubtw3H3tOtDMHgB4yg2') {
+            primary2 = admin.copyWith(
+              name: 'صاحب التطبيق',
+              phone: '+249912209596',
+              accountId: admin.accountId.isNotEmpty ? admin.accountId : '5642 1902 3115',
+              isPrimary: true,
+              status: 'active',
+            );
+          }
+        } else {
+          final cleanDigits = PhoneUtils.extractLocalSudanDigits(rawPhone);
+          final key = cleanDigits.isNotEmpty ? cleanDigits : rawPhone.replaceAll(RegExp(r'[^0-9]'), '');
+          if (key.isNotEmpty && !seenSecondaryPhones.contains(key)) {
+            seenSecondaryPhones.add(key);
+            secondaryAdmins.add(admin);
+          }
+        }
+      }
 
       // Ensure Admin 1: 01146979833 is always present
-      final hasAdmin1 = list.any((u) => PhoneUtils.isPrimaryAdmin1(u.phone));
-      if (!hasAdmin1) {
-        list.insert(
-          0,
-          UserModel(
-            uid: 'HEsYK0F5TGMFCZtKE7qUq0kFfqQ2',
-            name: 'المشرف الأساسي (01146979833)',
-            phone: '01146979833',
-            role: 'admin',
-            status: 'active',
-            accountId: '5642 1902 3114',
-            isPrimary: true,
-            createdAt: DateTime(2026, 1, 1),
-          ),
-        );
-      }
+      primary1 ??= UserModel(
+        uid: 'HEsYK0F5TGMFCZtKE7qUq0kFfqQ2',
+        name: 'المشرف الأساسي (01146979833)',
+        phone: '01146979833',
+        role: 'admin',
+        status: 'active',
+        accountId: '5642 1902 3114',
+        isPrimary: true,
+        createdAt: DateTime(2026, 1, 1),
+      );
 
-      // Ensure Admin 2: 91 220 9596 (+249912209596 / 0912209596) is always present
-      final hasAdmin2 = list.any((u) => PhoneUtils.isPrimaryAdmin2(u.phone));
-      if (!hasAdmin2) {
-        final insertIndex = list.isNotEmpty && hasAdmin1 ? 1 : 0;
-        list.insert(
-          insertIndex,
-          UserModel(
-            uid: 'VQ5M7vEKaubtw3H3tOtDMHgB4yg2',
-            name: 'صاحب التطبيق',
-            phone: '+249912209596',
-            role: 'admin',
-            status: 'active',
-            accountId: '5642 1902 3115',
-            isPrimary: true,
-            createdAt: DateTime(2026, 1, 1),
-          ),
-        );
-      }
+      // Ensure Admin 2: 91 220 9596 (+249912209596) is always present
+      primary2 ??= UserModel(
+        uid: 'VQ5M7vEKaubtw3H3tOtDMHgB4yg2',
+        name: 'صاحب التطبيق',
+        phone: '+249912209596',
+        role: 'admin',
+        status: 'active',
+        accountId: '5642 1902 3115',
+        isPrimary: true,
+        createdAt: DateTime(2026, 1, 1),
+      );
 
+      final List<UserModel> list = [primary1, primary2];
+      list.addAll(secondaryAdmins);
       return list;
     });
   }
@@ -670,6 +697,25 @@ class FirestoreService implements DatabaseContract {
         'role': 'admin',
         'createdAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true)).catchError((_) {});
+
+      // 3. Clean up any duplicate orphaned admin documents in Firestore
+      try {
+        final existingAdminsSnap = await _db
+            .collection('users')
+            .where('role', isEqualTo: 'admin')
+            .get();
+        for (final doc in existingAdminsSnap.docs) {
+          final phone = doc.data()['phone']?.toString() ?? '';
+          if (PhoneUtils.isPrimaryAdmin1(phone) && doc.id != admin1Uid) {
+            await _db.collection('users').doc(doc.id).delete().catchError((_) {});
+            await _db.collection('admins').doc(doc.id).delete().catchError((_) {});
+          }
+          if (PhoneUtils.isPrimaryAdmin2(phone) && doc.id != admin2Uid) {
+            await _db.collection('users').doc(doc.id).delete().catchError((_) {});
+            await _db.collection('admins').doc(doc.id).delete().catchError((_) {});
+          }
+        }
+      } catch (_) {}
     } catch (e) {
       debugPrint('ensurePrimaryAdminsSeeded notice: $e');
     }

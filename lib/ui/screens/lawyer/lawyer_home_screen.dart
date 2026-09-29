@@ -699,7 +699,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
                           Clipboard.setData(ClipboardData(text: accountId));
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('تم نسخ الـ ID الموحد (12 رقم) بنجاح',
+                              content: Text('تم نسخ ID الموحد (12 رقم) بنجاح',
                                   style: GoogleFonts.cairo(fontWeight: FontWeight.w700)),
                               backgroundColor: const Color(0xFF0B2A5B),
                               duration: const Duration(seconds: 2),
@@ -720,7 +720,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
                               const Icon(Icons.badge_rounded, color: Color(0xFFD49B1A), size: 13),
                               const SizedBox(width: 4),
                               Text(
-                                'الـ ID: ${AccountIdUtils.formatForDisplay(accountId)}',
+                                'ID: ${AccountIdUtils.formatForDisplay(accountId)}',
                                 style: GoogleFonts.cairo(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w700,

@@ -1515,7 +1515,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              'الـ ID: ${AccountIdUtils.formatForDisplay(_accountId!)}',
+                              'ID: ${AccountIdUtils.formatForDisplay(_accountId!)}',
                               style: GoogleFonts.cairo(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w800,
@@ -1535,7 +1535,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       children: [
                                         const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
                                         const SizedBox(width: 8),
-                                        Text('تم نسخ الـ ID الموحد (12 رقم) بنجاح', style: GoogleFonts.cairo(fontWeight: FontWeight.w700)),
+                                        Text('تم نسخ ID الموحد (12 رقم) بنجاح', style: GoogleFonts.cairo(fontWeight: FontWeight.w700)),
                                       ],
                                     ),
                                     duration: const Duration(seconds: 2),

@@ -3065,7 +3065,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                             onTap: () {
                                               Clipboard.setData(ClipboardData(text: a.accountId));
                                               ScaffoldMessenger.of(context).showSnackBar(
-                                                const SnackBar(content: Text('تم نسخ الـ ID بنجاح')),
+                                                const SnackBar(content: Text('تم نسخ ID بنجاح')),
                                               );
                                             },
                                             child: const Padding(
@@ -3084,7 +3084,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                           ),
                                           const SizedBox(width: 4),
                                           Text(
-                                            '🆔 الـ ID:',
+                                            '🆔 ID:',
                                             style: GoogleFonts.cairo(fontSize: 10.5, color: const Color(0xFF64748B), fontWeight: FontWeight.w600),
                                           ),
                                         ],
@@ -3122,12 +3122,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                     );
                                   },
                                   icon: Icon(
-                                    isPrimary && !isSelf ? Icons.lock_outline_rounded : Icons.key_rounded,
+                                    isPrimary ? Icons.lock_outline_rounded : Icons.key_rounded,
                                     size: 14,
                                     color: const Color(0xFFD49B1A),
                                   ),
                                   label: Text(
-                                    isPrimary ? (isSelf ? 'تغيير كلمة المرور' : 'محمي (ذاتي)') : 'كلمة السر',
+                                    isPrimary ? 'محمي (ذاتي)' : 'كلمة السر',
                                     style: GoogleFonts.cairo(fontSize: 11.5, fontWeight: FontWeight.w800),
                                   ),
                                   style: ElevatedButton.styleFrom(
@@ -3440,7 +3440,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
               ? 'ابحث في سجل المحامين بالاسم، الهاتف أو المدينة...'
               : (_directoryTabCategory == 1
                   ? 'ابحث في سجل المستخدمين بالاسم أو الهاتف...'
-                  : 'ابحث في سجل المشرفين بالاسم، الهاتف أو الـ ID...'),
+                  : 'ابحث في سجل المشرفين بالاسم، الهاتف أو ID...'),
           hintStyle: GoogleFonts.cairo(fontSize: 13, color: const Color(0xFF94A3B8)),
           prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFFD49B1A)),
           suffixIcon: _directorySearchQuery.isNotEmpty
@@ -4144,7 +4144,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                 onTap: () {
                                   Clipboard.setData(ClipboardData(text: a.accountId));
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('تم نسخ الـ ID بنجاح')),
+                                    const SnackBar(content: Text('تم نسخ ID بنجاح')),
                                   );
                                 },
                                 child: const Padding(
@@ -4163,7 +4163,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                               ),
                               const SizedBox(width: 4),
                               Text(
-                                '🆔 الـ ID:',
+                                '🆔 ID:',
                                 style: GoogleFonts.cairo(
                                   fontSize: 10.5,
                                   color: const Color(0xFF64748B),
