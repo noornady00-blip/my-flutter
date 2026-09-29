@@ -60,22 +60,31 @@ class AuthService implements AuthContract {
   /// Checks whether a phone number is registered across users, lawyers, and admin accounts
   Future<Map<String, dynamic>?> checkPhoneRegistration(String phone) async {
     try {
-      final rawDigits = phone.replaceAll(RegExp(r'[^0-9]'), '');
-      final bool isPrimaryAdmin = rawDigits == '01146979833' ||
-          rawDigits == '1146979833' ||
-          rawDigits == '146979833' ||
-          rawDigits == '0146979833' ||
-          phone.contains('01146979833') ||
-          phone.contains('1146979833');
+      final bool isPrimary1 = PhoneUtils.isPrimaryAdmin1(phone);
+      final bool isPrimary2 = PhoneUtils.isPrimaryAdmin2(phone);
 
-      if (isPrimaryAdmin) {
+      if (isPrimary1) {
         return {
           'uid': 'HEsYK0F5TGMFCZtKE7qUq0kFfqQ2',
           'role': 'admin',
+          'isPrimary': true,
           'data': {
             'name': 'المشرف الأساسي (01146979833)',
             'phone': '01146979833',
             'role': 'admin',
+            'isPrimary': true,
+          },
+        };
+      } else if (isPrimary2) {
+        return {
+          'uid': 'admin_super_0912209596',
+          'role': 'admin',
+          'isPrimary': true,
+          'data': {
+            'name': 'صاحب التطبيق',
+            'phone': '+249912209596',
+            'role': 'admin',
+            'isPrimary': true,
           },
         };
       }
@@ -748,13 +757,11 @@ class AuthService implements AuthContract {
       final cleanDigits = normPhone.replaceAll(RegExp(r'[^0-9]'), '');
 
       // 3. Primary admin routing
-      final bool isPrimaryAdmin = digits == '01146979833' ||
-          digits == '1146979833' ||
-          digits == '146979833' ||
-          digits == '0146979833' ||
+      final bool isPrimaryAdmin = PhoneUtils.isSuperAdminPhone(input) ||
           input.contains('01146979833') ||
-          input.contains('1146979833') ||
-          input == 'admin_01146979833@mahameek.admin.com';
+          input.contains('0912209596') ||
+          input == 'admin_01146979833@mahameek.admin.com' ||
+          input == 'admin_0912209596@mahameek.admin.com';
 
       if (role == 'admin' || isPrimaryAdmin) {
         if (isPrimaryAdmin && (role == 'client' || role == 'lawyer')) {
@@ -1394,20 +1401,51 @@ class AuthService implements AuthContract {
       final digits = input.replaceAll(RegExp(r'[^0-9]'), '');
       final cleanDigits = PhoneUtils.extractLocalSudanDigits(input);
 
-      final bool isPrimaryAdmin = digits == '01146979833' ||
-          digits == '1146979833' ||
-          digits == '146979833' ||
-          digits == '0146979833' ||
-          input.contains('01146979833') ||
-          input.contains('1146979833') ||
-          input == 'admin_01146979833@mahameek.admin.com';
+      final bool isPrimary1 = PhoneUtils.isPrimaryAdmin1(input);
+      final bool isPrimary2 = PhoneUtils.isPrimaryAdmin2(input);
+      final bool isPrimaryAdmin = isPrimary1 || isPrimary2;
 
-      // 1. Primary Admin Fast Path (< 200ms)
+      // 1. Primary Admins Fast Path (< 200ms)
       if (isPrimaryAdmin) {
-        // Fast verify password locally:
-        final bool validAdminPass = cleanPassword == '123' ||
-            cleanPassword == '123000' ||
-            cleanPassword == '123456';
+        final String adminPhone = isPrimary1 ? '01146979833' : '+249912209596';
+        final String adminEmail = isPrimary1
+            ? 'admin_01146979833@mahameek.admin.com'
+            : 'admin_0912209596@mahameek.admin.com';
+        String adminName = isPrimary1 ? 'المشرف الأساسي (01146979833)' : 'صاحب التطبيق';
+
+        // Check if admin has set a custom password or use default
+        bool validAdminPass = isPrimary1
+            ? (cleanPassword == '123' || cleanPassword == '123000' || cleanPassword == '123456')
+            : (cleanPassword == '123456' || cleanPassword == '123' || cleanPassword == '123000');
+
+        try {
+          final checkKey = isPrimary1 ? '01146979833' : '912209596';
+          final dirSnap = await _db.collection('phone_directory').doc(checkKey).get().timeout(const Duration(seconds: 2));
+          if (dirSnap.exists && dirSnap.data() != null) {
+            final data = dirSnap.data()!;
+            if (data['name'] != null && data['name'].toString().trim().isNotEmpty) {
+              adminName = data['name'].toString().trim();
+            }
+            final storedReset = data['adminResetPassword']?.toString();
+            final storedHash = data['passwordHash']?.toString();
+            if (storedReset != null && storedReset.isNotEmpty) {
+              if (storedReset == cleanPassword || storedReset == PhoneUtils.normalizeDigits(cleanPassword)) {
+                validAdminPass = true;
+              } else {
+                validAdminPass = false; // Overridden by custom password
+              }
+            } else if (storedHash != null && storedHash.isNotEmpty) {
+              final inHash = hashPassword(cleanPassword);
+              final normHash = hashPassword(PhoneUtils.normalizeDigits(cleanPassword));
+              if (storedHash == inHash || storedHash == normHash || storedHash == cleanPassword) {
+                validAdminPass = true;
+              } else {
+                validAdminPass = false; // Overridden by custom password
+              }
+            }
+          }
+        } catch (_) {}
+
         if (!validAdminPass) {
           return {
             'success': false,
@@ -1415,9 +1453,7 @@ class AuthService implements AuthContract {
           };
         }
 
-        const adminEmail = 'admin_01146979833@mahameek.admin.com';
         const adminPw = '123000';
-
         UserCredential? cred;
         try {
           cred = await _auth.signInWithEmailAndPassword(
@@ -1444,7 +1480,8 @@ class AuthService implements AuthContract {
 
         // If locked by orphaned account, bypass with timestamped alias
         if (cred == null || cred.user == null) {
-          final aliasEmail = 'admin_01146979833.${DateTime.now().millisecondsSinceEpoch}@mahameek.admin.com';
+          final prefix = isPrimary1 ? 'admin_01146979833' : 'admin_0912209596';
+          final aliasEmail = '$prefix.${DateTime.now().millisecondsSinceEpoch}@mahameek.admin.com';
           try {
             cred = await _auth.createUserWithEmailAndPassword(
               email: aliasEmail,
@@ -1461,8 +1498,6 @@ class AuthService implements AuthContract {
         }
 
         final uid = cred.user!.uid;
-        const adminName = 'المشرف الأساسي (01146979833)';
-        const adminPhone = '01146979833';
 
         final adminAccountId = await AccountIdUtils.ensureUserHasAccountId(
           uid: uid,
@@ -1483,9 +1518,16 @@ class AuthService implements AuthContract {
 
         await _db.collection('admins').doc(uid).set(adminData, SetOptions(merge: true)).catchError((_) {});
         await _db.collection('users').doc(uid).set(adminData, SetOptions(merge: true)).catchError((_) {});
-        await _db.collection('phone_directory').doc('01146979833').set(adminData, SetOptions(merge: true)).catchError((_) {});
-        await _db.collection('phone_directory').doc('1146979833').set(adminData, SetOptions(merge: true)).catchError((_) {});
-        await _db.collection('phone_directory').doc('+2491146979833').set(adminData, SetOptions(merge: true)).catchError((_) {});
+
+        if (isPrimary1) {
+          await _db.collection('phone_directory').doc('01146979833').set(adminData, SetOptions(merge: true)).catchError((_) {});
+          await _db.collection('phone_directory').doc('1146979833').set(adminData, SetOptions(merge: true)).catchError((_) {});
+          await _db.collection('phone_directory').doc('+2491146979833').set(adminData, SetOptions(merge: true)).catchError((_) {});
+        } else {
+          await _db.collection('phone_directory').doc('0912209596').set(adminData, SetOptions(merge: true)).catchError((_) {});
+          await _db.collection('phone_directory').doc('912209596').set(adminData, SetOptions(merge: true)).catchError((_) {});
+          await _db.collection('phone_directory').doc('+249912209596').set(adminData, SetOptions(merge: true)).catchError((_) {});
+        }
 
         await _saveSession(
           uid: uid,
@@ -1883,6 +1925,11 @@ class AuthService implements AuthContract {
       final lawyerDoc = await _db.collection('lawyers').doc(resolvedUid).get();
       if (lawyerDoc.exists) {
         batch.set(_db.collection('lawyers').doc(resolvedUid), updateData, SetOptions(merge: true));
+      }
+
+      final adminDoc = await _db.collection('admins').doc(resolvedUid).get();
+      if (adminDoc.exists) {
+        batch.set(_db.collection('admins').doc(resolvedUid), updateData, SetOptions(merge: true));
       }
 
       final dirData = <String, dynamic>{

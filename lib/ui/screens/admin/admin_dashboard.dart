@@ -68,8 +68,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
           .replaceAll('@mahameek.lawyer.com', '');
       if (clean.isNotEmpty) return clean;
     }
-    return '01146979833';
+    return '';
   }
+
+  bool get _isCurrentAdminSuperAdmin => PhoneUtils.isSuperAdminPhone(_displayAdminPhone);
 
   StreamSubscription? _supportMessagesSub;
   StreamSubscription? _passwordResetsSub;
@@ -110,7 +112,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
       setState(() => _directorySearchQuery = _directorySearchCtrl.text.trim().toLowerCase());
     });
 
-    // 1. Initialize admin credentials immediately from cached user
+    // 1. Initialize admin credentials immediately from cached user & session
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       _currentAdminEmail = user.email ?? 'المشرف';
@@ -121,6 +123,17 @@ class _AdminDashboardState extends State<AdminDashboard> {
             .replaceAll('@mahameek.lawyer.com', '');
       }
     }
+
+    _authService.getSavedSession().then((session) {
+      if (mounted && (session['phone'] ?? '').isNotEmpty) {
+        setState(() {
+          _currentAdminPhone = session['phone']!;
+          if ((session['email'] ?? '').isNotEmpty) {
+            _currentAdminEmail = session['email']!;
+          }
+        });
+      }
+    });
 
     // 2. Immediately enable all push notification channels and start real-time Firestore listeners (Zero Lag)
     NotificationService().enableAllNotifications(adminUid: user?.uid);
@@ -2217,21 +2230,25 @@ class _AdminDashboardState extends State<AdminDashboard> {
           ),
           const SizedBox(height: 12),
 
-          // Search Input
-          _buildAccountsSearchInput(),
-          const SizedBox(height: 10),
+          if (_accountsTabCategory == 2 && !_isCurrentAdminSuperAdmin)
+            _buildSuperAdminOnlyPlaceholder()
+          else ...[
+            // Search Input
+            _buildAccountsSearchInput(),
+            const SizedBox(height: 10),
 
-          // Status Filter Chips
-          _buildStatusFilterRow(),
-          const SizedBox(height: 14),
+            // Status Filter Chips
+            _buildStatusFilterRow(),
+            const SizedBox(height: 14),
 
-          // Account List Stream
-          if (_accountsTabCategory == 0)
-            _buildLawyersAccountsList()
-          else if (_accountsTabCategory == 1)
-            _buildClientsAccountsList()
-          else
-            _buildAdminsAccountsList(),
+            // Account List Stream
+            if (_accountsTabCategory == 0)
+              _buildLawyersAccountsList()
+            else if (_accountsTabCategory == 1)
+              _buildClientsAccountsList()
+            else
+              _buildAdminsAccountsList(),
+          ],
         ],
       ),
     );
@@ -2340,118 +2357,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  Widget _buildCategorySegment({
-    required String firstLabel,
-    required String secondLabel,
-    required IconData firstIcon,
-    required IconData secondIcon,
-    required int selectedIndex,
-    required ValueChanged<int> onChanged,
-  }) {
-    return GlassContainer(
-      borderRadius: 16,
-      blur: 0,
-      backgroundColor: const Color(0xFFF1F5F9),
-      borderColor: const Color(0xFFE2E8F0),
-      padding: const EdgeInsets.all(4),
-      shadows: [
-        BoxShadow(
-          color: const Color(0xFF0F172A).withValues(alpha: 0.02),
-          blurRadius: 6,
-          offset: const Offset(0, 2),
-        ),
-      ],
-      child: Row(
-        children: [
-          Expanded(
-            child: InkWell(
-              onTap: () => onChanged(0),
-              borderRadius: BorderRadius.circular(12),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(vertical: 9),
-                decoration: BoxDecoration(
-                  color: selectedIndex == 0 ? Colors.white : Colors.transparent,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: selectedIndex == 0
-                      ? [
-                          BoxShadow(
-                            color: const Color(0xFF0F172A).withValues(alpha: 0.06),
-                            blurRadius: 6,
-                            offset: const Offset(0, 2),
-                          ),
-                        ]
-                      : null,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      firstIcon,
-                      size: 18,
-                      color: selectedIndex == 0 ? const Color(0xFFD49B1A) : const Color(0xFF94A3B8),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      firstLabel,
-                      style: GoogleFonts.cairo(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w800,
-                        color: selectedIndex == 0 ? const Color(0xFF0B2A5B) : const Color(0xFF64748B),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 4),
-          Expanded(
-            child: InkWell(
-              onTap: () => onChanged(1),
-              borderRadius: BorderRadius.circular(12),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(vertical: 9),
-                decoration: BoxDecoration(
-                  color: selectedIndex == 1 ? Colors.white : Colors.transparent,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: selectedIndex == 1
-                      ? [
-                          BoxShadow(
-                            color: const Color(0xFF0F172A).withValues(alpha: 0.06),
-                            blurRadius: 6,
-                            offset: const Offset(0, 2),
-                          ),
-                        ]
-                      : null,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      secondIcon,
-                      size: 18,
-                      color: selectedIndex == 1 ? const Color(0xFF3B82F6) : const Color(0xFF94A3B8),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      secondLabel,
-                      style: GoogleFonts.cairo(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w800,
-                        color: selectedIndex == 1 ? const Color(0xFF0B2A5B) : const Color(0xFF64748B),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+
 
   Widget _buildAccountsSearchInput() {
     return GlassContainer(
@@ -3063,7 +2969,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 itemBuilder: (context, index) {
                   final a = admins[index];
                   final bool isSuspended = a.isSuspended;
-                  final bool isPrimary = a.phone == '01146979833' || a.phone == '1146979833';
+                  final bool isPrimary = PhoneUtils.isSuperAdminPhone(a.phone) || a.isPrimary;
+                  final bool isSelf = PhoneUtils.isSameAdminPhone(_displayAdminPhone, a.phone);
 
                   return Container(
                     decoration: BoxDecoration(
@@ -3118,7 +3025,25 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                         ),
-                                        const AccountRoleBadge(role: 'admin'),
+                                        if (isPrimary)
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFFFFBEB),
+                                              borderRadius: BorderRadius.circular(6),
+                                              border: Border.all(color: const Color(0xFFFDE68A)),
+                                            ),
+                                            child: Text(
+                                              'مشرف أساسي',
+                                              style: GoogleFonts.cairo(
+                                                fontSize: 10.5,
+                                                fontWeight: FontWeight.w800,
+                                                color: const Color(0xFFD97706),
+                                              ),
+                                            ),
+                                          )
+                                        else
+                                          const AccountRoleBadge(role: 'admin'),
                                       ],
                                     ),
                                     const SizedBox(height: 2),
@@ -3139,7 +3064,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                             onTap: () {
                                               Clipboard.setData(ClipboardData(text: a.accountId));
                                               ScaffoldMessenger.of(context).showSnackBar(
-                                                const SnackBar(content: Text('تم نسخ المعرّف بنجاح')),
+                                                const SnackBar(content: Text('تم نسخ الـ ID بنجاح')),
                                               );
                                             },
                                             child: const Padding(
@@ -3156,6 +3081,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                               letterSpacing: 0.6,
                                             ),
                                           ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            '🆔 الـ ID:',
+                                            style: GoogleFonts.cairo(fontSize: 10.5, color: const Color(0xFF64748B), fontWeight: FontWeight.w600),
+                                          ),
                                         ],
                                       ),
                                     ],
@@ -3171,10 +3101,32 @@ class _AdminDashboardState extends State<AdminDashboard> {
                             children: [
                               Expanded(
                                 child: ElevatedButton.icon(
-                                  onPressed: () => _showAccountActionModal(context, client: a),
-                                  icon: const Icon(Icons.key_rounded, size: 14, color: Color(0xFFD49B1A)),
+                                  onPressed: () {
+                                    if (isPrimary && !isSelf) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            'لا يمكن تعديل كلمة سر المشرف الأساسي إلا بواسطة صاحب الحساب نفسه',
+                                            style: GoogleFonts.cairo(fontWeight: FontWeight.w700),
+                                          ),
+                                          backgroundColor: const Color(0xFF0B2A5B),
+                                        ),
+                                      );
+                                      return;
+                                    }
+                                    _showAdminResetPasswordDialog(
+                                      phone: a.phone,
+                                      name: a.name,
+                                      targetUid: a.uid,
+                                    );
+                                  },
+                                  icon: Icon(
+                                    isPrimary && !isSelf ? Icons.lock_outline_rounded : Icons.key_rounded,
+                                    size: 14,
+                                    color: const Color(0xFFD49B1A),
+                                  ),
                                   label: Text(
-                                    'كلمة السر',
+                                    isPrimary ? (isSelf ? 'تغيير كلمة المرور' : 'محمي (ذاتي)') : 'كلمة السر',
                                     style: GoogleFonts.cairo(fontSize: 11.5, fontWeight: FontWeight.w800),
                                   ),
                                   style: ElevatedButton.styleFrom(
@@ -3185,7 +3137,35 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                   ),
                                 ),
                               ),
-                              if (!isPrimary) ...[
+                              if (isPrimary) ...[
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(vertical: 6),
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFF1F5F9),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        const Icon(Icons.verified_user_rounded, size: 14, color: Color(0xFFD49B1A)),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'مشرف أساسي محمي',
+                                          style: GoogleFonts.cairo(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            color: const Color(0xFF0B2A5B),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ] else ...[
                                 const SizedBox(width: 6),
                                 Expanded(
                                   child: OutlinedButton.icon(
@@ -3248,6 +3228,19 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   void _showAddAdminModal(BuildContext context) {
+    if (!_isCurrentAdminSuperAdmin) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'هذه الصلاحية مخصصة للأدمن الأساسي فقط',
+            style: GoogleFonts.cairo(fontWeight: FontWeight.w700),
+          ),
+          backgroundColor: const Color(0xFF0B2A5B),
+        ),
+      );
+      return;
+    }
+
     final nameCtrl = TextEditingController();
     final phoneCtrl = TextEditingController();
     final passCtrl = TextEditingController(text: '123456');
@@ -3396,33 +3389,34 @@ class _AdminDashboardState extends State<AdminDashboard> {
           _buildSectionHeader(title: 'سجل وإحصائيات المسجلين بالتطبيق'),
           const SizedBox(height: 12),
 
-          // Category Switcher (محامين | مستخدمين)
-          _buildCategorySegment(
-            firstLabel: 'محامين',
-            secondLabel: 'مستخدمين',
-            firstIcon: Icons.gavel_rounded,
-            secondIcon: Icons.people_rounded,
-            selectedIndex: _directoryTabCategory,
-            onChanged: (idx) => setState(() => _directoryTabCategory = idx),
-          ),
+          // Category Switcher (محامين | مستخدمين | المشرفين)
+          _buildDirectoryCategorySegment(),
           const SizedBox(height: 14),
 
-          // Live Ledger Metrics Row
-          if (_directoryTabCategory == 0)
-            _buildLawyersLedgerMetrics()
-          else
-            _buildClientsLedgerMetrics(),
-          const SizedBox(height: 14),
+          if (_directoryTabCategory == 2 && !_isCurrentAdminSuperAdmin)
+            _buildSuperAdminOnlyPlaceholder()
+          else ...[
+            // Live Ledger Metrics Row
+            if (_directoryTabCategory == 0)
+              _buildLawyersLedgerMetrics()
+            else if (_directoryTabCategory == 1)
+              _buildClientsLedgerMetrics()
+            else
+              _buildAdminsLedgerMetrics(),
+            const SizedBox(height: 14),
 
-          // Search Input
-          _buildDirectorySearchInput(),
-          const SizedBox(height: 14),
+            // Search Input
+            _buildDirectorySearchInput(),
+            const SizedBox(height: 14),
 
-          // Directory List
-          if (_directoryTabCategory == 0)
-            _buildLawyersDirectoryList()
-          else
-            _buildClientsDirectoryList(),
+            // Directory List
+            if (_directoryTabCategory == 0)
+              _buildLawyersDirectoryList()
+            else if (_directoryTabCategory == 1)
+              _buildClientsDirectoryList()
+            else
+              _buildAdminsDirectoryList(),
+          ],
         ],
       ),
     );
@@ -3443,7 +3437,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
         decoration: InputDecoration(
           hintText: _directoryTabCategory == 0
               ? 'ابحث في سجل المحامين بالاسم، الهاتف أو المدينة...'
-              : 'ابحث في سجل المستخدمين بالاسم أو الهاتف...',
+              : (_directoryTabCategory == 1
+                  ? 'ابحث في سجل المستخدمين بالاسم أو الهاتف...'
+                  : 'ابحث في سجل المشرفين بالاسم، الهاتف أو الـ ID...'),
           hintStyle: GoogleFonts.cairo(fontSize: 13, color: const Color(0xFF94A3B8)),
           prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFFD49B1A)),
           suffixIcon: _directorySearchQuery.isNotEmpty
@@ -3931,6 +3927,352 @@ class _AdminDashboardState extends State<AdminDashboard> {
           },
         );
       },
+    );
+  }
+
+  Widget _buildDirectoryCategorySegment() {
+    return GlassContainer(
+      borderRadius: 16,
+      blur: 0,
+      backgroundColor: const Color(0xFFF1F5F9),
+      borderColor: const Color(0xFFE2E8F0),
+      padding: const EdgeInsets.all(4),
+      shadows: [
+        BoxShadow(
+          color: const Color(0xFF0F172A).withValues(alpha: 0.02),
+          blurRadius: 6,
+          offset: const Offset(0, 2),
+        ),
+      ],
+      child: Row(
+        children: [
+          _buildAccountsSegmentTabItem(
+            index: 0,
+            label: 'محامين',
+            icon: Icons.gavel_rounded,
+            color: const Color(0xFFD49B1A),
+            selectedIndex: _directoryTabCategory,
+            onChanged: (idx) => setState(() => _directoryTabCategory = idx),
+          ),
+          const SizedBox(width: 4),
+          _buildAccountsSegmentTabItem(
+            index: 1,
+            label: 'مستخدمين',
+            icon: Icons.people_rounded,
+            color: const Color(0xFF3B82F6),
+            selectedIndex: _directoryTabCategory,
+            onChanged: (idx) => setState(() => _directoryTabCategory = idx),
+          ),
+          const SizedBox(width: 4),
+          _buildAccountsSegmentTabItem(
+            index: 2,
+            label: 'المشرفين',
+            icon: Icons.shield_rounded,
+            color: const Color(0xFF0B2A5B),
+            selectedIndex: _directoryTabCategory,
+            onChanged: (idx) => setState(() => _directoryTabCategory = idx),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAdminsLedgerMetrics() {
+    return StreamBuilder<List<UserModel>>(
+      stream: _firestoreService.getAllAdmins(),
+      builder: (context, snap) {
+        final admins = snap.data ?? [];
+        final total = admins.length;
+        final active = admins.where((a) => !a.isSuspended).length;
+        final suspended = admins.where((a) => a.isSuspended).length;
+
+        return Column(
+          children: [
+            Row(
+              children: [
+                Expanded(child: _buildMetricMiniCard('إجمالي المشرفين', '$total', const Color(0xFF0B2A5B), Icons.shield_rounded)),
+                const SizedBox(width: 10),
+                Expanded(child: _buildMetricMiniCard('مشرف نشط', '$active', const Color(0xFF10B981), Icons.check_circle_rounded)),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(child: _buildMetricMiniCard('مشرف موقف', '$suspended', const Color(0xFFE11D48), Icons.block_rounded)),
+                const SizedBox(width: 10),
+                const Expanded(child: SizedBox()),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildAdminsDirectoryList() {
+    return StreamBuilder<List<UserModel>>(
+      stream: _firestoreService.getAllAdmins(),
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator(color: Color(0xFFD49B1A)));
+        }
+        var admins = snap.data ?? [];
+
+        if (_directorySearchQuery.isNotEmpty) {
+          admins = admins.where((a) {
+            return AppSearchUtils.matchesAny(_directorySearchQuery, [
+              a.name,
+              a.phone,
+              a.accountId,
+            ]);
+          }).toList();
+        }
+
+        if (admins.isEmpty) {
+          return _buildEmptyPlaceholder(
+            icon: Icons.shield_outlined,
+            title: 'لا يوجد مشرفين في السجل',
+            color: const Color(0xFF0B2A5B),
+          );
+        }
+
+        return ListView.separated(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: admins.length,
+          separatorBuilder: (context, index) => const SizedBox(height: 12),
+          itemBuilder: (context, index) {
+            final a = admins[index];
+            final bool isPrimary = PhoneUtils.isSuperAdminPhone(a.phone) || a.isPrimary;
+            final bool isSuspended = a.isSuspended;
+
+            return GlassContainer(
+              padding: const EdgeInsets.all(15),
+              borderRadius: BorderRadius.circular(18),
+              borderWidth: 1.2,
+              borderColor: isSuspended
+                  ? const Color(0xFFFDA4AF)
+                  : const Color(0xFFE2E8F0),
+              backgroundColor: Colors.white,
+              shadowBlur: 10,
+              shadowOffset: const Offset(0, 3),
+              shadowColor: const Color(0xFF0B2A5B).withValues(alpha: 0.035),
+              child: Row(
+                textDirection: TextDirection.rtl,
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: const Color(0xFF0B2A5B),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF0B2A5B).withValues(alpha: 0.2),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: const Center(
+                      child: Icon(Icons.shield_rounded, color: Color(0xFFD49B1A), size: 24),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                a.name.isNotEmpty ? a.name : 'مشرف النظام',
+                                style: GoogleFonts.cairo(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w800,
+                                  color: const Color(0xFF0B2A5B),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                              decoration: BoxDecoration(
+                                color: isSuspended
+                                    ? const Color(0xFFFFF1F2)
+                                    : (isPrimary ? const Color(0xFFFFFBEB) : const Color(0xFFECFDF5)),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                  color: isSuspended
+                                      ? const Color(0xFFFDA4AF)
+                                      : (isPrimary ? const Color(0xFFFDE68A) : const Color(0xFFA7F3D0)),
+                                ),
+                              ),
+                              child: Text(
+                                isSuspended
+                                    ? 'موقف'
+                                    : (isPrimary ? 'مشرف أساسي' : 'مشرف نشط'),
+                                style: GoogleFonts.cairo(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  color: isSuspended
+                                      ? const Color(0xFFE11D48)
+                                      : (isPrimary ? const Color(0xFFD97706) : const Color(0xFF059669)),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '📞 ${PhoneUtils.formatForDisplay(a.phone)}',
+                          textDirection: TextDirection.ltr,
+                          style: GoogleFonts.cairo(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF64748B),
+                          ),
+                        ),
+                        if (a.accountId.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              InkWell(
+                                onTap: () {
+                                  Clipboard.setData(ClipboardData(text: a.accountId));
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('تم نسخ الـ ID بنجاح')),
+                                  );
+                                },
+                                child: const Padding(
+                                  padding: EdgeInsets.symmetric(horizontal: 4),
+                                  child: Icon(Icons.copy_rounded, size: 12, color: Color(0xFFD49B1A)),
+                                ),
+                              ),
+                              Text(
+                                AccountIdUtils.format12Digits(a.accountId),
+                                style: GoogleFonts.sourceCodePro(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: const Color(0xFF0B2A5B),
+                                  letterSpacing: 0.6,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '🆔 الـ ID:',
+                                style: GoogleFonts.cairo(
+                                  fontSize: 10.5,
+                                  color: const Color(0xFF64748B),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildSuperAdminOnlyPlaceholder() {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 20, horizontal: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 36),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0B2A5B).withValues(alpha: 0.04),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF0B2A5B), Color(0xFF1E3A8A)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF0B2A5B).withValues(alpha: 0.25),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: const Center(
+              child: Icon(Icons.lock_person_rounded, size: 40, color: Color(0xFFD49B1A)),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            'هذه الصفحة مخصصة للأدمن الأساسي فقط',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.cairo(
+              fontSize: 17,
+              fontWeight: FontWeight.w900,
+              color: const Color(0xFF0B2A5B),
+              height: 1.3,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'عذراً، الوصول إلى سجل المشرفين وإدارة حساباتهم محصور حصرياً بالمشرفين الأساسيين للنظام.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.cairo(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF64748B),
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 20),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.shield_outlined, size: 15, color: Color(0xFFD49B1A)),
+                const SizedBox(width: 6),
+                Text(
+                  'صلاحيات إدارية خاصة',
+                  style: GoogleFonts.cairo(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF0B2A5B),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 

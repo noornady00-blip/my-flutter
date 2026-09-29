@@ -5,6 +5,7 @@
 // ==============================================================================
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../core/utils/phone_utils.dart';
 
 /// Application user model representing clients, lawyers, and administrators.
 class UserModel {
@@ -16,6 +17,7 @@ class UserModel {
   final String accountId; // 12-digit fixed unique identifier
   final String? photoUrl;
   final String? photoBase64;
+  final bool isPrimary;
   final DateTime createdAt;
 
   UserModel({
@@ -27,6 +29,7 @@ class UserModel {
     this.accountId = '',
     this.photoUrl,
     this.photoBase64,
+    this.isPrimary = false,
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
 
@@ -61,15 +64,18 @@ class UserModel {
             ? rawPhoto
             : null);
 
+    final userPhone = map['phone']?.toString() ?? '';
+
     return UserModel(
       uid: id,
       name: map['name']?.toString() ?? '',
-      phone: map['phone']?.toString() ?? '',
+      phone: userPhone,
       role: map['role']?.toString() ?? 'client',
       status: map['status']?.toString() ?? 'active',
       accountId: map['accountId']?.toString() ?? map['memberId']?.toString() ?? '',
       photoUrl: rawPhotoUrl,
       photoBase64: rawPhotoBase64,
+      isPrimary: map['isPrimary'] == true || PhoneUtils.isSuperAdminPhone(userPhone),
       createdAt: (map['createdAt'] is Timestamp)
           ? (map['createdAt'] as Timestamp).toDate()
           : (map['createdAt'] != null
@@ -88,6 +94,7 @@ class UserModel {
       if (accountId.isNotEmpty) 'accountId': accountId,
       if (photoUrl != null) 'photoUrl': photoUrl,
       if (photoBase64 != null) 'photoBase64': photoBase64,
+      'isPrimary': isPrimary,
       'createdAt': Timestamp.fromDate(createdAt),
     };
   }
@@ -102,20 +109,23 @@ class UserModel {
       if (accountId.isNotEmpty) 'accountId': accountId,
       if (photoUrl != null) 'photoUrl': photoUrl,
       if (photoBase64 != null) 'photoBase64': photoBase64,
+      'isPrimary': isPrimary,
       'createdAt': createdAt.toIso8601String(),
     };
   }
 
   factory UserModel.fromJsonMap(Map<String, dynamic> map) {
+    final userPhone = map['phone']?.toString() ?? '';
     return UserModel(
       uid: map['uid']?.toString() ?? '',
       name: map['name']?.toString() ?? '',
-      phone: map['phone']?.toString() ?? '',
+      phone: userPhone,
       role: map['role']?.toString() ?? 'client',
       status: map['status']?.toString() ?? 'active',
       accountId: map['accountId']?.toString() ?? map['memberId']?.toString() ?? '',
       photoUrl: map['photoUrl']?.toString(),
       photoBase64: map['photoBase64']?.toString(),
+      isPrimary: map['isPrimary'] == true || PhoneUtils.isSuperAdminPhone(userPhone),
       createdAt: map['createdAt'] != null
           ? (DateTime.tryParse(map['createdAt'].toString()) ?? DateTime.now())
           : DateTime.now(),
@@ -134,6 +144,7 @@ class UserModel {
     String? accountId,
     String? photoUrl,
     String? photoBase64,
+    bool? isPrimary,
     DateTime? createdAt,
   }) {
     return UserModel(
@@ -145,6 +156,7 @@ class UserModel {
       accountId: accountId ?? this.accountId,
       photoUrl: photoUrl ?? this.photoUrl,
       photoBase64: photoBase64 ?? this.photoBase64,
+      isPrimary: isPrimary ?? this.isPrimary,
       createdAt: createdAt ?? this.createdAt,
     );
   }

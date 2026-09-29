@@ -64,6 +64,63 @@ class PhoneUtils {
     return digits;
   }
 
+  /// التحقق مما إذا كان الرقم يعود لأحد المشرفين الأساسيين (الأدمن 1: 01146979833 أو الأدمن 2: 912209596 / +249912209596)
+  static bool isSuperAdminPhone(String? phone) {
+    if (phone == null || phone.trim().isEmpty) return false;
+    final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) return false;
+
+    // المشرف الأساسي 1: 01146979833
+    final bool isAdmin1 = digits.endsWith('1146979833') ||
+        digits == '01146979833' ||
+        digits == '1146979833' ||
+        digits == '0146979833' ||
+        digits == '146979833';
+
+    // المشرف الأساسي 2: 91 220 9596 (0912209596 / +249912209596)
+    final bool isAdmin2 = digits.endsWith('912209596') ||
+        digits == '912209596' ||
+        digits == '0912209596' ||
+        digits == '249912209596';
+
+    return isAdmin1 || isAdmin2;
+  }
+
+  /// التحقق مما إذا كان الرقم هو المشرف الأساسي الأول (01146979833)
+  static bool isPrimaryAdmin1(String? phone) {
+    if (phone == null || phone.trim().isEmpty) return false;
+    final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    return digits.endsWith('1146979833') ||
+        digits == '01146979833' ||
+        digits == '1146979833' ||
+        digits == '0146979833' ||
+        digits == '146979833';
+  }
+
+  /// التحقق مما إذا كان الرقم هو المشرف الأساسي الثاني (0912209596 / +249912209596)
+  static bool isPrimaryAdmin2(String? phone) {
+    if (phone == null || phone.trim().isEmpty) return false;
+    final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    return digits.endsWith('912209596') ||
+        digits == '912209596' ||
+        digits == '0912209596' ||
+        digits == '249912209596';
+  }
+
+  /// التحقق مما إذا كان الرقمان يعودان لنفس المشرف
+  static bool isSameAdminPhone(String? phone1, String? phone2) {
+    if (phone1 == null || phone2 == null) return false;
+    final d1 = extractLocalSudanDigits(phone1);
+    final d2 = extractLocalSudanDigits(phone2);
+    if (d1.isNotEmpty && d2.isNotEmpty && d1 == d2) return true;
+    final c1 = phone1.replaceAll(RegExp(r'[^0-9]'), '');
+    final c2 = phone2.replaceAll(RegExp(r'[^0-9]'), '');
+    if (c1.isNotEmpty && c2.isNotEmpty && (c1 == c2 || c1.endsWith(c2) || c2.endsWith(c1))) {
+      return true;
+    }
+    return false;
+  }
+
   /// تحويل أي رقم سوداني مدخل إلى الصيغة القياسية الدولية (+2499XXXXXXXX أو 2499XXXXXXXX)
   /// أمثلة:
   /// - 0912345678     -> +249912345678 (أو 249912345678 إذا كان withPlus = false)

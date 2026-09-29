@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -39,6 +40,9 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
 
   String _searchQuery = '';
   late String _activeFilter; // 'all', 'lawyers', 'clients', 'suspended'
+  String _currentAdminPhone = '';
+
+  bool get _isCurrentAdminSuperAdmin => PhoneUtils.isSuperAdminPhone(_currentAdminPhone);
 
   @override
   void initState() {
@@ -46,6 +50,21 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
     _activeFilter = widget.initialFilter ?? 'all';
     _searchCtrl.addListener(() {
       setState(() => _searchQuery = _searchCtrl.text.trim().toLowerCase());
+    });
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user?.email != null) {
+      _currentAdminPhone = user!.email!
+          .replaceAll('@mahameek.admin.com', '')
+          .replaceAll('@mahameek.client.com', '')
+          .replaceAll('@mahameek.lawyer.com', '');
+    }
+    _authService.getSavedSession().then((session) {
+      if (mounted && (session['phone'] ?? '').isNotEmpty) {
+        setState(() {
+          _currentAdminPhone = session['phone']!;
+        });
+      }
     });
   }
 
@@ -181,6 +200,9 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
   // ADD ADMIN BUTTON
   // ─────────────────────────────────────────────────────────────
   Widget _buildAddAdminButton() {
+    if (!_isCurrentAdminSuperAdmin) {
+      return const SizedBox.shrink();
+    }
     return Container(
       decoration: BoxDecoration(
         gradient: const LinearGradient(
@@ -270,9 +292,9 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
   }) {
     final suspendedLawyers = lawyers.where((l) => l.isSuspended).length;
     final suspendedClients = clients.where((c) => c.isSuspended).length;
-    final suspendedAdmins = admins.where((a) => a.isSuspended).length;
+    final suspendedAdmins = _isCurrentAdminSuperAdmin ? admins.where((a) => a.isSuspended).length : 0;
     final totalSuspended = suspendedLawyers + suspendedClients + suspendedAdmins;
-    final totalAll = lawyers.length + clients.length + admins.length;
+    final totalAll = lawyers.length + clients.length + (_isCurrentAdminSuperAdmin ? admins.length : 0);
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -281,8 +303,10 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
       child: Row(
         children: [
           _buildChip('all', 'الكل ($totalAll)'),
-          const SizedBox(width: 8),
-          _buildChip('admins', 'المشرفون (${admins.length})'),
+          if (_isCurrentAdminSuperAdmin) ...[
+            const SizedBox(width: 8),
+            _buildChip('admins', 'المشرفون (${admins.length})'),
+          ],
           const SizedBox(width: 8),
           _buildChip('lawyers', 'المحامون (${lawyers.length})'),
           const SizedBox(width: 8),
@@ -347,10 +371,11 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
   }) {
     final activeLawyers = lawyers.where((l) => l.isApproved).length;
     final activeClients = clients.where((c) => c.isActive).length;
-    final activeAdmins = admins.where((a) => !a.isSuspended).length;
+    final activeAdmins = _isCurrentAdminSuperAdmin ? admins.where((a) => !a.isSuspended).length : 0;
     final suspendedLawyers = lawyers.where((l) => l.isSuspended).length;
     final suspendedClients = clients.where((c) => c.isSuspended).length;
-    final suspendedAdmins = admins.where((a) => a.isSuspended).length;
+    final suspendedAdmins = _isCurrentAdminSuperAdmin ? admins.where((a) => a.isSuspended).length : 0;
+    final totalAdmins = _isCurrentAdminSuperAdmin ? admins.length : 0;
 
     return Row(
       children: [
@@ -377,7 +402,7 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
         Expanded(
           child: _buildMiniStat(
             title: 'إجمالي المسجلين',
-            count: lawyers.length + clients.length + admins.length,
+            count: lawyers.length + clients.length + totalAdmins,
             color: const Color(0xFF0B2A5B),
             bg: const Color(0xFFF1F5F9),
             icon: Icons.groups_rounded,
@@ -436,9 +461,16 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
     required List<UserModel> clients,
     required List<UserModel> admins,
   }) {
-    // 1. Filter Admins
+    // If not super admin and viewing admins tab:
+    if (!_isCurrentAdminSuperAdmin && _activeFilter == 'admins') {
+      return SliverToBoxAdapter(
+        child: _buildSuperAdminOnlyPlaceholder(),
+      );
+    }
+
+    // 1. Filter Admins (Only for Super Admins)
     List<UserModel> filteredAdmins = [];
-    if (_activeFilter == 'all' || _activeFilter == 'admins' || _activeFilter == 'suspended') {
+    if (_isCurrentAdminSuperAdmin && (_activeFilter == 'all' || _activeFilter == 'admins' || _activeFilter == 'suspended')) {
       filteredAdmins = admins.where((a) {
         if (_activeFilter == 'suspended' && !a.isSuspended) return false;
         return AppSearchUtils.matchesAny(_searchQuery, [
@@ -1037,7 +1069,8 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
   // ─────────────────────────────────────────────────────────────
   Widget _buildAdminAccountCard(UserModel a) {
     final bool isSuspended = a.isSuspended;
-    final bool isPrimary = a.phone == '01146979833' || a.phone == '1146979833';
+    final bool isPrimary = PhoneUtils.isSuperAdminPhone(a.phone) || a.isPrimary;
+    final bool isSelf = PhoneUtils.isSameAdminPhone(_currentAdminPhone, a.phone);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1196,10 +1229,28 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
               Expanded(
                 flex: 4,
                 child: ElevatedButton.icon(
-                  onPressed: () => _showChangePasswordDialog(phone: a.phone, name: a.name, uid: a.uid),
-                  icon: const Icon(Icons.key_rounded, size: 15, color: Color(0xFFD49B1A)),
+                  onPressed: () {
+                    if (isPrimary && !isSelf) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'لا يمكن تعديل كلمة سر المشرف الأساسي إلا بواسطة صاحب الحساب نفسه',
+                            style: GoogleFonts.cairo(fontWeight: FontWeight.w700),
+                          ),
+                          backgroundColor: const Color(0xFF0B2A5B),
+                        ),
+                      );
+                      return;
+                    }
+                    _showChangePasswordDialog(phone: a.phone, name: a.name, uid: a.uid);
+                  },
+                  icon: Icon(
+                    isPrimary && !isSelf ? Icons.lock_outline_rounded : Icons.key_rounded,
+                    size: 15,
+                    color: const Color(0xFFD49B1A),
+                  ),
                   label: Text(
-                    'كلمة السر',
+                    isPrimary ? (isSelf ? 'تغيير كلمة المرور' : 'محمي (ذاتي)') : 'كلمة السر',
                     style: GoogleFonts.cairo(fontSize: 11.5, fontWeight: FontWeight.w800),
                   ),
                   style: ElevatedButton.styleFrom(
@@ -1851,10 +1902,10 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
 
   /// 7. تبديل حالة المشرف (تنشيط / إيقاف)
   Future<void> _toggleAdminStatus(UserModel a) async {
-    if (a.phone == '01146979833' || a.phone == '1146979833') {
+    if (PhoneUtils.isSuperAdminPhone(a.phone) || a.isPrimary) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('لا يمكن إيقاف الحساب الأساسي للمشرف العام', style: GoogleFonts.cairo()),
+          content: Text('لا يمكن إيقاف الحساب الأساسي للمشرف', style: GoogleFonts.cairo()),
           backgroundColor: const Color(0xFFDC2626),
         ),
       );
@@ -1894,10 +1945,10 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
 
   /// 8. تأكيد وحذف المشرف نهائياً
   Future<void> _confirmDeleteAdmin(UserModel a) async {
-    if (a.phone == '01146979833' || a.phone == '1146979833') {
+    if (PhoneUtils.isSuperAdminPhone(a.phone) || a.isPrimary) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('لا يمكن حذف الحساب الأساسي للمشرف العام', style: GoogleFonts.cairo()),
+          content: Text('لا يمكن حذف الحساب الأساسي للمشرف', style: GoogleFonts.cairo()),
           backgroundColor: const Color(0xFFDC2626),
         ),
       );
@@ -1962,6 +2013,98 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
             color: textCol,
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildSuperAdminOnlyPlaceholder() {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 24, horizontal: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 36),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0B2A5B).withValues(alpha: 0.04),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF0B2A5B), Color(0xFF1E3A8A)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF0B2A5B).withValues(alpha: 0.25),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: const Center(
+              child: Icon(Icons.lock_person_rounded, size: 40, color: Color(0xFFD49B1A)),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            'هذه الصفحة مخصصة للأدمن الأساسي فقط',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.cairo(
+              fontSize: 17,
+              fontWeight: FontWeight.w900,
+              color: const Color(0xFF0B2A5B),
+              height: 1.3,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'عذراً، الوصول إلى سجل المشرفين وإدارة حساباتهم محصور حصرياً بالمشرفين الأساسيين للنظام.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.cairo(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF64748B),
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 20),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.shield_outlined, size: 15, color: Color(0xFFD49B1A)),
+                const SizedBox(width: 6),
+                Text(
+                  'صلاحيات إدارية خاصة',
+                  style: GoogleFonts.cairo(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF0B2A5B),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
