@@ -94,7 +94,7 @@ void main() async {
 
   // 6. Resolve Initial Screen dynamically from local session
   Widget initialScreen = const OnboardingScreen();
-  
+
   try {
     final prefs = await SharedPreferences.getInstance();
     final savedRole = prefs.getString('role');
@@ -109,7 +109,9 @@ void main() async {
     } catch (_) {}
 
     // Determine effective role
-    String? effectiveRole = (savedRole != null && savedRole.trim().isNotEmpty) ? savedRole.trim() : null;
+    String? effectiveRole = (savedRole != null && savedRole.trim().isNotEmpty)
+        ? savedRole.trim()
+        : null;
     if (effectiveRole == null && currentUser?.email != null) {
       final email = currentUser!.email!.toLowerCase();
       if (email.contains('@mahameek.admin.com') || email.startsWith('admin_')) {
@@ -136,11 +138,15 @@ void main() async {
     if (isLoggedIn) {
       final String role = effectiveRole ?? 'client';
       final currentUid = savedUid;
-      unawaited(NotificationService().registerUserDevice(uid: currentUid, role: role));
+      unawaited(
+        NotificationService().registerUserDevice(uid: currentUid, role: role),
+      );
       if (role == 'admin') {
         initialScreen = const AdminDashboard();
         try {
-          unawaited(NotificationService().enableAllNotifications(adminUid: currentUid));
+          unawaited(
+            NotificationService().enableAllNotifications(adminUid: currentUid),
+          );
           unawaited(FirestoreService().ensurePrimaryAdminsSeeded());
         } catch (_) {}
       } else if (role == 'lawyer') {
