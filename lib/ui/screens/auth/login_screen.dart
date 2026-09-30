@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -5,9 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../network/auth_service.dart';
 import '../../../network/network_service.dart';
-import '../../../network/notification_service.dart';
 import '../main_navigation_screen.dart';
-import '../admin/admin_dashboard.dart';
 import 'lawyer_pending_screen.dart';
 import 'lawyer_register_screen.dart';
 import '../../custom_widgets/account_suspended_dialog.dart';
@@ -33,15 +32,33 @@ class _LoginScreenState extends State<LoginScreen> {
   String? _error;
   late String _selectedRole;
   final _authService = AuthService();
+  Timer? _logoLongPressTimer;
 
   @override
   void initState() {
     super.initState();
-    _selectedRole = widget.role ?? 'client';
+    // Public login screen strictly supports 'client' and 'lawyer'
+    _selectedRole = (widget.role == 'lawyer') ? 'lawyer' : 'client';
+  }
+
+  void _onLogoPointerDown(PointerDownEvent _) {
+    _logoLongPressTimer?.cancel();
+    _logoLongPressTimer = Timer(const Duration(seconds: 3), () {
+      HapticFeedback.heavyImpact();
+      if (mounted) {
+        Navigator.pushNamed(context, '/admin-portal');
+      }
+    });
+  }
+
+  void _onLogoPointerUpOrCancel(PointerEvent _) {
+    _logoLongPressTimer?.cancel();
+    _logoLongPressTimer = null;
   }
 
   @override
   void dispose() {
+    _logoLongPressTimer?.cancel();
     _identifierController.dispose();
     _passController.dispose();
     super.dispose();
@@ -123,29 +140,17 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = null;
     });
 
-    final res = _selectedRole == 'admin'
-        ? await _authService.adminLogin(
-            emailOrPhone: _identifierController.text.trim(),
-            password: _passController.text,
-          )
-        : await _authService.login(
-            phoneOrEmail: _identifierController.text.trim(),
-            password: _passController.text,
-            role: _selectedRole,
-          );
+    final res = await _authService.signInWithRole(
+      phone: _identifierController.text.trim(),
+      password: _passController.text,
+      expectedPortal: _selectedRole, // 'client' or 'lawyer'
+    );
 
     if (!mounted) return;
     setState(() => _loading = false);
 
     if (res['success'] == true) {
-      if (res['role'] == 'admin') {
-        NotificationService().enableAllNotifications();
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (_) => const AdminDashboard()),
-          (_) => false,
-        );
-      } else if (res['role'] == 'lawyer') {
+      if (res['role'] == 'lawyer') {
         if (res['status'] == 'pending') {
           Navigator.pushAndRemoveUntil(
             context,
@@ -162,10 +167,9 @@ class _LoginScreenState extends State<LoginScreen> {
           );
         }
       } else {
-        final role = res['role'] as String?;
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (_) => MainNavigationScreen(role: role)),
+          MaterialPageRoute(builder: (_) => const MainNavigationScreen(role: 'client')),
           (_) => false,
         );
       }
@@ -630,11 +634,17 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // Logo
-                        Image.asset(
-                          'assets/images/logo_full.png',
-                          height: 55,
-                          fit: BoxFit.contain,
+                        // Logo (Hidden 3-second long-press gateway to /admin-portal)
+                        Listener(
+                          onPointerDown: _onLogoPointerDown,
+                          onPointerUp: _onLogoPointerUpOrCancel,
+                          onPointerCancel: _onLogoPointerUpOrCancel,
+                          behavior: HitTestBehavior.opaque,
+                          child: Image.asset(
+                            'assets/images/logo_full.png',
+                            height: 55,
+                            fit: BoxFit.contain,
+                          ),
                         ).animate().fadeIn(duration: 500.ms).scale(
                               begin: const Offset(0.88, 0.88),
                               end: const Offset(1.0, 1.0),
@@ -710,7 +720,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // 3-Option Role Selector Tabs (عميل / محامي / إدارة)
+                      // 2-Option Role Selector Tabs (عميل / محامي)
                       Container(
                         margin: const EdgeInsets.only(bottom: 22),
                         padding: const EdgeInsets.all(4),
@@ -731,170 +741,30 @@ class _LoginScreenState extends State<LoginScreen> {
                               title: 'محامي',
                               icon: Icons.gavel_rounded,
                             ),
-                            _buildRoleTab(
-                              roleKey: 'admin',
-                              title: 'إدارة',
-                              icon: Icons.shield_rounded,
-                            ),
                           ],
                         ),
                       ),
 
-                      if (_selectedRole == 'admin') ...[
-                        // Admin Phone Input (Matches SudanPhoneFormField style, allows '0' and up to 11 digits)
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              'رقم موبايل المشرف',
-                              style: GoogleFonts.cairo(
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.w700,
-                                color: const Color(0xFF0B2A5B),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Directionality(
-                              textDirection: TextDirection.ltr,
-                              child: TextFormField(
-                                controller: _identifierController,
-                                keyboardType: TextInputType.phone,
-                                textInputAction: TextInputAction.next,
-                                textAlign: TextAlign.left,
-                                style: GoogleFonts.cairo(
-                                  fontSize: 15,
-                                  color: const Color(0xFF0B2A5B),
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 1.2,
-                                ),
-                                inputFormatters: [
-                                  FilteringTextInputFormatter.digitsOnly,
-                                  LengthLimitingTextInputFormatter(11),
-                                ],
-                                decoration: InputDecoration(
-                                  hintText: 'XXXXXXXXX',
-                                  hintStyle: GoogleFonts.cairo(
-                                    color: const Color(0xFF94A3B8),
-                                    fontSize: 13.5,
-                                    fontWeight: FontWeight.w500,
-                                    letterSpacing: 1.5,
-                                  ),
-                                  filled: true,
-                                  fillColor: const Color(0xFFF8FAFC),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 14,
-                                    vertical: 15,
-                                  ),
-                                  prefixIcon: Container(
-                                    margin: const EdgeInsets.only(right: 10),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 8,
-                                    ),
-                                    decoration: const BoxDecoration(
-                                      color: Color(0xFFEEF2F6),
-                                      borderRadius: BorderRadius.only(
-                                        topLeft: Radius.circular(12),
-                                        bottomLeft: Radius.circular(12),
-                                      ),
-                                      border: Border(
-                                        right: BorderSide(
-                                          color: Color(0xFFE2E8F0),
-                                          width: 1.2,
-                                        ),
-                                      ),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Icon(
-                                          Icons.shield_rounded,
-                                          color: Color(0xFFD49B1A),
-                                          size: 19,
-                                        ),
-                                        const SizedBox(width: 5),
-                                        Text(
-                                          'إشراف',
-                                          style: GoogleFonts.cairo(
-                                            fontSize: 13.5,
-                                            fontWeight: FontWeight.w800,
-                                            color: const Color(0xFF0B2A5B),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  prefixIconConstraints: const BoxConstraints(
-                                    minWidth: 0,
-                                    minHeight: 0,
-                                  ),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(14),
-                                    borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(14),
-                                    borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(14),
-                                    borderSide: const BorderSide(
-                                      color: Color(0xFFD49B1A),
-                                      width: 1.6,
-                                    ),
-                                  ),
-                                  errorBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(14),
-                                    borderSide: const BorderSide(color: Color(0xFFEF4444)),
-                                  ),
-                                  focusedErrorBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(14),
-                                    borderSide: const BorderSide(
-                                      color: Color(0xFFEF4444),
-                                      width: 1.6,
-                                    ),
-                                  ),
-                                  errorStyle: GoogleFonts.cairo(
-                                    color: const Color(0xFFDC2626),
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                validator: (v) {
-                                  if (v == null || v.trim().isEmpty) {
-                                    return 'يرجى إدخال رقم هاتف المشرف';
-                                  }
-                                  final digits = v.trim().replaceAll(RegExp(r'[^0-9]'), '');
-                                  if (digits.length < 9 || digits.length > 11) {
-                                    return 'يجب أن يتكون رقم المشرف من 9 إلى 11 رقماً';
-                                  }
-                                  return null;
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                      ] else ...[
-                        // Client / Lawyer Sudan Phone Field (With fixed +249 flag)
-                        SudanPhoneFormField(
-                          controller: _identifierController,
-                          labelText: _selectedRole == 'lawyer'
-                              ? 'رقم موبايل المحامي'
-                              : 'رقم موبايل العميل',
-                          headerIcon: Icons.phone_android_rounded,
-                          hintText: '9XXXXXXXX',
-                          validator: (v) {
-                            if (v == null || v.trim().isEmpty) {
-                              return 'يرجى إدخال رقم الموبايل';
-                            }
-                            if (v.trim().length < PhoneUtils.sudanPhoneLength) {
-                              return 'يجب أن يتكون رقم الموبايل من 9 أرقام (مثال: 912345678)';
-                            }
+                      // Client / Lawyer Sudan Phone Field (With fixed +249 flag)
+                      SudanPhoneFormField(
+                        controller: _identifierController,
+                        labelText: _selectedRole == 'lawyer'
+                            ? 'رقم موبايل المحامي'
+                            : 'رقم موبايل العميل',
+                        headerIcon: Icons.phone_android_rounded,
+                        hintText: '9XXXXXXXX',
+                        validator: (v) {
+                          if (v == null || v.trim().isEmpty) {
+                            return 'يرجى إدخال رقم الموبايل';
+                          }
+                          try {
+                            PhoneUtils.normalize(v.trim());
                             return null;
-                          },
-                        ),
-                      ],
+                          } catch (e) {
+                            return 'يجب أن يتكون رقم الموبايل من 9 أرقام (مثال: 912345678)';
+                          }
+                        },
+                      ),
 
                       const SizedBox(height: 18),
 

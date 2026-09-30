@@ -726,6 +726,284 @@ class AuthService implements AuthContract {
   }
 
   // ===========================================================================
+  // 🛡️ ROLE-GUARDED SIGN-IN (CLIENT / LAWYER / ADMIN) — PART 1
+  // ===========================================================================
+
+  Future<void> _clearLocalSession() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('uid');
+      await prefs.remove('role');
+      await prefs.remove('name');
+      await prefs.remove('phone');
+      await prefs.remove('user_phone');
+      await prefs.remove('status');
+      await prefs.remove('user_profile_photo');
+      await prefs.remove('user_profile_photo_url');
+    } catch (_) {}
+  }
+
+  @override
+  Future<Map<String, dynamic>> signInWithRole({
+    required String phone,
+    required String password,
+    required String expectedPortal, // 'client' | 'lawyer' | 'admin'
+  }) async {
+    try {
+      // 1. Instant connectivity pre-check
+      if (NetworkService().currentStatus == NetworkStatus.noConnection) {
+        return {
+          'success': false,
+          'error': 'لا يوجد اتصال بالإنترنت. يرجى تفعيل الواي فاي أو البيانات والمحاولة مجدداً.',
+          'isNetworkError': true,
+        };
+      }
+
+      final cleanPassword = password.trim();
+      if (cleanPassword.isEmpty) {
+        return {
+          'success': false,
+          'error': 'يرجى إدخال كلمة المرور.',
+        };
+      }
+
+      // 2. Strict Phone Normalization (Contract Rule 1)
+      final String normalizedPhone;
+      try {
+        normalizedPhone = PhoneUtils.normalize(phone);
+      } on FormatException catch (e) {
+        return {
+          'success': false,
+          'error': e.message,
+        };
+      } catch (_) {
+        return {
+          'success': false,
+          'error': 'صيغة رقم الهاتف غير صالحة، يرجى كتابة الرقم بشكل صحيح.',
+        };
+      }
+
+      // 3. Strict Auth Email Derivation (Contract Rule 1)
+      final primaryAuthEmail = PhoneUtils.toAuthEmail(normalizedPhone);
+
+      // Build candidate emails for backward compatibility with existing Firebase Auth users
+      final cleanDigits = PhoneUtils.extractLocalSudanDigits(normalizedPhone);
+      final rawDigits = normalizedPhone.replaceAll(RegExp(r'[^0-9]'), '');
+      final candidateEmails = <String>[
+        primaryAuthEmail,
+        if (expectedPortal == 'admin') ...[
+          'admin_$cleanDigits@mahameek.admin.com',
+          if (rawDigits.isNotEmpty) 'admin_$rawDigits@mahameek.admin.com',
+          '$cleanDigits@mahameek.admin.com',
+          if (rawDigits.isNotEmpty) '$rawDigits@mahameek.admin.com',
+          'admin_$cleanDigits@mahameek.com',
+        ],
+        if (expectedPortal == 'lawyer') ...[
+          '$cleanDigits@mahameek.lawyer.com',
+          if (rawDigits.isNotEmpty) '$rawDigits@mahameek.lawyer.com',
+        ],
+        if (expectedPortal == 'client') ...[
+          '$cleanDigits@mahameek.client.com',
+          if (rawDigits.isNotEmpty) '$rawDigits@mahameek.client.com',
+        ],
+        '$cleanDigits@mahameek.com',
+        if (rawDigits.isNotEmpty) '$rawDigits@mahameek.com',
+      ];
+
+      // Sign out existing session to ensure a clean login attempt
+      if (_auth.currentUser != null) {
+        try {
+          await _auth.signOut();
+        } catch (_) {}
+      }
+
+      UserCredential? cred;
+      FirebaseAuthException? lastAuthException;
+
+      // 4. Authenticate with Firebase Auth
+      for (final email in candidateEmails) {
+        try {
+          cred = await _auth.signInWithEmailAndPassword(
+            email: email,
+            password: cleanPassword,
+          );
+          if (cred.user != null) break;
+        } on FirebaseAuthException catch (e) {
+          lastAuthException = e;
+          if (e.code == 'network-request-failed' || e.code == 'unavailable') {
+            return {
+              'success': false,
+              'error': 'الشبكة المتصل بها لا يتوفر بها إنترنت. يرجى التأكد من اتصالك بالإنترنت والمحاولة مجدداً.',
+              'isNetworkError': true,
+            };
+          }
+          if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
+            // Credentials rejected by Firebase Auth
+            break;
+          }
+        } catch (_) {}
+      }
+
+      // If credentials failed to sign in
+      if (cred == null || cred.user == null) {
+        // TODO: [PART3] Call verifyLoginFailureReason Cloud Function here for granular error classification
+        String errorMsg = 'بيانات الدخول غير صحيحة، يرجى التأكد من رقم الهاتف وكلمة المرور.';
+        if (lastAuthException != null) {
+          if (lastAuthException.code == 'too-many-requests') {
+            errorMsg = 'تم تعليق محاولات تسجيل الدخول مؤقتاً لكثرة المحاولات الخاطئة. يرجى الانتظار دقيقة واحدة ثم المحاولة مجدداً.';
+          }
+        }
+        return {
+          'success': false,
+          'error': errorMsg,
+        };
+      }
+
+      final uid = cred.user!.uid;
+
+      // 5. Read User Document from users/{uid} (Contract Rule 2)
+      DocumentSnapshot<Map<String, dynamic>>? userDoc;
+      try {
+        final doc = await _db.collection('users').doc(uid).get();
+        if (doc.exists && doc.data() != null) {
+          userDoc = doc;
+        }
+      } catch (e) {
+        debugPrint('users fetch notice in signInWithRole: $e');
+      }
+
+      // Fallback lookups in admins or lawyers if legacy document location
+      Map<String, dynamic> docData = userDoc?.data() ?? {};
+      if (docData.isEmpty) {
+        try {
+          final aDoc = await _db.collection('admins').doc(uid).get();
+          if (aDoc.exists && aDoc.data() != null) {
+            docData = aDoc.data()!;
+          }
+        } catch (_) {}
+      }
+      if (docData.isEmpty) {
+        try {
+          final lDoc = await _db.collection('lawyers').doc(uid).get();
+          if (lDoc.exists && lDoc.data() != null) {
+            docData = lDoc.data()!;
+          }
+        } catch (_) {}
+      }
+
+      final String actualRole = (docData['role']?.toString().trim() ?? 'client').toLowerCase();
+      final String status = (docData['status']?.toString().trim() ?? 'active').toLowerCase();
+      final String? rejectionReason = docData['rejectionReason']?.toString();
+      final String userName = docData['name']?.toString().trim() ?? '';
+
+      // 6. Role Guard Verification
+      if (expectedPortal == 'admin') {
+        // Admin Portal: Only accept 'admin' or 'subAdmin'
+        if (actualRole != 'admin' && actualRole != 'subadmin') {
+          await _auth.signOut();
+          await _clearLocalSession();
+          return {
+            'success': false,
+            'error': 'هذا الحساب لا يملك صلاحية الإدارة.',
+          };
+        }
+      } else {
+        // Client / Lawyer Portal
+        if (actualRole == 'admin' || actualRole == 'subadmin') {
+          await _auth.signOut();
+          await _clearLocalSession();
+          return {
+            'success': false,
+            'error': 'هذا الحساب ذو صلاحية إدارية، يرجى استخدام بوابة الإدارة للوصول إلى حسابك.',
+          };
+        }
+
+        if (actualRole != expectedPortal.toLowerCase()) {
+          await _auth.signOut();
+          await _clearLocalSession();
+          final String roleNameInArabic = actualRole == 'lawyer'
+              ? 'محامي'
+              : (actualRole == 'client' ? 'عميل' : 'إداري');
+          return {
+            'success': false,
+            'error': 'هذا الحساب مسجل كـ ($roleNameInArabic)، يرجى اختيار التبويب الصحيح.',
+          };
+        }
+      }
+
+      // 7. Status Guard Verification
+      if (status == 'suspended') {
+        await _auth.signOut();
+        await _clearLocalSession();
+        return {
+          'success': false,
+          'isSuspended': true,
+          'error': 'حسابك موقوف مؤقتاً، يرجى التواصل مع الدعم الفني.',
+        };
+      }
+
+      if (status == 'rejected') {
+        await _auth.signOut();
+        await _clearLocalSession();
+        return {
+          'success': false,
+          'isRejected': true,
+          'error': rejectionReason ?? 'تم رفض طلب الانضمام إلى منصة محاميك من قبل الإدارة.',
+        };
+      }
+
+      if (actualRole == 'lawyer' && status == 'pending') {
+        // Pending Lawyer: persist pending session and signal navigation to pending screen
+        await _saveSession(
+          uid: uid,
+          role: 'lawyer',
+          name: userName,
+          phone: normalizedPhone,
+          status: 'pending',
+        );
+        return {
+          'success': true,
+          'uid': uid,
+          'role': 'lawyer',
+          'status': 'pending',
+          'name': userName,
+        };
+      }
+
+      // 8. Approved User Session Persistence
+      await _saveSession(
+        uid: uid,
+        role: actualRole,
+        name: userName,
+        phone: normalizedPhone,
+        status: 'active',
+      );
+
+      // Register device notifications in background
+      unawaited(NotificationService().registerUserDevice(uid: uid, role: actualRole));
+      if (actualRole == 'admin' || actualRole == 'subadmin') {
+        NotificationService().enableAllNotifications();
+      }
+
+      return {
+        'success': true,
+        'uid': uid,
+        'role': actualRole,
+        'status': 'active',
+        'name': userName,
+      };
+    } catch (e) {
+      debugPrint('signInWithRole error: $e');
+      await _auth.signOut();
+      await _clearLocalSession();
+      return {
+        'success': false,
+        'error': 'حدث خطأ غير متوقع أثناء تسجيل الدخول: $e',
+      };
+    }
+  }
+
+  // ===========================================================================
   // 🔐 UNIFIED LOGIN (CLIENT / LAWYER / ADMIN)
   // ===========================================================================
 

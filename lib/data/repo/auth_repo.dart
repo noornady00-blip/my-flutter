@@ -36,6 +36,17 @@ class AuthRepo {
         role: role,
       );
 
+  Future<Map<String, dynamic>> signInWithRole({
+    required String phone,
+    required String password,
+    required String expectedPortal,
+  }) =>
+      _authContract.signInWithRole(
+        phone: phone,
+        password: password,
+        expectedPortal: expectedPortal,
+      );
+
   Future<Map<String, dynamic>> registerClient({
     required String name,
     required String phone,

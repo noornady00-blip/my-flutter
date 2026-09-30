@@ -22,6 +22,13 @@ abstract class AuthContract {
     String? role,
   });
 
+  /// Unified Role-Guarded Sign-In for portals ('client', 'lawyer', 'admin')
+  Future<Map<String, dynamic>> signInWithRole({
+    required String phone,
+    required String password,
+    required String expectedPortal,
+  });
+
   /// Register a new client account
   Future<Map<String, dynamic>> registerClient({
     required String name,

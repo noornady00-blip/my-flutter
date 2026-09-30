@@ -22,6 +22,59 @@ class PhoneUtils {
     return res;
   }
 
+  /// دالة التطبيع الموحدة الإلزامية: ترجع الصيغة الدولية الموحدة (+249XXXXXXXXX) أو ترمي FormatException
+  static String normalize(String rawPhone) {
+    final cleaned = normalizeDigits(rawPhone.trim());
+    if (cleaned.isEmpty) {
+      throw const FormatException('رقم الهاتف فارغ');
+    }
+
+    var digits = cleaned.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) {
+      throw const FormatException('رقم الهاتف لا يحتوي على أرقام صالحة');
+    }
+
+    // إزالة الصفر الدولي 00249 أو مفتاح السودان 249
+    if (digits.startsWith('00249')) {
+      digits = digits.substring(5);
+    } else if (digits.startsWith('249')) {
+      digits = digits.substring(3);
+    }
+
+    while (digits.startsWith('0')) {
+      digits = digits.substring(1);
+    }
+
+    // استثناء خاص للمشرف الأساسي 1 (01146979833 / 1146979833)
+    if (digits.endsWith('1146979833') || digits == '1146979833' || digits == '146979833') {
+      return '+$sudanCountryCode' '1146979833';
+    }
+
+    // الأرقام السودانية القياسية 9 أرقام تبدأ بـ 9 أو 1
+    if (digits.length == sudanPhoneLength) {
+      if (!digits.startsWith('9') && !digits.startsWith('1')) {
+        throw const FormatException('رقم الهاتف السوداني يجب أن يبدأ بـ 9 أو 1');
+      }
+      return '+$sudanCountryCode$digits';
+    }
+
+    // أرقام دولية أخرى تم إدخالها بصيغة دولية (+...)
+    if (cleaned.startsWith('+') && digits.length >= 8 && digits.length <= 15) {
+      return '+$digits';
+    }
+
+    throw const FormatException('صيغة رقم الهاتف غير صالحة، يجب أن يتكون من 9 أرقام');
+  }
+
+  /// الإيميل الوهمي المشتق من الهاتف (يُبنى من الصيغة المطبّعة فقط)
+  static String toAuthEmail(String normalized) {
+    if (!normalized.startsWith('+') && !RegExp(r'^\d+$').hasMatch(normalized)) {
+      throw const FormatException('الرقم يجب أن يكون مطبعاً بالصيغة الدولية قبل تحويله لإيميل');
+    }
+    final digits = normalized.replaceAll(RegExp(r'[^0-9]'), '');
+    return '$digits@mahameek.com';
+  }
+
   /// استخراج الأرقام المحلية السودانية فقط (9 أرقام بدون 0 في البداية وبدون رمز الدولة)
   /// أمثلة:
   /// - 0912345678     -> 912345678

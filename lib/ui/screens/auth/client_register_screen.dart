@@ -72,7 +72,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
     }
 
     setState(() { _loading = true; _error = null; });
-    final normalizedPhone = PhoneUtils.normalizeSudanPhone(_phoneController.text.trim());
+    final normalizedPhone = PhoneUtils.normalize(_phoneController.text.trim());
     final res = await _authService.registerClient(
       name: _nameController.text.trim(),
       phone: normalizedPhone,

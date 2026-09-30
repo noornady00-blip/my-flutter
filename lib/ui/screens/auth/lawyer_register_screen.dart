@@ -190,10 +190,10 @@ class _LawyerRegisterScreenState extends State<LawyerRegisterScreen> {
     }
 
     setState(() { _loading = true; _error = null; });
-    final normalizedPhone = PhoneUtils.normalizeSudanPhone(_phoneController.text.trim());
+    final normalizedPhone = PhoneUtils.normalize(_phoneController.text.trim());
     final rawWhatsapp = _whatsappController.text.trim();
     final normalizedWhatsapp = rawWhatsapp.isNotEmpty
-        ? PhoneUtils.normalizeSudanPhone(rawWhatsapp)
+        ? PhoneUtils.normalize(rawWhatsapp)
         : normalizedPhone;
 
     final res = await _authService.registerLawyer(
