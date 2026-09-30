@@ -783,20 +783,115 @@ class AuthService implements AuthContract {
         };
       }
 
-      // 3. Strict Auth Email Derivation (Contract Rule 1)
-      final primaryAuthEmail = PhoneUtils.toAuthEmail(normalizedPhone);
-
-      // Build candidate emails for backward compatibility with existing Firebase Auth users
       final cleanDigits = PhoneUtils.extractLocalSudanDigits(normalizedPhone);
       final rawDigits = normalizedPhone.replaceAll(RegExp(r'[^0-9]'), '');
+
+      // 3. Fast Phone Directory Lookup in Parallel
+      DocumentSnapshot<Map<String, dynamic>>? dirSnap;
+      final candidatesList = [normalizedPhone, cleanDigits, rawDigits].where((s) => s.isNotEmpty).toList();
+      try {
+        final results = await Future.wait(
+          candidatesList.map((k) => _db
+              .collection('phone_directory')
+              .doc(k)
+              .get()
+              .then<DocumentSnapshot<Map<String, dynamic>>?>((s) => s.exists && s.data() != null ? s : null)
+              .catchError((_) => null)),
+        ).timeout(const Duration(milliseconds: 2500));
+
+        for (final s in results) {
+          if (s != null) {
+            dirSnap = s;
+            break;
+          }
+        }
+      } catch (_) {}
+
+      Map<String, dynamic>? registered;
+      if (dirSnap == null) {
+        try {
+          registered = await checkPhoneRegistration(normalizedPhone);
+        } catch (_) {}
+      }
+
+      // If user is not found anywhere
+      if (dirSnap == null && registered == null) {
+        return {
+          'success': false,
+          'error': 'رقم الموبايل غير مسجل في التطبيق، يرجى إنشاء حساب جديد أولاً.',
+        };
+      }
+
+      final Map<String, dynamic> recordData = dirSnap?.data() ??
+          (registered?['data'] is Map<String, dynamic>
+              ? (registered!['data'] as Map<String, dynamic>)
+              : <String, dynamic>{});
+
+      final discoveredRole = (recordData['role']?.toString() ?? registered?['role']?.toString() ?? 'client').toLowerCase();
+      final discoveredUid = recordData['uid']?.toString() ?? registered?['uid']?.toString() ?? dirSnap?.id;
+
+      // 4. Role Guard Verification
+      if (expectedPortal == 'admin') {
+        if (discoveredRole != 'admin' && discoveredRole != 'subadmin') {
+          return {
+            'success': false,
+            'error': 'هذا الحساب لا يملك صلاحية الإدارة.',
+          };
+        }
+      } else {
+        if (discoveredRole == 'admin' || discoveredRole == 'subadmin') {
+          return {
+            'success': false,
+            'error': 'هذا الحساب ذو صلاحية إدارية، يرجى استخدام بوابة الإدارة للوصول إلى حسابك.',
+          };
+        }
+        if (discoveredRole != expectedPortal.toLowerCase()) {
+          final String roleNameInArabic = discoveredRole == 'lawyer'
+              ? 'محامي'
+              : (discoveredRole == 'client' ? 'عميل' : 'إداري');
+          return {
+            'success': false,
+            'error': 'هذا الحساب مسجل كـ ($roleNameInArabic)، يرجى اختيار التبويب الصحيح.',
+          };
+        }
+      }
+
+      // 5. Local Password Verification Against Firestore (< 1ms)
+      final inputHash = hashPassword(cleanPassword);
+      final rawSha256 = sha256.convert(utf8.encode(cleanPassword)).toString();
+
+      final storedHash = recordData['passwordHash']?.toString();
+      final adminReset = recordData['adminResetPassword']?.toString();
+      final prevHash = recordData['previousPasswordHash']?.toString();
+
+      final bool hasPasswordRecord = storedHash != null || adminReset != null || prevHash != null;
+
+      if (hasPasswordRecord) {
+        final bool isMatch = (adminReset != null && adminReset == cleanPassword) ||
+            (storedHash != null && (storedHash == inputHash || storedHash == rawSha256 || storedHash == cleanPassword)) ||
+            (prevHash != null && (prevHash == inputHash || prevHash == rawSha256 || prevHash == cleanPassword));
+
+        if (!isMatch) {
+          return {
+            'success': false,
+            'error': 'كلمة المرور غير صحيحة، يرجى التأكد من كلمة المرور والمحاولة مجدداً.',
+          };
+        }
+      }
+
+      // 6. Sign into Firebase Auth
+      final primaryAuthEmail = PhoneUtils.toAuthEmail(normalizedPhone);
+      final authKey = cleanDigits.isNotEmpty ? internalAuthKey(cleanDigits) : '';
+      final userFbPassword = cleanPassword.length < 6 ? cleanPassword.padRight(6, '0') : cleanPassword;
+
       final candidateEmails = <String>[
         primaryAuthEmail,
+        if (recordData['email'] != null) recordData['email'].toString().trim(),
         if (expectedPortal == 'admin') ...[
           'admin_$cleanDigits@mahameek.admin.com',
           if (rawDigits.isNotEmpty) 'admin_$rawDigits@mahameek.admin.com',
           '$cleanDigits@mahameek.admin.com',
           if (rawDigits.isNotEmpty) '$rawDigits@mahameek.admin.com',
-          'admin_$cleanDigits@mahameek.com',
         ],
         if (expectedPortal == 'lawyer') ...[
           '$cleanDigits@mahameek.lawyer.com',
@@ -810,7 +905,6 @@ class AuthService implements AuthContract {
         if (rawDigits.isNotEmpty) '$rawDigits@mahameek.com',
       ];
 
-      // Sign out existing session to ensure a clean login attempt
       if (_auth.currentUser != null) {
         try {
           await _auth.signOut();
@@ -820,116 +914,139 @@ class AuthService implements AuthContract {
       UserCredential? cred;
       FirebaseAuthException? lastAuthException;
 
-      // 4. Authenticate with Firebase Auth
+      final pwCandidates = <String>[
+        if (authKey.isNotEmpty) authKey,
+        userFbPassword,
+        cleanPassword,
+      ];
+
+      bool isAuthenticated = false;
+
       for (final email in candidateEmails) {
-        try {
-          cred = await _auth.signInWithEmailAndPassword(
-            email: email,
-            password: cleanPassword,
-          );
-          if (cred.user != null) break;
-        } on FirebaseAuthException catch (e) {
-          lastAuthException = e;
-          if (e.code == 'network-request-failed' || e.code == 'unavailable') {
-            return {
-              'success': false,
-              'error': 'الشبكة المتصل بها لا يتوفر بها إنترنت. يرجى التأكد من اتصالك بالإنترنت والمحاولة مجدداً.',
-              'isNetworkError': true,
-            };
-          }
-          if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
-            // Credentials rejected by Firebase Auth
-            break;
-          }
-        } catch (_) {}
+        if (isAuthenticated) break;
+        if (email.isEmpty) continue;
+        for (final pw in pwCandidates) {
+          try {
+            cred = await _auth.signInWithEmailAndPassword(
+              email: email,
+              password: pw,
+            );
+            if (cred.user != null) {
+              isAuthenticated = true;
+              break;
+            }
+          } on FirebaseAuthException catch (e) {
+            lastAuthException = e;
+            if (e.code == 'network-request-failed' || e.code == 'unavailable') {
+              return {
+                'success': false,
+                'error': 'الشبكة المتصل بها لا يتوفر بها إنترنت. يرجى التأكد من اتصالك بالإنترنت والمحاولة مجدداً.',
+                'isNetworkError': true,
+              };
+            }
+            if (e.code == 'user-not-found') break; // Skip to next email
+          } catch (_) {}
+        }
       }
 
-      // If credentials failed to sign in
-      if (cred == null || cred.user == null) {
-        // TODO: [PART3] Call verifyLoginFailureReason Cloud Function here for granular error classification
-        String errorMsg = 'بيانات الدخول غير صحيحة، يرجى التأكد من رقم الهاتف وكلمة المرور.';
-        if (lastAuthException != null) {
-          if (lastAuthException.code == 'too-many-requests') {
-            errorMsg = 'تم تعليق محاولات تسجيل الدخول مؤقتاً لكثرة المحاولات الخاطئة. يرجى الانتظار دقيقة واحدة ثم المحاولة مجدداً.';
+      // If user not in Firebase Auth, but password matched locally, create it directly!
+      if (!isAuthenticated && hasPasswordRecord) {
+        try {
+          cred = await _auth.createUserWithEmailAndPassword(
+            email: primaryAuthEmail,
+            password: authKey.isNotEmpty ? authKey : userFbPassword,
+          );
+        } catch (createErr) {
+          if (createErr is FirebaseAuthException && createErr.code == 'email-already-in-use') {
+            final aliasEmail = '$cleanDigits.${DateTime.now().millisecondsSinceEpoch}@mahameek.$expectedPortal.com';
+            try {
+              cred = await _auth.createUserWithEmailAndPassword(
+                email: aliasEmail,
+                password: authKey.isNotEmpty ? authKey : userFbPassword,
+              );
+            } catch (_) {}
           }
+        }
+      }
+
+      if (cred == null || cred.user == null) {
+        if (lastAuthException != null && lastAuthException.code == 'too-many-requests') {
+          return {
+            'success': false,
+            'error': 'تم تعليق محاولات تسجيل الدخول مؤقتاً لحماية الحساب. يرجى الانتظار دقيقة ثم المحاولة مجدداً.',
+          };
         }
         return {
           'success': false,
-          'error': errorMsg,
+          'error': 'بيانات الدخول غير صحيحة، يرجى التأكد من رقم الهاتف وكلمة المرور.',
         };
       }
 
       final uid = cred.user!.uid;
 
-      // 5. Read User Document from users/{uid} (Contract Rule 2)
+      // Sync Firebase Auth password to authKey for permanent consistency
+      if (authKey.isNotEmpty && hasPasswordRecord) {
+        try {
+          await cred.user!.updatePassword(authKey);
+        } catch (_) {}
+      }
+
+      // 7. Status Guard Verification & Fetch Profile
       DocumentSnapshot<Map<String, dynamic>>? userDoc;
       try {
         final doc = await _db.collection('users').doc(uid).get();
-        if (doc.exists && doc.data() != null) {
-          userDoc = doc;
-        }
-      } catch (e) {
-        debugPrint('users fetch notice in signInWithRole: $e');
+        if (doc.exists && doc.data() != null) userDoc = doc;
+      } catch (_) {}
+
+      // If document was under discoveredUid and differs from cred.user.uid, migrate seamlessly
+      if (userDoc == null && discoveredUid != null && discoveredUid != uid) {
+        try {
+          final oldDoc = await _db.collection('users').doc(discoveredUid).get();
+          if (oldDoc.exists && oldDoc.data() != null) {
+            await _db.collection('users').doc(uid).set(oldDoc.data()!, SetOptions(merge: true));
+            userDoc = await _db.collection('users').doc(uid).get();
+          }
+        } catch (_) {}
       }
 
-      // Fallback lookups in admins or lawyers if legacy document location
       Map<String, dynamic> docData = userDoc?.data() ?? {};
-      if (docData.isEmpty) {
+      if (docData.isEmpty && expectedPortal == 'admin') {
         try {
           final aDoc = await _db.collection('admins').doc(uid).get();
-          if (aDoc.exists && aDoc.data() != null) {
-            docData = aDoc.data()!;
-          }
+          if (aDoc.exists && aDoc.data() != null) docData = aDoc.data()!;
         } catch (_) {}
+        if (docData.isEmpty && discoveredUid != null && discoveredUid != uid) {
+          try {
+            final oldA = await _db.collection('admins').doc(discoveredUid).get();
+            if (oldA.exists && oldA.data() != null) {
+              await _db.collection('admins').doc(uid).set(oldA.data()!, SetOptions(merge: true));
+              docData = oldA.data()!;
+            }
+          } catch (_) {}
+        }
       }
-      if (docData.isEmpty) {
+      if (docData.isEmpty && expectedPortal == 'lawyer') {
         try {
           final lDoc = await _db.collection('lawyers').doc(uid).get();
-          if (lDoc.exists && lDoc.data() != null) {
-            docData = lDoc.data()!;
-          }
+          if (lDoc.exists && lDoc.data() != null) docData = lDoc.data()!;
         } catch (_) {}
-      }
-
-      final String actualRole = (docData['role']?.toString().trim() ?? 'client').toLowerCase();
-      final String status = (docData['status']?.toString().trim() ?? 'active').toLowerCase();
-      final String? rejectionReason = docData['rejectionReason']?.toString();
-      final String userName = docData['name']?.toString().trim() ?? '';
-
-      // 6. Role Guard Verification
-      if (expectedPortal == 'admin') {
-        // Admin Portal: Only accept 'admin' or 'subAdmin'
-        if (actualRole != 'admin' && actualRole != 'subadmin') {
-          await _auth.signOut();
-          await _clearLocalSession();
-          return {
-            'success': false,
-            'error': 'هذا الحساب لا يملك صلاحية الإدارة.',
-          };
-        }
-      } else {
-        // Client / Lawyer Portal
-        if (actualRole == 'admin' || actualRole == 'subadmin') {
-          await _auth.signOut();
-          await _clearLocalSession();
-          return {
-            'success': false,
-            'error': 'هذا الحساب ذو صلاحية إدارية، يرجى استخدام بوابة الإدارة للوصول إلى حسابك.',
-          };
-        }
-
-        if (actualRole != expectedPortal.toLowerCase()) {
-          await _auth.signOut();
-          await _clearLocalSession();
-          final String roleNameInArabic = actualRole == 'lawyer'
-              ? 'محامي'
-              : (actualRole == 'client' ? 'عميل' : 'إداري');
-          return {
-            'success': false,
-            'error': 'هذا الحساب مسجل كـ ($roleNameInArabic)، يرجى اختيار التبويب الصحيح.',
-          };
+        if (docData.isEmpty && discoveredUid != null && discoveredUid != uid) {
+          try {
+            final oldL = await _db.collection('lawyers').doc(discoveredUid).get();
+            if (oldL.exists && oldL.data() != null) {
+              await _db.collection('lawyers').doc(uid).set(oldL.data()!, SetOptions(merge: true));
+              docData = oldL.data()!;
+            }
+          } catch (_) {}
         }
       }
+
+      final String finalRole = (docData['role']?.toString().trim() ?? discoveredRole).toLowerCase();
+      final String status = (docData['status']?.toString().trim() ?? recordData['status']?.toString() ?? 'active').toLowerCase();
+      final String? rejectionReason = docData['rejectionReason']?.toString() ?? recordData['rejectionReason']?.toString();
+      final String userName = docData['name']?.toString().trim() ?? recordData['name']?.toString() ?? '';
+
+
 
       // 7. Status Guard Verification
       if (status == 'suspended') {
@@ -952,7 +1069,7 @@ class AuthService implements AuthContract {
         };
       }
 
-      if (actualRole == 'lawyer' && status == 'pending') {
+      if (finalRole == 'lawyer' && status == 'pending') {
         // Pending Lawyer: persist pending session and signal navigation to pending screen
         await _saveSession(
           uid: uid,
@@ -973,22 +1090,22 @@ class AuthService implements AuthContract {
       // 8. Approved User Session Persistence
       await _saveSession(
         uid: uid,
-        role: actualRole,
+        role: finalRole,
         name: userName,
         phone: normalizedPhone,
         status: 'active',
       );
 
       // Register device notifications in background
-      unawaited(NotificationService().registerUserDevice(uid: uid, role: actualRole));
-      if (actualRole == 'admin' || actualRole == 'subadmin') {
+      unawaited(NotificationService().registerUserDevice(uid: uid, role: finalRole));
+      if (finalRole == 'admin' || finalRole == 'subadmin') {
         NotificationService().enableAllNotifications();
       }
 
       return {
         'success': true,
         'uid': uid,
-        'role': actualRole,
+        'role': finalRole,
         'status': 'active',
         'name': userName,
       };
