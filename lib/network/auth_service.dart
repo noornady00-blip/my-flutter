@@ -1298,6 +1298,7 @@ class AuthService implements AuthContract {
       final newUid = cred.user!.uid;
       final accountId = await AccountIdUtils.generateUnique12DigitId(_db);
 
+      final newHash = hashPassword(cleanPass);
       final adminData = {
         'uid': newUid,
         'name': cleanName,
@@ -1307,6 +1308,8 @@ class AuthService implements AuthContract {
         'email': email,
         'role': 'admin',
         'accountId': accountId,
+        'passwordHash': newHash,
+        'adminResetPassword': cleanPass,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       };
@@ -1322,35 +1325,14 @@ class AuthService implements AuthContract {
 
       // Register all phone variants in phone_directory
       final phoneCandidates = PhoneUtils.generatePhoneCandidates(cleanPhone);
+      phoneCandidates.addAll(PhoneUtils.generatePhoneCandidates(normPhone));
+      if (cleanDigits.isNotEmpty) phoneCandidates.add(cleanDigits);
+      if (rawDigits.isNotEmpty) phoneCandidates.add(rawDigits);
+
       for (final cand in phoneCandidates) {
         if (cand.isNotEmpty) {
-          await _db.collection('phone_directory').doc(cand).set({
-            'uid': newUid,
-            'role': 'admin',
-            'phone': normPhone,
-            'name': cleanName,
-            'email': email,
-            'updatedAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true)).catchError((_) {});
+          await _db.collection('phone_directory').doc(cand).set(adminData, SetOptions(merge: true)).catchError((_) {});
         }
-      }
-      if (cleanDigits.isNotEmpty) {
-        await _db.collection('phone_directory').doc(cleanDigits).set({
-          'uid': newUid,
-          'role': 'admin',
-          'phone': normPhone,
-          'name': cleanName,
-          'email': email,
-        }, SetOptions(merge: true)).catchError((_) {});
-      }
-      if (rawDigits.isNotEmpty) {
-        await _db.collection('phone_directory').doc(rawDigits).set({
-          'uid': newUid,
-          'role': 'admin',
-          'phone': normPhone,
-          'name': cleanName,
-          'email': email,
-        }, SetOptions(merge: true)).catchError((_) {});
       }
 
       await secondaryApp.delete();
@@ -1412,39 +1394,71 @@ class AuthService implements AuthContract {
               ];
         final String adminEmail = emailCandidates.first;
         String adminName = isPrimary1 ? 'المشرف الأساسي (01146979833)' : 'صاحب التطبيق';
+        final String primaryUid = isPrimary1
+            ? 'HEsYK0F5TGMFCZtKE7qUq0kFfqQ2'
+            : 'VQ5M7vEKaubtw3H3tOtDMHgB4yg2';
 
-        // Check if admin has set a custom password or use default
-        bool validAdminPass = isPrimary1
-            ? (cleanPassword == '123' || cleanPassword == '123000' || cleanPassword == '123456')
-            : (cleanPassword == '123456' || cleanPassword == '123' || cleanPassword == '123000');
+        // Check if admin has set a custom password or uses default
+        String? storedReset;
+        String? storedHash;
 
-        try {
-          final checkKey = isPrimary1 ? '01146979833' : '912209596';
-          final dirSnap = await _db.collection('phone_directory').doc(checkKey).get().timeout(const Duration(seconds: 2));
-          if (dirSnap.exists && dirSnap.data() != null) {
-            final data = dirSnap.data()!;
-            if (data['name'] != null && data['name'].toString().trim().isNotEmpty) {
-              adminName = data['name'].toString().trim();
-            }
-            final storedReset = data['adminResetPassword']?.toString();
-            final storedHash = data['passwordHash']?.toString();
-            if (storedReset != null && storedReset.isNotEmpty) {
-              if (storedReset == cleanPassword || storedReset == PhoneUtils.normalizeDigits(cleanPassword)) {
-                validAdminPass = true;
-              } else {
-                validAdminPass = false; // Overridden by custom password
+        final checkCandidates = <String>{
+          if (isPrimary1) ...['01146979833', '1146979833', '+2491146979833', '2491146979833']
+          else ...['912209596', '0912209596', '+249912209596', '249912209596'],
+          ...PhoneUtils.generatePhoneCandidates(adminPhone),
+          ...PhoneUtils.generatePhoneCandidates(input),
+        };
+
+        for (final k in checkCandidates) {
+          try {
+            final snap = await _db.collection('phone_directory').doc(k).get().timeout(const Duration(milliseconds: 1500));
+            if (snap.exists && snap.data() != null) {
+              final d = snap.data()!;
+              if (d['name'] != null && d['name'].toString().trim().isNotEmpty) {
+                adminName = d['name'].toString().trim();
               }
-            } else if (storedHash != null && storedHash.isNotEmpty) {
-              final inHash = hashPassword(cleanPassword);
-              final normHash = hashPassword(PhoneUtils.normalizeDigits(cleanPassword));
-              if (storedHash == inHash || storedHash == normHash || storedHash == cleanPassword) {
-                validAdminPass = true;
-              } else {
-                validAdminPass = false; // Overridden by custom password
-              }
+              storedReset ??= d['adminResetPassword']?.toString();
+              storedHash ??= d['passwordHash']?.toString();
             }
-          }
-        } catch (_) {}
+          } catch (_) {}
+          if (storedReset != null || storedHash != null) break;
+        }
+
+        if (storedReset == null && storedHash == null) {
+          try {
+            final aDoc = await _db.collection('admins').doc(primaryUid).get().timeout(const Duration(milliseconds: 1500));
+            if (aDoc.exists && aDoc.data() != null) {
+              final d = aDoc.data()!;
+              storedReset ??= d['adminResetPassword']?.toString();
+              storedHash ??= d['passwordHash']?.toString();
+            }
+          } catch (_) {}
+        }
+        if (storedReset == null && storedHash == null) {
+          try {
+            final uDoc = await _db.collection('users').doc(primaryUid).get().timeout(const Duration(milliseconds: 1500));
+            if (uDoc.exists && uDoc.data() != null) {
+              final d = uDoc.data()!;
+              storedReset ??= d['adminResetPassword']?.toString();
+              storedHash ??= d['passwordHash']?.toString();
+            }
+          } catch (_) {}
+        }
+
+        bool validAdminPass;
+        final bool hasCustom = (storedReset != null && storedReset.isNotEmpty) ||
+            (storedHash != null && storedHash.isNotEmpty);
+
+        if (hasCustom) {
+          final inHash = hashPassword(cleanPassword);
+          final normHash = hashPassword(PhoneUtils.normalizeDigits(cleanPassword));
+          validAdminPass = (storedReset != null && (storedReset == cleanPassword || storedReset == PhoneUtils.normalizeDigits(cleanPassword))) ||
+              (storedHash != null && (storedHash == inHash || storedHash == normHash || storedHash == cleanPassword));
+        } else {
+          validAdminPass = isPrimary1
+              ? (cleanPassword == '123' || cleanPassword == '123000' || cleanPassword == '123456')
+              : (cleanPassword == '123456' || cleanPassword == '123' || cleanPassword == '123000');
+        }
 
         if (!validAdminPass) {
           return {
@@ -1453,12 +1467,18 @@ class AuthService implements AuthContract {
           };
         }
 
+        // Legitimate admin verified! Sign in or sync Firebase Auth
+        final paddedPw = cleanPassword.length < 6 ? cleanPassword.padRight(6, '0') : cleanPassword;
         UserCredential? cred;
+
+        final fbCandidates = <String>[
+          cleanPassword,
+          paddedPw,
+          if (isPrimary1) ...['123000', '123', '123456'] else ...['123456', '123000', '123'],
+        ];
+
         for (final em in emailCandidates) {
-          final pwList = isPrimary1
-              ? ['123000', '123', '123456', cleanPassword]
-              : ['123456', '123000', '123', cleanPassword];
-          for (final pw in pwList) {
+          for (final pw in fbCandidates) {
             try {
               cred = await _auth.signInWithEmailAndPassword(
                 email: em,
@@ -1474,7 +1494,7 @@ class AuthService implements AuthContract {
           try {
             cred = await _auth.createUserWithEmailAndPassword(
               email: adminEmail,
-              password: isPrimary1 ? '123000' : '123456',
+              password: paddedPw,
             );
           } catch (_) {}
         }
@@ -1486,14 +1506,19 @@ class AuthService implements AuthContract {
           try {
             cred = await _auth.createUserWithEmailAndPassword(
               email: aliasEmail,
-              password: isPrimary1 ? '123000' : '123456',
+              password: paddedPw,
             );
           } catch (_) {}
         }
 
-        final uid = cred?.user?.uid ??
-            (isPrimary1 ? 'HEsYK0F5TGMFCZtKE7qUq0kFfqQ2' : 'VQ5M7vEKaubtw3H3tOtDMHgB4yg2');
+        // Auto-heal / update Firebase Auth password to match the valid new password
+        if (cred?.user != null) {
+          try {
+            await cred!.user!.updatePassword(paddedPw);
+          } catch (_) {}
+        }
 
+        final uid = cred?.user?.uid ?? primaryUid;
         final defaultAccountId = isPrimary1 ? '5642 1902 3114' : '5642 1902 3115';
         final adminAccountId = await AccountIdUtils.ensureUserHasAccountId(
           uid: uid,
@@ -1501,6 +1526,7 @@ class AuthService implements AuthContract {
           firestore: _db,
         ).catchError((_) => defaultAccountId);
 
+        final newHash = hashPassword(cleanPassword);
         final adminData = {
           'uid': uid,
           'name': adminName,
@@ -1510,27 +1536,30 @@ class AuthService implements AuthContract {
           'accountId': adminAccountId,
           'email': cred?.user?.email ?? adminEmail,
           'isPrimary': true,
+          'passwordHash': newHash,
+          'adminResetPassword': FieldValue.delete(),
+          'passwordUpdatedAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         };
 
-        await _db.collection('admins').doc(uid).set(adminData, SetOptions(merge: true)).catchError((_) {});
-        await _db.collection('users').doc(uid).set(adminData, SetOptions(merge: true)).catchError((_) {});
-        await _db.collection('account_ids').doc(adminAccountId.replaceAll(' ', '')).set({
+        final syncBatch = _db.batch();
+        syncBatch.set(_db.collection('admins').doc(uid), adminData, SetOptions(merge: true));
+        syncBatch.set(_db.collection('users').doc(uid), adminData, SetOptions(merge: true));
+        if (uid != primaryUid) {
+          syncBatch.set(_db.collection('admins').doc(primaryUid), adminData, SetOptions(merge: true));
+          syncBatch.set(_db.collection('users').doc(primaryUid), adminData, SetOptions(merge: true));
+        }
+        syncBatch.set(_db.collection('account_ids').doc(adminAccountId.replaceAll(' ', '')), {
           'uid': uid,
           'role': 'admin',
           'createdAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true)).catchError((_) {});
+        }, SetOptions(merge: true));
 
-        if (isPrimary1) {
-          await _db.collection('phone_directory').doc('01146979833').set(adminData, SetOptions(merge: true)).catchError((_) {});
-          await _db.collection('phone_directory').doc('1146979833').set(adminData, SetOptions(merge: true)).catchError((_) {});
-          await _db.collection('phone_directory').doc('+2491146979833').set(adminData, SetOptions(merge: true)).catchError((_) {});
-        } else {
-          await _db.collection('phone_directory').doc('0912209596').set(adminData, SetOptions(merge: true)).catchError((_) {});
-          await _db.collection('phone_directory').doc('912209596').set(adminData, SetOptions(merge: true)).catchError((_) {});
-          await _db.collection('phone_directory').doc('+249912209596').set(adminData, SetOptions(merge: true)).catchError((_) {});
-          await _db.collection('phone_directory').doc('249912209596').set(adminData, SetOptions(merge: true)).catchError((_) {});
+        for (final k in checkCandidates) {
+          syncBatch.set(_db.collection('phone_directory').doc(k), adminData, SetOptions(merge: true));
         }
+
+        await syncBatch.commit().catchError((_) {});
 
         await _saveSession(
           uid: uid,
@@ -1553,23 +1582,66 @@ class AuthService implements AuthContract {
 
       // 2. Non-primary Admin Fast Path
       Map<String, dynamic>? reg;
-      if (!input.contains('@')) {
+      String? secUid;
+      Map<String, dynamic> regData = {};
+
+      final nonPrimaryCandidates = PhoneUtils.generatePhoneCandidates(input);
+      if (cleanDigits.isNotEmpty) nonPrimaryCandidates.add(cleanDigits);
+
+      for (final cand in nonPrimaryCandidates) {
+        try {
+          final snap = await _db.collection('phone_directory').doc(cand).get().timeout(const Duration(milliseconds: 1500));
+          if (snap.exists && snap.data() != null) {
+            regData = snap.data()!;
+            secUid = regData['uid']?.toString() ?? snap.id;
+            break;
+          }
+        } catch (_) {}
+      }
+
+      if (regData.isEmpty && !input.contains('@')) {
         reg = await checkPhoneRegistration(input);
-        if (reg != null && reg['role'] != 'admin') {
-          final roleName = reg['role'] == 'lawyer' ? 'محامي' : 'عميل';
-          return {
-            'success': false,
-            'error':
-                'هذا الحساب مسجل كـ ($roleName) وغير مصرح له بالدخول كمسؤول. يرجى اختيار تبويب $roleName.',
-          };
+        if (reg != null) {
+          if (reg['role'] != 'admin') {
+            final roleName = reg['role'] == 'lawyer' ? 'محامي' : 'عميل';
+            return {
+              'success': false,
+              'error':
+                  'هذا الحساب مسجل كـ ($roleName) وغير مصرح له بالدخول كمسؤول. يرجى اختيار تبويب $roleName.',
+            };
+          }
+          secUid = reg['uid']?.toString();
+          if (reg['data'] is Map<String, dynamic>) {
+            regData = reg['data'] as Map<String, dynamic>;
+          }
         }
+      }
+
+      // If still not found, check admins collection directly
+      if (regData.isEmpty) {
+        try {
+          final q = await _db.collection('admins').where('phone', isEqualTo: input).limit(1).get();
+          if (q.docs.isNotEmpty) {
+            regData = q.docs.first.data();
+            secUid = q.docs.first.id;
+          } else if (cleanDigits.isNotEmpty) {
+            final allAdm = await _db.collection('admins').get();
+            for (final doc in allAdm.docs) {
+              final p = doc.data()['phone']?.toString().replaceAll(RegExp(r'[^0-9]'), '');
+              if (p == cleanDigits || (p != null && (p.endsWith(cleanDigits) || cleanDigits.endsWith(p)))) {
+                regData = doc.data();
+                secUid = doc.id;
+                break;
+              }
+            }
+          }
+        } catch (_) {}
       }
 
       final targetEmail = input.contains('@')
           ? input.toLowerCase()
-          : (reg?['data']?['email']?.toString() ?? 'admin_$cleanDigits@mahameek.admin.com');
+          : (regData['email']?.toString() ?? 'admin_$cleanDigits@mahameek.admin.com');
 
-      final regData = reg?['data'] as Map<String, dynamic>? ?? {};
       final storedHash = regData['passwordHash']?.toString();
       final adminReset = regData['adminResetPassword']?.toString();
 
@@ -1589,20 +1661,40 @@ class AuthService implements AuthContract {
       final paddedPw = cleanPassword.length < 6 ? cleanPassword.padRight(6, '0') : cleanPassword;
       UserCredential? cred;
 
+      // Try signing into Firebase Auth with user's entered password first
       try {
         cred = await _auth.signInWithEmailAndPassword(
           email: targetEmail,
           password: paddedPw,
         );
       } catch (_) {
-        if (cleanDigits.isNotEmpty) {
+        // If password was reset in Firestore, fallback to candidate passwords to obtain session and sync
+        final fbCandidates = <String>[
+          if (adminReset != null && adminReset.isNotEmpty) adminReset,
+          if (cleanDigits.isNotEmpty) internalAuthKey(cleanDigits),
+          if (cleanDigits.isNotEmpty) cleanDigits,
+          '123456',
+          '123000',
+        ];
+        for (final fbPw in fbCandidates) {
           try {
             cred = await _auth.signInWithEmailAndPassword(
               email: targetEmail,
-              password: internalAuthKey(cleanDigits),
+              password: fbPw,
             );
+            if (cred.user != null) break;
           } catch (_) {}
         }
+      }
+
+      if (cred == null || cred.user == null) {
+        // If account doesn't exist yet in Firebase Auth, create it
+        try {
+          cred = await _auth.createUserWithEmailAndPassword(
+            email: targetEmail,
+            password: paddedPw,
+          );
+        } catch (_) {}
       }
 
       if (cred == null || cred.user == null) {
@@ -1612,23 +1704,59 @@ class AuthService implements AuthContract {
         };
       }
 
+      // Seamless sync: Update Firebase Auth password to the new verified password
+      try {
+        await cred.user!.updatePassword(paddedPw);
+      } catch (_) {}
+
       final uid = cred.user!.uid;
       final adminDoc = await _db.collection('admins').doc(uid).get();
       if (!adminDoc.exists || adminDoc.data()?['role'] != 'admin') {
         final userDoc = await _db.collection('users').doc(uid).get();
         if (!userDoc.exists || userDoc.data()?['role'] != 'admin') {
-          await _auth.signOut();
-          return {
-            'success': false,
-            'error': 'هذا الحساب غير مسجل كمسؤول نظام، يرجى التواصل مع الإدارة.',
-          };
+          // If secUid exists and differs, verify secUid
+          if (secUid != null && secUid != uid) {
+            final oldAdm = await _db.collection('admins').doc(secUid).get();
+            if (!oldAdm.exists || oldAdm.data()?['role'] != 'admin') {
+              await _auth.signOut();
+              return {
+                'success': false,
+                'error': 'هذا الحساب غير مسجل كمسؤول نظام، يرجى التواصل مع الإدارة.',
+              };
+            }
+          } else {
+            await _auth.signOut();
+            return {
+              'success': false,
+              'error': 'هذا الحساب غير مسجل كمسؤول نظام، يرجى التواصل مع الإدارة.',
+            };
+          }
         }
       }
 
-      final adminName = adminDoc.data()?['name']?.toString() ?? 'مشرف النظام';
-      final adminPhone = adminDoc.data()?['phone']?.toString() ?? digits;
+      final adminName = adminDoc.data()?['name']?.toString() ?? regData['name']?.toString() ?? 'مشرف النظام';
+      final adminPhone = adminDoc.data()?['phone']?.toString() ?? regData['phone']?.toString() ?? digits;
       final adminAccountId = adminDoc.data()?['accountId']?.toString() ??
           await AccountIdUtils.ensureUserHasAccountId(uid: uid, role: 'admin', firestore: _db);
+
+      // Sync Firestore so passwordHash is permanent and adminResetPassword is cleaned up
+      final newHash = hashPassword(cleanPassword);
+      final syncData = <String, dynamic>{
+        'passwordHash': newHash,
+        'adminResetPassword': FieldValue.delete(),
+        'passwordUpdatedAt': FieldValue.serverTimestamp(),
+      };
+      await _db.collection('users').doc(uid).set(syncData, SetOptions(merge: true)).catchError((_) {});
+      await _db.collection('admins').doc(uid).set(syncData, SetOptions(merge: true)).catchError((_) {});
+      if (secUid != null && secUid != uid) {
+        await _db.collection('users').doc(secUid).set(syncData, SetOptions(merge: true)).catchError((_) {});
+        await _db.collection('admins').doc(secUid).set(syncData, SetOptions(merge: true)).catchError((_) {});
+      }
+      for (final cand in PhoneUtils.generatePhoneCandidates(adminPhone)) {
+        if (cand.isNotEmpty) {
+          await _db.collection('phone_directory').doc(cand).set(syncData, SetOptions(merge: true)).catchError((_) {});
+        }
+      }
 
       await _saveSession(
         uid: uid,
@@ -1815,6 +1943,69 @@ class AuthService implements AuthContract {
   // 🔑 ADMIN DIRECT USER PASSWORD RESET
   // ===========================================================================
 
+  // ===========================================================================
+  // 🔐 BACKGROUND FIREBASE AUTH PASSWORD SYNCHRONIZER
+  // ===========================================================================
+
+  Future<bool> _syncUserAuthPassword({
+    required List<String> emailTargets,
+    required String newPassword,
+    List<String>? candidateOldPasswords,
+  }) async {
+    FirebaseApp? secondaryApp;
+    try {
+      final appName = 'AuthSync_${DateTime.now().millisecondsSinceEpoch}';
+      secondaryApp = await Firebase.initializeApp(
+        name: appName,
+        options: Firebase.app().options,
+      );
+      final secondaryAuth = FirebaseAuth.instanceFor(app: secondaryApp);
+      final effectiveNew = newPassword.length < 6 ? newPassword.padRight(6, '0') : newPassword;
+      final pwList = <String>{
+        effectiveNew,
+        ...?candidateOldPasswords,
+        '123000',
+        '123456',
+        '123',
+        '12345678',
+        '000000',
+      }.where((s) => s.trim().isNotEmpty).toList();
+
+      for (final email in emailTargets) {
+        if (email.trim().isEmpty) continue;
+        for (final pw in pwList) {
+          try {
+            final cred = await secondaryAuth.signInWithEmailAndPassword(
+              email: email.trim(),
+              password: pw,
+            );
+            if (cred.user != null) {
+              if (pw != effectiveNew) {
+                await cred.user!.updatePassword(effectiveNew);
+                debugPrint('✅ [AuthService] Successfully updated Firebase Auth password for $email');
+              }
+              return true;
+            }
+          } catch (_) {}
+        }
+      }
+      return false;
+    } catch (e) {
+      debugPrint('[AuthService] _syncUserAuthPassword notice: $e');
+      return false;
+    } finally {
+      if (secondaryApp != null) {
+        try {
+          await secondaryApp.delete();
+        } catch (_) {}
+      }
+    }
+  }
+
+  // ===========================================================================
+  // 🔑 ADMIN DIRECT USER PASSWORD RESET
+  // ===========================================================================
+
   @override
   Future<Map<String, dynamic>> adminResetUserPassword({
     required String phone,
@@ -1823,7 +2014,8 @@ class AuthService implements AuthContract {
     String? targetUid,
   }) async {
     try {
-      if (newPassword.length < 6) {
+      final cleanPass = PhoneUtils.normalizeDigits(newPassword.trim());
+      if (cleanPass.length < 6) {
         return {
           'success': false,
           'error': 'كلمة المرور يجب ألا تقل عن 6 أحرف'
@@ -1836,67 +2028,99 @@ class AuthService implements AuthContract {
       }
 
       String? resolvedUid = targetUid;
+      DocumentSnapshot<Map<String, dynamic>>? resolvedDoc;
 
-      // 1. If targetUid not passed, look up in phone_directory
+      // 1. If targetUid is provided, fetch document directly
+      if (resolvedUid != null && resolvedUid.isNotEmpty) {
+        try {
+          var doc = await _db.collection('users').doc(resolvedUid).get();
+          if (!doc.exists) {
+            doc = await _db.collection('admins').doc(resolvedUid).get();
+          }
+          if (!doc.exists) {
+            doc = await _db.collection('lawyers').doc(resolvedUid).get();
+          }
+          if (doc.exists) resolvedDoc = doc;
+        } catch (_) {}
+      }
+
+      // 2. Look up in phone_directory candidates
+      if (resolvedUid == null || resolvedUid.isEmpty) {
+        final candList = PhoneUtils.generatePhoneCandidates(phone).toList();
+        if (cleanDigits.isNotEmpty) candList.add(cleanDigits);
+        for (final c in candList) {
+          try {
+            final dirSnap = await _db.collection('phone_directory').doc(c).get();
+            if (dirSnap.exists && dirSnap.data()?['uid'] != null) {
+              resolvedUid = dirSnap.data()!['uid'].toString();
+              break;
+            }
+          } catch (_) {}
+        }
+      }
+
+      // 3. Query admins collection
       if (resolvedUid == null || resolvedUid.isEmpty) {
         try {
-          final dirSnap = await _db.collection('phone_directory').doc(cleanDigits).get();
-          if (dirSnap.exists && dirSnap.data()?['uid'] != null) {
-            resolvedUid = dirSnap.data()!['uid'].toString();
+          final allAdmins = await _db.collection('admins').get();
+          for (final doc in allAdmins.docs) {
+            final p = doc.data()['phone']?.toString().replaceAll(RegExp(r'[^0-9]'), '');
+            if (p == cleanDigits || (p != null && (p.endsWith(cleanDigits) || cleanDigits.endsWith(p)))) {
+              resolvedUid = doc.id;
+              resolvedDoc = doc;
+              break;
+            }
           }
         } catch (_) {}
       }
 
-      // 2. Query users collection
+      // 4. Query users collection
       if (resolvedUid == null || resolvedUid.isEmpty) {
-        QuerySnapshot userSnap = await _db
-            .collection('users')
-            .where('phone', isEqualTo: phone.trim())
-            .limit(1)
-            .get();
-
-        if (userSnap.docs.isEmpty) {
-          userSnap = await _db
+        try {
+          QuerySnapshot<Map<String, dynamic>> userSnap = await _db
               .collection('users')
-              .where('phone', isEqualTo: cleanDigits)
+              .where('phone', isEqualTo: phone.trim())
               .limit(1)
               .get();
-        }
 
-        if (userSnap.docs.isNotEmpty) {
-          resolvedUid = userSnap.docs.first.id;
-        } else {
-          final allUsers = await _db.collection('users').get();
-          for (final doc in allUsers.docs) {
-            final p = doc
-                .data()['phone']
-                ?.toString()
-                .replaceAll(RegExp(r'[^0-9]'), '');
-            if (p == cleanDigits ||
-                (p != null &&
-                    (p.endsWith(cleanDigits) || cleanDigits.endsWith(p)))) {
+          if (userSnap.docs.isEmpty && cleanDigits.isNotEmpty) {
+            userSnap = await _db
+                .collection('users')
+                .where('phone', isEqualTo: cleanDigits)
+                .limit(1)
+                .get();
+          }
+
+          if (userSnap.docs.isNotEmpty) {
+            resolvedUid = userSnap.docs.first.id;
+            resolvedDoc = userSnap.docs.first;
+          } else {
+            final allUsers = await _db.collection('users').get();
+            for (final doc in allUsers.docs) {
+              final p = doc.data()['phone']?.toString().replaceAll(RegExp(r'[^0-9]'), '');
+              if (p == cleanDigits || (p != null && (p.endsWith(cleanDigits) || cleanDigits.endsWith(p)))) {
+                resolvedUid = doc.id;
+                resolvedDoc = doc;
+                break;
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
+      // 5. Query lawyers collection if still not found
+      if (resolvedUid == null || resolvedUid.isEmpty) {
+        try {
+          final allLawyers = await _db.collection('lawyers').get();
+          for (final doc in allLawyers.docs) {
+            final p = doc.data()['phone']?.toString().replaceAll(RegExp(r'[^0-9]'), '');
+            if (p == cleanDigits || (p != null && (p.endsWith(cleanDigits) || cleanDigits.endsWith(p)))) {
               resolvedUid = doc.id;
+              resolvedDoc = doc;
               break;
             }
           }
-        }
-      }
-
-      // 3. Query lawyers collection if still not found
-      if (resolvedUid == null || resolvedUid.isEmpty) {
-        final allLawyers = await _db.collection('lawyers').get();
-        for (final doc in allLawyers.docs) {
-          final p = doc
-              .data()['phone']
-              ?.toString()
-              .replaceAll(RegExp(r'[^0-9]'), '');
-          if (p == cleanDigits ||
-              (p != null &&
-                  (p.endsWith(cleanDigits) || cleanDigits.endsWith(p)))) {
-            resolvedUid = doc.id;
-            break;
-          }
-        }
+        } catch (_) {}
       }
 
       if (resolvedUid == null) {
@@ -1906,18 +2130,37 @@ class AuthService implements AuthContract {
         };
       }
 
-      // Read existing user doc to preserve previousPasswordHash
-      final existingDoc = await _db.collection('users').doc(resolvedUid).get();
-      final prevHash = existingDoc.data()?['passwordHash']?.toString();
+      // Read existing user / admin doc to preserve previousPasswordHash
+      resolvedDoc ??= await _db.collection('users').doc(resolvedUid).get();
+      if (!resolvedDoc.exists) {
+        final aDoc = await _db.collection('admins').doc(resolvedUid).get();
+        if (aDoc.exists) resolvedDoc = aDoc;
+      }
 
-      final newHash = hashPassword(newPassword);
-      final localDigits = PhoneUtils.extractLocalSudanDigits(cleanDigits);
-      final normPhone = PhoneUtils.normalizeSudanPhone(phone);
+      final docData = resolvedDoc.data() ?? {};
+      final prevHash = docData['passwordHash']?.toString();
+      final docPhone = docData['phone']?.toString() ?? phone;
+      final targetEmail = docData['email']?.toString() ?? '';
+      final role = docData['role']?.toString();
 
+      // Super Admin protection rule: Cannot be reset by another admin (only self)
+      final bool isTargetSuperAdmin = PhoneUtils.isSuperAdminPhone(phone) ||
+          PhoneUtils.isSuperAdminPhone(docPhone) ||
+          docData['isPrimary'] == true;
+
+      final currentUser = _auth.currentUser;
+      if (isTargetSuperAdmin && currentUser != null && currentUser.uid != resolvedUid) {
+        return {
+          'success': false,
+          'error': 'لا يمكن تعديل كلمة سر المشرف الأساسي إلا بواسطة صاحب الحساب نفسه',
+        };
+      }
+
+      final newHash = hashPassword(cleanPass);
       final batch = _db.batch();
 
       final updateData = <String, dynamic>{
-        'adminResetPassword': newPassword,
+        'adminResetPassword': cleanPass,
         'passwordHash': newHash,
         if (prevHash != null && prevHash != newHash) 'previousPasswordHash': prevHash,
         'passwordUpdatedAt': FieldValue.serverTimestamp(),
@@ -1926,49 +2169,70 @@ class AuthService implements AuthContract {
       batch.set(_db.collection('users').doc(resolvedUid), updateData, SetOptions(merge: true));
 
       final lawyerDoc = await _db.collection('lawyers').doc(resolvedUid).get();
-      if (lawyerDoc.exists) {
+      if (lawyerDoc.exists || role == 'lawyer') {
         batch.set(_db.collection('lawyers').doc(resolvedUid), updateData, SetOptions(merge: true));
       }
 
       final adminDoc = await _db.collection('admins').doc(resolvedUid).get();
-      if (adminDoc.exists) {
+      if (adminDoc.exists || role == 'admin' || isTargetSuperAdmin) {
         batch.set(_db.collection('admins').doc(resolvedUid), updateData, SetOptions(merge: true));
       }
 
-      final dirData = <String, dynamic>{
-        'adminResetPassword': newPassword,
-        'passwordHash': newHash,
-        if (prevHash != null && prevHash != newHash) 'previousPasswordHash': prevHash,
-        'passwordUpdatedAt': FieldValue.serverTimestamp(),
+      final dirCandidates = <String>{
+        ...PhoneUtils.generatePhoneCandidates(phone),
+        ...PhoneUtils.generatePhoneCandidates(docPhone),
+        if (cleanDigits.isNotEmpty) cleanDigits,
       };
 
-      if (cleanDigits.isNotEmpty) {
-        batch.set(_db.collection('phone_directory').doc(cleanDigits), dirData, SetOptions(merge: true));
-      }
-      if (normPhone.isNotEmpty && normPhone != cleanDigits) {
-        batch.set(_db.collection('phone_directory').doc(normPhone), dirData, SetOptions(merge: true));
-      }
-      if (localDigits.isNotEmpty && localDigits != cleanDigits && localDigits != normPhone) {
-        batch.set(_db.collection('phone_directory').doc(localDigits), dirData, SetOptions(merge: true));
-      }
-      if (cleanDigits.startsWith('0')) {
-        batch.set(_db.collection('phone_directory').doc(cleanDigits.substring(1)), dirData, SetOptions(merge: true));
+      for (final cand in dirCandidates) {
+        if (cand.isNotEmpty) {
+          batch.set(_db.collection('phone_directory').doc(cand), updateData, SetOptions(merge: true));
+        }
       }
 
       if (ticketId != null && ticketId.isNotEmpty) {
         batch.update(_db.collection('password_resets').doc(ticketId), {
           'status': 'resolved',
-          'tempPassword': newPassword,
+          'tempPassword': cleanPass,
           'resolvedAt': FieldValue.serverTimestamp(),
         });
       }
 
       await batch.commit();
 
+      // If active user in Firebase Auth is the target user, update Firebase Auth directly
+      final effectiveNewPassword = cleanPass.length < 6 ? cleanPass.padRight(6, '0') : cleanPass;
+      if (currentUser != null && currentUser.uid == resolvedUid) {
+        try {
+          await currentUser.updatePassword(effectiveNewPassword);
+        } catch (e) {
+          debugPrint('Direct user.updatePassword notice: $e');
+        }
+      } else {
+        // Attempt background sync with secondary app
+        final emailTargets = <String>[
+          if (targetEmail.isNotEmpty) targetEmail,
+          if (role == 'admin' || isTargetSuperAdmin) 'admin_$cleanDigits@mahameek.admin.com',
+          '$cleanDigits@mahameek.${role ?? 'client'}.com',
+        ];
+        unawaited(_syncUserAuthPassword(
+          emailTargets: emailTargets,
+          newPassword: cleanPass,
+          candidateOldPasswords: [
+            ?prevHash,
+            cleanDigits,
+            internalAuthKey(cleanDigits),
+            '123000',
+            '123456',
+            '123',
+          ],
+        ));
+      }
+
       return {
         'success': true,
         'uid': resolvedUid,
-        'newPassword': newPassword,
+        'newPassword': cleanPass,
       };
     } catch (e) {
       debugPrint('adminResetUserPassword error: $e');
@@ -1989,26 +2253,90 @@ class AuthService implements AuthContract {
     required String newPassword,
   }) async {
     try {
-      final user = _auth.currentUser;
-      if (user == null || user.email == null) {
-        return {'success': false, 'error': 'يجب تسجيل الدخول أولاً'};
-      }
+      final cleanCurrent = PhoneUtils.normalizeDigits(currentPassword.trim());
+      final cleanNew = PhoneUtils.normalizeDigits(newPassword.trim());
 
-      if (newPassword.length < 6) {
+      if (cleanNew.length < 6) {
         return {
           'success': false,
           'error': 'كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل'
         };
       }
 
-      final userDoc = await _db.collection('users').doc(user.uid).get();
-      final storedHash = userDoc.data()?['passwordHash']?.toString();
-      final adminReset = userDoc.data()?['adminResetPassword']?.toString();
-      final phone = userDoc.data()?['phone']?.toString() ?? '';
-      final currentHash = hashPassword(currentPassword);
+      final user = _auth.currentUser;
+      String? uid = user?.uid;
+      String userEmail = user?.email ?? '';
 
-      final bool isCurrentValid = (adminReset != null && adminReset == currentPassword) ||
-          (storedHash == null || storedHash == currentHash);
+      // SharedPreferences fallback if user was null due to reload
+      if (uid == null) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          uid = prefs.getString('user_uid') ?? prefs.getString('uid');
+          final spPhone = prefs.getString('user_phone') ?? prefs.getString('phone');
+          final spRole = prefs.getString('user_role') ?? prefs.getString('role');
+          if (spPhone != null && spRole != null) {
+            final cleanD = PhoneUtils.extractLocalSudanDigits(spPhone);
+            userEmail = '$cleanD@mahameek.$spRole.com';
+          }
+        } catch (_) {}
+      }
+
+      if (uid == null || uid.isEmpty) {
+        return {'success': false, 'error': 'يجب تسجيل الدخول أولاً'};
+      }
+
+      final userDoc = await _db.collection('users').doc(uid).get();
+      final adminDoc = await _db.collection('admins').doc(uid).get();
+      final lawyerDoc = await _db.collection('lawyers').doc(uid).get();
+
+      final docData = adminDoc.exists
+          ? (adminDoc.data() ?? {})
+          : (userDoc.exists ? (userDoc.data() ?? {}) : (lawyerDoc.data() ?? {}));
+
+      String? storedHash = docData['passwordHash']?.toString();
+      String? adminReset = docData['adminResetPassword']?.toString();
+      String phone = docData['phone']?.toString() ?? '';
+      if (userEmail.isEmpty) {
+        userEmail = docData['email']?.toString() ?? '';
+      }
+
+      final cleanDigits = phone.replaceAll(RegExp(r'\D'), '');
+
+      // If not found in primary docs, check phone_directory
+      if (storedHash == null && adminReset == null && phone.isNotEmpty) {
+        for (final c in PhoneUtils.generatePhoneCandidates(phone)) {
+          try {
+            final dSnap = await _db.collection('phone_directory').doc(c).get();
+            if (dSnap.exists && dSnap.data() != null) {
+              storedHash ??= dSnap.data()!['passwordHash']?.toString();
+              adminReset ??= dSnap.data()!['adminResetPassword']?.toString();
+              if (storedHash != null || adminReset != null) break;
+            }
+          } catch (_) {}
+        }
+      }
+
+      final bool isPrimary1 = PhoneUtils.isPrimaryAdmin1(phone);
+      final bool isPrimary2 = PhoneUtils.isPrimaryAdmin2(phone);
+      final bool isPrimaryAdmin = isPrimary1 || isPrimary2;
+
+      final currentHash = hashPassword(cleanCurrent);
+      final rawCurrentHash = hashPassword(currentPassword);
+
+      bool isCurrentValid;
+      if (isPrimaryAdmin) {
+        if (adminReset != null || storedHash != null) {
+          isCurrentValid = (adminReset != null && (adminReset == cleanCurrent || adminReset == currentPassword)) ||
+              (storedHash != null && (storedHash == currentHash || storedHash == rawCurrentHash || storedHash == cleanCurrent));
+        } else {
+          isCurrentValid = isPrimary1
+              ? (cleanCurrent == '123' || cleanCurrent == '123000' || cleanCurrent == '123456')
+              : (cleanCurrent == '123456' || cleanCurrent == '123' || cleanCurrent == '123000');
+        }
+      } else {
+        isCurrentValid = (adminReset != null && (adminReset == cleanCurrent || adminReset == currentPassword)) ||
+            (storedHash == null || storedHash == currentHash || storedHash == rawCurrentHash || storedHash == cleanCurrent);
+      }
 
       if (!isCurrentValid) {
         return {
@@ -2017,43 +2345,48 @@ class AuthService implements AuthContract {
         };
       }
 
-      final cleanDigits = phone.replaceAll(RegExp(r'\D'), '');
       final authKey = cleanDigits.isNotEmpty ? internalAuthKey(cleanDigits) : '';
-
-      final pwCandidates = {
+      final pwCandidates = <String>{
+        cleanCurrent,
         currentPassword,
+        if (cleanCurrent.length < 6) cleanCurrent.padRight(6, '0'),
         if (currentPassword.length < 6) currentPassword.padRight(6, '0'),
         if (adminReset != null && adminReset.isNotEmpty) adminReset,
         if (authKey.isNotEmpty) authKey,
+        '123000',
         '123456',
+        '123',
         '12345678',
         '000000',
         if (cleanDigits.isNotEmpty) cleanDigits,
       }.toList();
 
-      bool reauthSuccess = false;
-      for (final pw in pwCandidates) {
-        try {
-          final cred = EmailAuthProvider.credential(
-            email: user.email!,
-            password: pw,
-          );
-          await user.reauthenticateWithCredential(cred);
-          reauthSuccess = true;
-          break;
-        } catch (_) {}
+      final effectiveNewPassword = cleanNew.length < 6 ? cleanNew.padRight(6, '0') : cleanNew;
+
+      if (user != null && userEmail.isNotEmpty) {
+        bool reauthSuccess = false;
+        for (final pw in pwCandidates) {
+          try {
+            final cred = EmailAuthProvider.credential(
+              email: userEmail,
+              password: pw,
+            );
+            await user.reauthenticateWithCredential(cred);
+            reauthSuccess = true;
+            break;
+          } catch (_) {}
+        }
+
+        if (reauthSuccess) {
+          try {
+            await user.updatePassword(effectiveNewPassword);
+          } catch (e) {
+            debugPrint('user.updatePassword notice: $e');
+          }
+        }
       }
 
-      final effectiveNewPassword =
-          newPassword.length < 6 ? newPassword.padRight(6, '0') : newPassword;
-
-      if (reauthSuccess) {
-        try {
-          await user.updatePassword(effectiveNewPassword);
-        } catch (_) {}
-      }
-
-      final newHash = hashPassword(newPassword);
+      final newHash = hashPassword(cleanNew);
       final batch = _db.batch();
 
       final userUpdate = <String, dynamic>{
@@ -2065,32 +2398,26 @@ class AuthService implements AuthContract {
         userUpdate['previousPasswordHash'] = storedHash;
       }
 
-      batch.set(_db.collection('users').doc(user.uid), userUpdate, SetOptions(merge: true));
+      batch.set(_db.collection('users').doc(uid), userUpdate, SetOptions(merge: true));
 
-      final lawyerDoc = await _db.collection('lawyers').doc(user.uid).get();
-      if (lawyerDoc.exists) {
-        batch.set(_db.collection('lawyers').doc(user.uid), userUpdate, SetOptions(merge: true));
+      if (adminDoc.exists || isPrimaryAdmin || docData['role'] == 'admin') {
+        batch.set(_db.collection('admins').doc(uid), userUpdate, SetOptions(merge: true));
       }
 
-      if (cleanDigits.isNotEmpty) {
-        final localDigits = PhoneUtils.extractLocalSudanDigits(cleanDigits);
-        final normPhone = PhoneUtils.normalizeSudanPhone(phone);
+      if (lawyerDoc.exists || docData['role'] == 'lawyer') {
+        batch.set(_db.collection('lawyers').doc(uid), userUpdate, SetOptions(merge: true));
+      }
 
-        final dirData = {
-          'passwordHash': newHash,
-          'adminResetPassword': FieldValue.delete(),
-          'passwordUpdatedAt': FieldValue.serverTimestamp(),
+      if (phone.isNotEmpty || cleanDigits.isNotEmpty) {
+        final allCandidates = <String>{
+          ...PhoneUtils.generatePhoneCandidates(phone),
+          if (cleanDigits.isNotEmpty) cleanDigits,
         };
 
-        batch.set(_db.collection('phone_directory').doc(cleanDigits), dirData, SetOptions(merge: true));
-        if (normPhone.isNotEmpty && normPhone != cleanDigits) {
-          batch.set(_db.collection('phone_directory').doc(normPhone), dirData, SetOptions(merge: true));
-        }
-        if (localDigits.isNotEmpty && localDigits != cleanDigits && localDigits != normPhone) {
-          batch.set(_db.collection('phone_directory').doc(localDigits), dirData, SetOptions(merge: true));
-        }
-        if (cleanDigits.startsWith('0')) {
-          batch.set(_db.collection('phone_directory').doc(cleanDigits.substring(1)), dirData, SetOptions(merge: true));
+        for (final cand in allCandidates) {
+          if (cand.isNotEmpty) {
+            batch.set(_db.collection('phone_directory').doc(cand), userUpdate, SetOptions(merge: true));
+          }
         }
       }
 
@@ -2100,6 +2427,7 @@ class AuthService implements AuthContract {
     } on FirebaseAuthException catch (e) {
       return {'success': false, 'error': _authError(e.code)};
     } catch (e) {
+      debugPrint('reauthenticateAndChangePassword error: $e');
       return {
         'success': false,
         'error': 'فشل تحديث كلمة المرور، يرجى المحاولة لاحقاً'
