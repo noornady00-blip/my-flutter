@@ -3207,8 +3207,24 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                       title: 'حذف المشرف نهائياً',
                                       message: 'هل أنت متأكد من حذف حساب المشرف (${a.name})؟',
                                     );
-                                    if (confirmed == true) {
-                                      await _firestoreService.deleteAdmin(a.uid);
+                                    if (confirmed == true && context.mounted) {
+                                      final messenger = ScaffoldMessenger.of(context);
+                                      try {
+                                        await _firestoreService.deleteAdmin(a.uid);
+                                        messenger.showSnackBar(
+                                          SnackBar(
+                                            content: Text('تم حذف حساب المشرف بنجاح', style: GoogleFonts.cairo()),
+                                            backgroundColor: const Color(0xFF10B981),
+                                          ),
+                                        );
+                                      } catch (e) {
+                                        messenger.showSnackBar(
+                                          SnackBar(
+                                            content: Text('فشل حذف حساب المشرف: $e', style: GoogleFonts.cairo()),
+                                            backgroundColor: const Color(0xFFDC2626),
+                                          ),
+                                        );
+                                      }
                                     }
                                   },
                                   icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444), size: 20),

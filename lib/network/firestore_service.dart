@@ -740,25 +740,80 @@ class FirestoreService implements DatabaseContract {
   @override
   Future<void> deleteAdmin(String uid) async {
     try {
-      final userDoc = await _db.collection('users').doc(uid).get();
-      final phone = userDoc.data()?['phone']?.toString();
-      final accountId = userDoc.data()?['accountId']?.toString();
+      // 1. Fetch admin data from both admins and users collections BEFORE deleting
+      DocumentSnapshot<Map<String, dynamic>>? adminDoc;
+      DocumentSnapshot<Map<String, dynamic>>? userDoc;
+      try {
+        adminDoc = await _db.collection('admins').doc(uid).get();
+      } catch (_) {}
+      try {
+        userDoc = await _db.collection('users').doc(uid).get();
+      } catch (_) {}
 
+      final data = <String, dynamic>{
+        ...?adminDoc?.data(),
+        ...?userDoc?.data(),
+      };
+
+      final phone = data['phone']?.toString() ?? data['rawPhone']?.toString() ?? '';
+      final email = data['email']?.toString() ?? '';
+      final accountId = data['accountId']?.toString() ?? '';
+      final resetPw = data['adminResetPassword']?.toString();
+
+      // 2. PURGE FROM FIREBASE AUTHENTICATION (Using isolated secondary session)
+      try {
+        await AuthService().deleteUserAuthAccount(
+          phone: phone,
+          role: 'admin',
+          uid: uid,
+          password: resetPw,
+          userEmail: email.isNotEmpty ? email : null,
+        );
+      } catch (authErr) {
+        debugPrint('[FirestoreService] deleteAdmin auth purge notice: $authErr');
+      }
+
+      // 3. PURGE FROM FIRESTORE
       final batch = _db.batch();
       batch.delete(_db.collection('users').doc(uid));
       batch.delete(_db.collection('admins').doc(uid));
-      if (accountId != null && accountId.isNotEmpty) {
+      batch.delete(_db.collection('admin_fcm_tokens').doc(uid));
+
+      if (accountId.isNotEmpty) {
         batch.delete(_db.collection('account_ids').doc(accountId));
+        batch.delete(_db.collection('account_ids').doc(accountId.replaceAll(' ', '')));
       }
-      if (phone != null && phone.isNotEmpty) {
+
+      final phoneCandidates = <String>{};
+      if (phone.isNotEmpty) {
+        phoneCandidates.addAll(PhoneUtils.generatePhoneCandidates(phone));
         final unified = PhoneUtils.toUnifiedPhone(phone);
-        batch.delete(_db.collection('phone_directory').doc(unified));
-        final candidates = PhoneUtils.generatePhoneCandidates(phone);
-        for (final cand in candidates) {
+        phoneCandidates.add(unified);
+        final cleanDigits = PhoneUtils.extractLocalSudanDigits(phone);
+        if (cleanDigits.isNotEmpty) phoneCandidates.add(cleanDigits);
+        final rawDigits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+        if (rawDigits.isNotEmpty) phoneCandidates.add(rawDigits);
+      }
+
+      for (final cand in phoneCandidates) {
+        if (cand.isNotEmpty) {
           batch.delete(_db.collection('phone_directory').doc(cand));
         }
       }
+
+      // Also clean up any phone_directory docs referencing this uid
+      try {
+        final dirSnap = await _db
+            .collection('phone_directory')
+            .where('uid', isEqualTo: uid)
+            .get();
+        for (final doc in dirSnap.docs) {
+          batch.delete(doc.reference);
+        }
+      } catch (_) {}
+
       await batch.commit();
+      debugPrint('✅ [FirestoreService] Successfully deleted admin $uid from Firestore and Firebase Auth');
     } catch (e) {
       debugPrint('[FirestoreService] deleteAdmin error: $e');
       rethrow;
