@@ -831,27 +831,26 @@ class AuthService implements AuthContract {
       final discoveredUid = recordData['uid']?.toString() ?? registered?['uid']?.toString() ?? dirSnap?.id;
 
       // 4. Role Guard Verification
-      if (expectedPortal == 'admin') {
+      if (expectedPortal == 'client') {
+        if (discoveredRole == 'lawyer') {
+          return {
+            'success': false,
+            'error': 'هذا الحساب مسجل كـ (محامي)، يرجى اختيار تبويب محامي.',
+          };
+        }
+      } else if (expectedPortal == 'lawyer') {
+        if (discoveredRole != 'lawyer') {
+          final String roleNameInArabic = discoveredRole == 'client' ? 'عميل' : 'إداري';
+          return {
+            'success': false,
+            'error': 'هذا الحساب مسجل كـ ($roleNameInArabic)، يرجى اختيار التبويب الصحيح.',
+          };
+        }
+      } else if (expectedPortal == 'admin') {
         if (discoveredRole != 'admin' && discoveredRole != 'subadmin') {
           return {
             'success': false,
             'error': 'هذا الحساب لا يملك صلاحية الإدارة.',
-          };
-        }
-      } else {
-        if (discoveredRole == 'admin' || discoveredRole == 'subadmin') {
-          return {
-            'success': false,
-            'error': 'هذا الحساب ذو صلاحية إدارية، يرجى استخدام بوابة الإدارة للوصول إلى حسابك.',
-          };
-        }
-        if (discoveredRole != expectedPortal.toLowerCase()) {
-          final String roleNameInArabic = discoveredRole == 'lawyer'
-              ? 'محامي'
-              : (discoveredRole == 'client' ? 'عميل' : 'إداري');
-          return {
-            'success': false,
-            'error': 'هذا الحساب مسجل كـ ($roleNameInArabic)، يرجى اختيار التبويب الصحيح.',
           };
         }
       }

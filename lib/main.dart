@@ -16,7 +16,6 @@ import 'ui/screens/onboarding/onboarding_screen.dart';
 import 'ui/screens/admin/admin_dashboard.dart';
 import 'ui/screens/main_navigation_screen.dart';
 import 'ui/screens/auth/lawyer_pending_screen.dart';
-import 'ui/screens/auth/admin_login_screen.dart';
 import 'ui/custom_widgets/global_network_banner.dart';
 import 'network/firestore_service.dart';
 
@@ -227,9 +226,6 @@ class _MahameekAppState extends State<MahameekApp> with WidgetsBindingObserver {
         );
       },
       home: widget.initialScreen,
-      routes: {
-        '/admin-portal': (context) => const AdminLoginScreen(),
-      },
     );
   }
 }

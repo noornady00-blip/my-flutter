@@ -45,11 +45,6 @@ class PhoneUtils {
       digits = digits.substring(1);
     }
 
-    // استثناء خاص للمشرف الأساسي 1 (01146979833 / 1146979833)
-    if (digits.endsWith('1146979833') || digits == '1146979833' || digits == '146979833') {
-      return '+$sudanCountryCode' '1146979833';
-    }
-
     // الأرقام السودانية القياسية 9 أرقام تبدأ بـ 9 أو 1
     if (digits.length == sudanPhoneLength) {
       if (!digits.startsWith('9') && !digits.startsWith('1')) {

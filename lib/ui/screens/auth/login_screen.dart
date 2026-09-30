@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../network/auth_service.dart';
 import '../../../network/network_service.dart';
+import '../admin/admin_dashboard.dart';
 import '../main_navigation_screen.dart';
 import 'lawyer_pending_screen.dart';
 import 'lawyer_register_screen.dart';
@@ -32,8 +32,6 @@ class _LoginScreenState extends State<LoginScreen> {
   String? _error;
   late String _selectedRole;
   final _authService = AuthService();
-  Timer? _logoLongPressTimer;
-
   @override
   void initState() {
     super.initState();
@@ -41,24 +39,8 @@ class _LoginScreenState extends State<LoginScreen> {
     _selectedRole = (widget.role == 'lawyer') ? 'lawyer' : 'client';
   }
 
-  void _onLogoPointerDown(PointerDownEvent _) {
-    _logoLongPressTimer?.cancel();
-    _logoLongPressTimer = Timer(const Duration(seconds: 3), () {
-      HapticFeedback.heavyImpact();
-      if (mounted) {
-        Navigator.pushNamed(context, '/admin-portal');
-      }
-    });
-  }
-
-  void _onLogoPointerUpOrCancel(PointerEvent _) {
-    _logoLongPressTimer?.cancel();
-    _logoLongPressTimer = null;
-  }
-
   @override
   void dispose() {
-    _logoLongPressTimer?.cancel();
     _identifierController.dispose();
     _passController.dispose();
     super.dispose();
@@ -150,7 +132,13 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _loading = false);
 
     if (res['success'] == true) {
-      if (res['role'] == 'lawyer') {
+      if (res['role'] == 'admin' || res['role'] == 'subadmin') {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const AdminDashboard()),
+          (_) => false,
+        );
+      } else if (res['role'] == 'lawyer') {
         if (res['status'] == 'pending') {
           Navigator.pushAndRemoveUntil(
             context,
@@ -634,17 +622,11 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // Logo (Hidden 3-second long-press gateway to /admin-portal)
-                        Listener(
-                          onPointerDown: _onLogoPointerDown,
-                          onPointerUp: _onLogoPointerUpOrCancel,
-                          onPointerCancel: _onLogoPointerUpOrCancel,
-                          behavior: HitTestBehavior.opaque,
-                          child: Image.asset(
-                            'assets/images/logo_full.png',
-                            height: 55,
-                            fit: BoxFit.contain,
-                          ),
+                        // Logo
+                        Image.asset(
+                          'assets/images/logo_full.png',
+                          height: 55,
+                          fit: BoxFit.contain,
                         ).animate().fadeIn(duration: 500.ms).scale(
                               begin: const Offset(0.88, 0.88),
                               end: const Offset(1.0, 1.0),
