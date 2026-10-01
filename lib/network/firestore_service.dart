@@ -665,12 +665,6 @@ class FirestoreService implements DatabaseContract {
       await _db.collection('users').doc(admin1Uid).set(admin1Data, SetOptions(merge: true)).catchError((_) {});
       await _db.collection('admins').doc(admin1Uid).set(admin1Data, SetOptions(merge: true)).catchError((_) {});
       await _db.collection('phone_directory').doc('+249146979833').set(admin1Data, SetOptions(merge: true)).catchError((_) {});
-      await _db.collection('phone_directory').doc('249146979833').set(admin1Data, SetOptions(merge: true)).catchError((_) {});
-      await _db.collection('phone_directory').doc('146979833').set(admin1Data, SetOptions(merge: true)).catchError((_) {});
-      await _db.collection('phone_directory').doc('0146979833').set(admin1Data, SetOptions(merge: true)).catchError((_) {});
-      await _db.collection('phone_directory').doc('01146979833').set(admin1Data, SetOptions(merge: true)).catchError((_) {});
-      await _db.collection('phone_directory').doc('1146979833').set(admin1Data, SetOptions(merge: true)).catchError((_) {});
-      await _db.collection('phone_directory').doc('+2491146979833').set(admin1Data, SetOptions(merge: true)).catchError((_) {});
       await _db.collection('account_ids').doc('111111111111').set({
         'uid': admin1Uid,
         'role': 'admin',
@@ -682,7 +676,7 @@ class FirestoreService implements DatabaseContract {
         'createdAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true)).catchError((_) {});
 
-      // 2. Admin 2: 91 220 9596 (+249912209596 / 0912209596)
+      // 2. Admin 2: 91 220 9596 (+249912209596)
       const admin2Uid = 'VQ5M7vEKaubtw3H3tOtDMHgB4yg2';
       final admin2Data = {
         'uid': admin2Uid,
@@ -698,9 +692,6 @@ class FirestoreService implements DatabaseContract {
       await _db.collection('users').doc(admin2Uid).set(admin2Data, SetOptions(merge: true)).catchError((_) {});
       await _db.collection('admins').doc(admin2Uid).set(admin2Data, SetOptions(merge: true)).catchError((_) {});
       await _db.collection('phone_directory').doc('+249912209596').set(admin2Data, SetOptions(merge: true)).catchError((_) {});
-      await _db.collection('phone_directory').doc('249912209596').set(admin2Data, SetOptions(merge: true)).catchError((_) {});
-      await _db.collection('phone_directory').doc('912209596').set(admin2Data, SetOptions(merge: true)).catchError((_) {});
-      await _db.collection('phone_directory').doc('0912209596').set(admin2Data, SetOptions(merge: true)).catchError((_) {});
       await _db.collection('account_ids').doc('222222222222').set({
         'uid': admin2Uid,
         'role': 'admin',

@@ -288,17 +288,16 @@ class _LawyerSettingsScreenState extends State<LawyerSettingsScreen> {
         if (_phone.isNotEmpty) {
           final cleanPhone = PhoneUtils.normalize(_phone);
           if (cleanPhone.isNotEmpty) {
-            final dirData = {
-              'photoUrl': downloadUrl,
-              'photoBase64': base64Photo,
-              'photo': downloadUrl,
-              'user_profile_photo_url': downloadUrl,
-            };
-            FirebaseFirestore.instance.collection('phone_directory').doc(cleanPhone).set(dirData, SetOptions(merge: true)).catchError((_) {});
-            final norm = PhoneUtils.normalize(cleanPhone);
-            if (norm.isNotEmpty && norm != cleanPhone) {
-              FirebaseFirestore.instance.collection('phone_directory').doc(norm).set(dirData, SetOptions(merge: true)).catchError((_) {});
-            }
+            try {
+              final normPhone = PhoneUtils.normalize(cleanPhone);
+              final dirData = {
+                'photoUrl': downloadUrl,
+                'photoBase64': base64Photo,
+                'photo': downloadUrl,
+                'user_profile_photo_url': downloadUrl,
+              };
+              FirebaseFirestore.instance.collection('phone_directory').doc(normPhone).set(dirData, SetOptions(merge: true)).catchError((_) {});
+            } catch (_) {}
           }
         }
 

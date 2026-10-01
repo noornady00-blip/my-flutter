@@ -240,24 +240,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
           // Also synchronize photo into phone_directory for immediate lookup by phone
           if (_userPhone.isNotEmpty) {
-            final cleanPhone = PhoneUtils.normalize(_userPhone);
-            if (cleanPhone.isNotEmpty) {
+            try {
+              final normPhone = PhoneUtils.normalize(_userPhone);
               final dirData = {
                 'photoUrl': downloadUrl,
                 'photoBase64': base64Str,
                 'photo': downloadUrl,
                 'user_profile_photo_url': downloadUrl,
               };
-              batch.set(FirebaseFirestore.instance.collection('phone_directory').doc(cleanPhone), dirData, SetOptions(merge: true));
-              final norm = PhoneUtils.normalize(cleanPhone);
-              if (norm.isNotEmpty && norm != cleanPhone) {
-                batch.set(FirebaseFirestore.instance.collection('phone_directory').doc(norm), dirData, SetOptions(merge: true));
-              }
-              final local = PhoneUtils.toLocalDisplay(cleanPhone);
-              if (local.isNotEmpty && local != cleanPhone) {
-                batch.set(FirebaseFirestore.instance.collection('phone_directory').doc(local), dirData, SetOptions(merge: true));
-              }
-            }
+              batch.set(FirebaseFirestore.instance.collection('phone_directory').doc(normPhone), dirData, SetOptions(merge: true));
+            } catch (_) {}
           }
 
           await batch.commit();

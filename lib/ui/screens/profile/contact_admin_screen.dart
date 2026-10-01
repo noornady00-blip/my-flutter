@@ -44,7 +44,7 @@ class _ContactAdminScreenState extends State<ContactAdminScreen> {
       }
       if (session['phone'] != null && session['phone']!.isNotEmpty) {
         if (_phoneCtrl.text.isEmpty) {
-          _phoneCtrl.text = PhoneUtils.toLocalDisplay(session['phone']!);
+          _phoneCtrl.text = PhoneUtils.toRaw9(session['phone']!);
         }
       }
     } catch (_) {}

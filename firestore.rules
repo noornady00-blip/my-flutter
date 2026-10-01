@@ -62,14 +62,15 @@ service cloud.firestore {
       allow delete: if isOwner(uid) || isAdmin();
     }
 
-    // ==================== UNIQUE ACCOUNT IDS REGISTRY ====================
     match /account_ids/{accountId} {
       // Fast public lookup and collision check for 12-digit account numbers
       allow read: if true;
       // Any authenticated user or admin can register their 12-digit account number
       allow create: if isAuthenticated() || isAdmin();
-      // Only admins can modify or clean up account ID registry entries
-      allow update, delete: if isAdmin();
+      // Owner or Admin can delete the account ID registry entry
+      allow delete: if isAdmin() || (isAuthenticated() && (resource == null || !('uid' in resource.data) || resource.data.uid == request.auth.uid));
+      // Only admins can modify account ID registry entries
+      allow update: if isAdmin();
     }
 
     // ==================== CHATS & DIRECT MESSAGING ====================

@@ -26,16 +26,12 @@ class PhoneUtils {
       res = res.substring(3);
     }
 
-    while (res.startsWith('0') && res.length > 9) {
+    if (res.startsWith('0')) {
       res = res.substring(1);
     }
 
     if (res.length != 9) {
-      if (res.length > 9) {
-        res = res.substring(res.length - 9);
-      } else {
-        throw const FormatException('رقم الهاتف يجب أن يكون 9 أرقام');
-      }
+      throw const FormatException('رقم الهاتف يجب أن يكون 9 أرقام');
     }
 
     return '+249$res';
@@ -50,6 +46,7 @@ class PhoneUtils {
     }
   }
 
+  /// التنسيق المحلي للأرقام (0 + 9 أرقام)
   static String toLocalDisplay(String normalized) {
     try {
       final n = normalize(normalized);
@@ -58,6 +55,32 @@ class PhoneUtils {
       return normalized;
     }
   }
+
+  /// تنسيق موحد ومثالي لرقم الهاتف للعرض في كامل التطبيق مثل: +249 912209596
+  static String formatDisplay(String phone) {
+    try {
+      final n = normalize(phone);
+      return '+249 ${n.substring(4)}';
+    } catch (_) {
+      final digits = convertArabicDigits(phone).replaceAll(RegExp(r'[^0-9]'), '');
+      if (digits.length >= 9) {
+        return '+249 ${digits.substring(digits.length - 9)}';
+      }
+      return phone;
+    }
+  }
+
+  /// استخراج الأرقام الـ 9 الصافية بدون بادئة للحقول المدخلة
+  static String toRaw9(String phone) {
+    try {
+      final n = normalize(phone);
+      return n.substring(4);
+    } catch (_) {
+      final digits = convertArabicDigits(phone).replaceAll(RegExp(r'[^0-9]'), '');
+      return digits.length >= 9 ? digits.substring(digits.length - 9) : digits;
+    }
+  }
+
 
   static String toAuthEmail(String normalized) {
     final n = normalize(normalized);

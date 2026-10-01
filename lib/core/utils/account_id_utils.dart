@@ -1,14 +1,16 @@
 // ==============================================================================
-// 🆔 ACCOUNT ID UTILITIES (12-DIGIT FIXED IDENTIFIER)
+// 🆔 ACCOUNT ID UTILITIES (FIXED IDENTIFIER)
 // ==============================================================================
-// Generates, validates, and manages unique 12-digit fixed account numbers
-// (e.g., 102938475612) for Clients, Lawyers, and Administrators.
+// Generates, validates, and manages unique fixed account numbers
+// (e.g., 1029 3847 5612) for Clients, Lawyers, and Administrators.
 // Firebase UID remains the internal key; Account ID is for friendly display and lookup.
+// Completely unified across users, lawyers, admins, and Firestore.
 // ==============================================================================
 
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AccountIdUtils {
   static final Random _secureRandom = Random.secure();
@@ -24,17 +26,24 @@ class AccountIdUtils {
     return buffer.toString();
   }
 
-  /// Validates whether a given string is exactly 12 digits
+  /// Extracts pure digits from formatted string
+  static String clean12Digits(String? id) {
+    if (id == null) return '';
+    return id.replaceAll(RegExp(r'[^0-9]'), '').trim();
+  }
+
+  /// Validates whether a given string is a valid numeric account ID
+  static bool isValidAccountId(String? id) {
+    if (id == null) return false;
+    final clean = id.trim();
+    return clean.length >= 8 && clean.length <= 14 && RegExp(r'^\d+$').hasMatch(clean);
+  }
+
+  /// Strictly validates whether a given string is exactly 12 digits
   static bool isValid12DigitId(String? id) {
     if (id == null) return false;
     final clean = id.trim();
     return clean.length == 12 && RegExp(r'^\d{12}$').hasMatch(clean);
-  }
-
-  /// Extracts and cleans pure 12 digits from formatted string
-  static String clean12Digits(String? id) {
-    if (id == null) return '';
-    return id.replaceAll(RegExp(r'[^0-9]'), '').trim();
   }
 
   /// Generates a cryptographically unique 12-digit ID with collision verification
@@ -53,94 +62,143 @@ class AccountIdUtils {
       if (!doc.exists) {
         return candidate;
       }
-      // If by extremely rare chance it exists, generate another candidate
       return generateCandidate12DigitId();
     } catch (e) {
       debugPrint('[AccountIdUtils] Check candidate notice: $e');
-      // If remote collection read times out or is denied by rules, candidate is 
-      // cryptographically random across 12 digits (odds of collision < 1 in 900 billion)
       return candidate;
     }
   }
 
-  /// Automatically assigns and persists a 12-digit ID if a user/lawyer lacks one
+  /// Synchronizes an account ID across all collections atomically so it never diverges
+  static Future<void> _syncAccountIdToAll({
+    required String uid,
+    required String accountId,
+    required String role,
+    FirebaseFirestore? firestore,
+  }) async {
+    final db = firestore ?? FirebaseFirestore.instance;
+    final clean = clean12Digits(accountId);
+    if (clean.isEmpty) return;
+
+    try {
+      final batch = db.batch();
+      batch.set(db.collection('users').doc(uid), {'accountId': clean}, SetOptions(merge: true));
+      if (role == 'lawyer') {
+        batch.set(db.collection('lawyers').doc(uid), {'accountId': clean}, SetOptions(merge: true));
+      } else if (role == 'admin') {
+        batch.set(db.collection('admins').doc(uid), {'accountId': clean}, SetOptions(merge: true));
+      }
+      batch.set(db.collection('account_ids').doc(clean), {
+        'uid': uid,
+        'role': role,
+        'createdAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      await batch.commit().catchError((_) {});
+
+      // Sync local storage
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('accountId', clean);
+      await prefs.setString('user_account_id', clean);
+    } catch (e) {
+      debugPrint('[AccountIdUtils] _syncAccountIdToAll error: $e');
+    }
+  }
+
+  /// Automatically assigns and persists a fixed account ID if a user/lawyer lacks one.
+  /// Guarantees that if ANY collection has an existing ID, it is preserved and unified everywhere!
   static Future<String> ensureUserHasAccountId({
     required String uid,
     String role = 'client',
     String? currentAccountId,
     FirebaseFirestore? firestore,
   }) async {
-    if (isValid12DigitId(currentAccountId)) {
-      return currentAccountId!;
+    final db = firestore ?? FirebaseFirestore.instance;
+
+    // 0. Primary Admins fixed IDs
+    if (uid == 'HEsYK0F5TGMFCZtKE7qUq0kFfqQ2') {
+      const fixedId = '111111111111';
+      await _syncAccountIdToAll(uid: uid, accountId: fixedId, role: 'admin', firestore: db);
+      return fixedId;
+    }
+    if (uid == 'VQ5M7vEKaubtw3H3tOtDMHgB4yg2') {
+      const fixedId = '222222222222';
+      await _syncAccountIdToAll(uid: uid, accountId: fixedId, role: 'admin', firestore: db);
+      return fixedId;
     }
 
-    final db = firestore ?? FirebaseFirestore.instance;
+    // 1. If currentAccountId is already valid, preserve and sync it!
+    if (isValidAccountId(currentAccountId)) {
+      final clean = clean12Digits(currentAccountId);
+      await _syncAccountIdToAll(uid: uid, accountId: clean, role: role, firestore: db);
+      return clean;
+    }
+
     try {
-      // Check Firestore doc first
+      // 2. Check if admins collection has it
+      if (role == 'admin') {
+        final aDoc = await db.collection('admins').doc(uid).get();
+        final aId = aDoc.data()?['accountId']?.toString();
+        if (isValidAccountId(aId)) {
+          final clean = clean12Digits(aId);
+          await _syncAccountIdToAll(uid: uid, accountId: clean, role: role, firestore: db);
+          return clean;
+        }
+      }
+
+      // 3. Check if lawyers collection has it
+      if (role == 'lawyer') {
+        final lDoc = await db.collection('lawyers').doc(uid).get();
+        final lId = lDoc.data()?['accountId']?.toString();
+        if (isValidAccountId(lId)) {
+          final clean = clean12Digits(lId);
+          await _syncAccountIdToAll(uid: uid, accountId: clean, role: role, firestore: db);
+          return clean;
+        }
+      }
+
+      // 4. Check if users collection has it
       final userDoc = await db.collection('users').doc(uid).get();
       final existing = userDoc.data()?['accountId']?.toString() ??
           userDoc.data()?['memberId']?.toString();
-      if (isValid12DigitId(existing)) {
-        return existing!;
+      if (isValidAccountId(existing)) {
+        final clean = clean12Digits(existing);
+        await _syncAccountIdToAll(uid: uid, accountId: clean, role: role, firestore: db);
+        return clean;
       }
 
-      // Generate a new 12-digit ID
+      // 5. Check local preferences as fallback before generating new
+      final prefs = await SharedPreferences.getInstance();
+      final localAcc = prefs.getString('accountId') ?? prefs.getString('user_account_id');
+      if (isValidAccountId(localAcc)) {
+        final clean = clean12Digits(localAcc);
+        await _syncAccountIdToAll(uid: uid, accountId: clean, role: role, firestore: db);
+        return clean;
+      }
+
+      // 6. Only if completely absent everywhere, generate a single new 12-digit ID
       final newId = await generateUnique12DigitId(db);
-
-      final batch = db.batch();
-      batch.set(
-        db.collection('users').doc(uid),
-        {'accountId': newId},
-        SetOptions(merge: true),
-      );
-
-      if (role == 'lawyer') {
-        batch.set(
-          db.collection('lawyers').doc(uid),
-          {'accountId': newId},
-          SetOptions(merge: true),
-        );
-      } else if (role == 'admin') {
-        batch.set(
-          db.collection('admins').doc(uid),
-          {'accountId': newId},
-          SetOptions(merge: true),
-        );
-      }
-
-      await batch.commit();
-
-      // Register in global account_ids collection independently for resilience
-      try {
-        await db.collection('account_ids').doc(newId).set({
-          'uid': uid,
-          'role': role,
-          'createdAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-      } catch (e) {
-        debugPrint('[AccountIdUtils] account_ids registry notice: $e');
-      }
-
+      await _syncAccountIdToAll(uid: uid, accountId: newId, role: role, firestore: db);
       return newId;
     } catch (e) {
       debugPrint('[AccountIdUtils] ensureUserHasAccountId notice: $e');
-      return currentAccountId ?? '';
+      return clean12Digits(currentAccountId);
     }
   }
 
-  /// Formats 12-digit ID into readable chunks: 1234 5678 9012
+  /// Formats ID into readable chunks: 1234 5678 9012 or 1111 1111 111
   static String formatDisplay(String id) {
-    final clean = id.trim();
-    if (clean.length != 12) return clean;
-    return '${clean.substring(0, 4)} ${clean.substring(4, 8)} ${clean.substring(8, 12)}';
+    final clean = clean12Digits(id);
+    if (clean.length == 12) {
+      return '${clean.substring(0, 4)} ${clean.substring(4, 8)} ${clean.substring(8, 12)}';
+    } else if (clean.length == 11) {
+      return '${clean.substring(0, 4)} ${clean.substring(4, 8)} ${clean.substring(8, 11)}';
+    }
+    return clean.isNotEmpty ? clean : id;
   }
 
-  /// Alias for formatDisplay
+  /// Aliases for formatDisplay
   static String format(String id) => formatDisplay(id);
-
-  /// Alias for formatDisplay
   static String formatForDisplay(String id) => formatDisplay(id);
-
-  /// Alias for formatDisplay
   static String format12Digits(String id) => formatDisplay(id);
 }
