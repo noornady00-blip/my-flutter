@@ -1809,9 +1809,9 @@ class AuthService implements AuthContract {
         final fbCandidates = <String>[
           cleanPassword,
           paddedPw,
-          if (isPrimary1) ...['123000', '123', '123456'] else ...['123456', '123000', '123'],
         ];
 
+        FirebaseAuthException? lastAuthException;
         for (final em in emailCandidates) {
           for (final pw in fbCandidates) {
             try {
@@ -1820,6 +1820,11 @@ class AuthService implements AuthContract {
                 password: pw,
               );
               if (cred.user != null) break;
+            } on FirebaseAuthException catch (e) {
+              lastAuthException = e;
+              if (e.code == 'too-many-requests') {
+                throw e; // Stop brute force immediately!
+              }
             } catch (_) {}
           }
           if (cred?.user != null) break;
@@ -1831,6 +1836,9 @@ class AuthService implements AuthContract {
               email: adminEmail,
               password: paddedPw,
             );
+          } on FirebaseAuthException catch (e) {
+            lastAuthException = e;
+            if (e.code == 'too-many-requests') throw e;
           } catch (_) {}
         }
 
@@ -1843,7 +1851,16 @@ class AuthService implements AuthContract {
               email: aliasEmail,
               password: paddedPw,
             );
+          } on FirebaseAuthException catch (e) {
+            lastAuthException = e;
+            if (e.code == 'too-many-requests') throw e;
           } catch (_) {}
+        }
+        
+        if (cred == null || cred.user == null) {
+          if (lastAuthException?.code == 'too-many-requests') {
+             throw lastAuthException!;
+          }
         }
 
         // Auto-heal / update Firebase Auth password to match the valid new password
