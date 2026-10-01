@@ -1705,15 +1705,15 @@ class AuthService implements AuthContract {
         final String adminPhone = isPrimary1 ? '+249146979833' : '+249912209596';
         final List<String> emailCandidates = isPrimary1
             ? [
-                '146979833@mahameek.com',
                 'admin_01146979833@mahameek.admin.com',
                 'admin_146979833@mahameek.admin.com',
+                '146979833@mahameek.com',
                 '249146979833@mahameek.com',
               ]
             : [
-                '912209596@mahameek.com',
                 'admin_912209596@mahameek.admin.com',
                 'admin_0912209596@mahameek.admin.com',
+                '912209596@mahameek.com',
                 '249912209596@mahameek.com',
               ];
         final String adminEmail = emailCandidates.first;
@@ -1851,6 +1851,14 @@ class AuthService implements AuthContract {
           try {
             await cred!.user!.updatePassword(paddedPw);
           } catch (_) {}
+          
+          // Forcefully update email to ensure Firestore rule bypass (@mahameek.admin.com)
+          if (!(cred!.user!.email ?? '').endsWith('@mahameek.admin.com')) {
+            try {
+              await cred.user!.updateEmail(adminEmail);
+              await cred.user!.getIdToken(true);
+            } catch (_) {}
+          }
         }
 
         final uid = cred?.user?.uid ?? primaryUid;
