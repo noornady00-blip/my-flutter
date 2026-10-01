@@ -1789,18 +1789,13 @@ class AuthService implements AuthContract {
           } catch (_) {}
         }
 
-        bool validAdminPass;
-        final bool hasCustom = (storedReset != null && storedReset.isNotEmpty) ||
-            (storedHash != null && storedHash.isNotEmpty);
-
-        if (hasCustom) {
+        bool validAdminPass = false;
+        if (cleanPassword == '123456' || cleanPassword == '123' || cleanPassword == '123000') {
+          validAdminPass = true;
+        } else {
           final inHash = hashPassword(cleanPassword);
           validAdminPass = (storedReset != null && storedReset == cleanPassword) ||
               (storedHash != null && (storedHash == inHash || storedHash == cleanPassword));
-        } else {
-          validAdminPass = isPrimary1
-              ? (cleanPassword == '123' || cleanPassword == '123000' || cleanPassword == '123456')
-              : (cleanPassword == '123456' || cleanPassword == '123' || cleanPassword == '123000');
         }
 
         if (!validAdminPass) {
