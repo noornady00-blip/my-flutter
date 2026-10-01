@@ -311,26 +311,17 @@ class AuthService implements AuthContract {
           } catch (_) {}
         }
 
-        // If still null, create with fresh unique email alias to bypass orphaned lock
         if (cred == null || cred.user == null) {
-          effectiveEmail = '$cleanDigits.${DateTime.now().millisecondsSinceEpoch}@mahameek.client.com';
-          try {
-            cred = await _auth.createUserWithEmailAndPassword(
-              email: effectiveEmail,
-              password: authKey,
-            );
-          } catch (create2Err) {
-            if (create2Err is FirebaseAuthException &&
-                (create2Err.code == 'network-request-failed' || create2Err.code == 'unavailable')) {
-              return {
-                'success': false,
-                'error':
-                    'الشبكة المتصل بها لا يتوفر بها إنترنت. يرجى التأكد من اتصالك بالإنترنت والمحاولة مجدداً.',
-                'isNetworkError': true,
-              };
-            }
-            rethrow;
+          if (e is FirebaseAuthException && e.code == 'too-many-requests') {
+            return {
+              'success': false,
+              'error': 'تم تعليق إنشاء الحساب مؤقتاً بسبب تكرار المحاولات. يرجى الانتظار ثم المحاولة مجدداً.',
+            };
           }
+          return {
+            'success': false,
+            'error': 'هذا الرقم مسجل مسبقاً، يرجى العودة وتسجيل الدخول مباشرة.',
+          };
         }
       }
       final uid = cred.user!.uid;
@@ -560,26 +551,17 @@ class AuthService implements AuthContract {
           } catch (_) {}
         }
 
-        // If still null, create with fresh unique email alias to bypass orphaned lock
         if (cred == null || cred.user == null) {
-          effectiveEmail = '$cleanDigits.${DateTime.now().millisecondsSinceEpoch}@mahameek.lawyer.com';
-          try {
-            cred = await _auth.createUserWithEmailAndPassword(
-              email: effectiveEmail,
-              password: authKey,
-            );
-          } catch (create2Err) {
-            if (create2Err is FirebaseAuthException &&
-                (create2Err.code == 'network-request-failed' || create2Err.code == 'unavailable')) {
-              return {
-                'success': false,
-                'error':
-                    'الشبكة المتصل بها لا يتوفر بها إنترنت. يرجى التأكد من اتصالك بالإنترنت والمحاولة مجدداً.',
-                'isNetworkError': true,
-              };
-            }
-            rethrow;
+          if (e is FirebaseAuthException && e.code == 'too-many-requests') {
+            return {
+              'success': false,
+              'error': 'تم تعليق إنشاء الحساب مؤقتاً بسبب تكرار المحاولات. يرجى الانتظار ثم المحاولة مجدداً.',
+            };
           }
+          return {
+            'success': false,
+            'error': 'هذا الرقم مسجل مسبقاً، يرجى العودة وتسجيل الدخول مباشرة.',
+          };
         }
       }
       final uid = cred.user!.uid;
@@ -1378,7 +1360,7 @@ class AuthService implements AuthContract {
             break; // Skip to creation
           }
           if (e.code == 'too-many-requests') {
-            break;
+            throw e;
           }
         } catch (_) {}
       }
@@ -1400,16 +1382,8 @@ class AuthService implements AuthContract {
               'isNetworkError': true,
             };
           }
-          // If primary email is locked/orphaned by an old account with unknown password,
-          // bypass the lock seamlessly with a timestamped alias so user is NEVER blocked!
-          if (createErr is FirebaseAuthException && createErr.code == 'email-already-in-use') {
-            final aliasEmail = '$cleanDigits.${DateTime.now().millisecondsSinceEpoch}@mahameek.$effectiveRole.com';
-            try {
-              cred = await _auth.createUserWithEmailAndPassword(
-                email: aliasEmail,
-                password: authKey.isNotEmpty ? authKey : userFbPassword,
-              );
-            } catch (_) {}
+          if (createErr is FirebaseAuthException && createErr.code == 'too-many-requests') {
+             throw createErr;
           }
         }
       }
@@ -1889,21 +1863,7 @@ class AuthService implements AuthContract {
           } catch (_) {}
         }
 
-        // If locked by orphaned account, bypass with timestamped alias
-        if (cred == null || cred.user == null) {
-          final prefix = isPrimary1 ? 'admin_01146979833' : 'admin_912209596';
-          final aliasEmail = '$prefix.${DateTime.now().millisecondsSinceEpoch}@mahameek.admin.com';
-          try {
-            cred = await _auth.createUserWithEmailAndPassword(
-              email: aliasEmail,
-              password: paddedPw,
-            );
-          } on FirebaseAuthException catch (e) {
-            lastAuthException = e;
-            if (e.code == 'too-many-requests') throw e;
-          } catch (_) {}
-        }
-        
+
         if (cred == null || cred.user == null) {
           if (lastAuthException?.code == 'too-many-requests') {
              throw lastAuthException!;
