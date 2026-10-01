@@ -2,86 +2,68 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mahameek/core/utils/phone_utils.dart';
 
 void main() {
-  group('Sudan PhoneUtils & Formatter Tests', () {
-    test('extractLocalSudanDigits strips leading zero and country codes', () {
-      expect(PhoneUtils.extractLocalSudanDigits('0912345678'), equals('912345678'));
-      expect(PhoneUtils.extractLocalSudanDigits('912345678'), equals('912345678'));
-      expect(PhoneUtils.extractLocalSudanDigits('+249912345678'), equals('912345678'));
-      expect(PhoneUtils.extractLocalSudanDigits('249912345678'), equals('912345678'));
-      expect(PhoneUtils.extractLocalSudanDigits('00249912345678'), equals('912345678'));
-      expect(PhoneUtils.extractLocalSudanDigits('0123456789'), equals('123456789'));
+  group('PhoneUtils.normalize (The Canonical Formatter)', () {
+    test('Should normalize various formats to +249xxxxxxxxx', () {
+      final expected = '+249912209596';
+      
+      expect(PhoneUtils.normalize('0912209596'), expected);
+      expect(PhoneUtils.normalize('912209596'), expected);
+      expect(PhoneUtils.normalize('+249912209596'), expected);
+      expect(PhoneUtils.normalize('00249912209596'), expected);
+      expect(PhoneUtils.normalize('249912209596'), expected);
+      expect(PhoneUtils.normalize('0912 209 596'), expected);
+      expect(PhoneUtils.normalize(' 0 912 209 596 '), expected);
+      expect(PhoneUtils.normalize('+249 912-209-596'), expected);
     });
 
-    test('normalizeSudanPhone formats with and without plus', () {
-      expect(PhoneUtils.normalizeSudanPhone('912345678', withPlus: true), equals('+249912345678'));
-      expect(PhoneUtils.normalizeSudanPhone('0912345678', withPlus: true), equals('+249912345678'));
-      expect(PhoneUtils.normalizeSudanPhone('+249912345678', withPlus: true), equals('+249912345678'));
-      expect(PhoneUtils.normalizeSudanPhone('912345678', withPlus: false), equals('249912345678'));
+    test('Should handle Arabic/Persian digits', () {
+      final expected = '+249912345678';
+      expect(PhoneUtils.normalize('٠٩١٢٣٤٥٦٧٨'), expected);
+      expect(PhoneUtils.normalize('۰۹۱۲۳۴۵۶۷۸'), expected);
     });
 
-    test('formatWhatsAppNumber produces clean digits without plus', () {
-      expect(PhoneUtils.formatWhatsAppNumber('912345678'), equals('249912345678'));
-      expect(PhoneUtils.formatWhatsAppNumber('0912345678'), equals('249912345678'));
-      expect(PhoneUtils.formatWhatsAppNumber('+249912345678'), equals('249912345678'));
-      expect(PhoneUtils.formatWhatsAppNumber('249912345678'), equals('249912345678'));
-      expect(PhoneUtils.formatWhatsAppNumber('201037864619'), equals('201037864619'));
+    test('Should accept numbers not starting with 9', () {
+      expect(PhoneUtils.normalize('0103786461'), '+249103786461');
     });
 
-    test('isValidSudanPhone checks 9 digits and valid prefixes', () {
-      expect(PhoneUtils.isValidSudanPhone('912345678'), isTrue);
-      expect(PhoneUtils.isValidSudanPhone('0912345678'), isTrue);
-      expect(PhoneUtils.isValidSudanPhone('+249912345678'), isTrue);
-      expect(PhoneUtils.isValidSudanPhone('123456789'), isTrue);
-      expect(PhoneUtils.isValidSudanPhone('12345'), isFalse);
-      expect(PhoneUtils.isValidSudanPhone('512345678'), isFalse);
+    test('Should throw FormatException on invalid lengths', () {
+      expect(() => PhoneUtils.normalize('09123456'), throwsFormatException); // 8 digits (too short)
+      expect(() => PhoneUtils.normalize('09123456789'), throwsFormatException); // 11 digits (too long)
+      expect(() => PhoneUtils.normalize(''), throwsFormatException);
+    });
+  });
+
+  group('PhoneUtils.isValid', () {
+    test('Should return true for valid numbers', () {
+      expect(PhoneUtils.isValid('0912209596'), isTrue);
+      expect(PhoneUtils.isValid('+249912209596'), isTrue);
+      expect(PhoneUtils.isValid('٠٩١٢٣٤٥٦٧٨'), isTrue);
     });
 
-    test('generatePhoneCandidates contains all search permutations', () {
-      final candidates = PhoneUtils.generatePhoneCandidates('912345678');
-      expect(candidates, contains('912345678'));
-      expect(candidates, contains('0912345678'));
-      expect(candidates, contains('249912345678'));
-      expect(candidates, contains('+249912345678'));
+    test('Should return false for invalid numbers', () {
+      expect(PhoneUtils.isValid('09123456'), isFalse); // 8 digits
+      expect(PhoneUtils.isValid('abc'), isFalse);
     });
+  });
 
-    test('SudanPhoneInputFormatter prevents typing leading zero and limits to 9 digits', () {
-      final formatter = SudanPhoneInputFormatter();
+  group('PhoneUtils.toLocalDisplay', () {
+    test('Should return local display format (0 + 9 digits)', () {
+      expect(PhoneUtils.toLocalDisplay('+249912209596'), '0912209596');
+      expect(PhoneUtils.toLocalDisplay('0912209596'), '0912209596'); // Normalizes first
+    });
+  });
 
-      // Typing '0' as first character -> becomes empty
-      var res = formatter.formatEditUpdate(
-        const TextEditingValue(text: ''),
-        const TextEditingValue(text: '0'),
-      );
-      expect(res.text, equals(''));
+  group('PhoneUtils.isSuperAdminPhone', () {
+    test('Should identify admins', () {
+      // 146979833 -> +249146979833
+      expect(PhoneUtils.isSuperAdminPhone('146979833'), isTrue);
+      expect(PhoneUtils.isSuperAdminPhone('+249146979833'), isTrue);
+      expect(PhoneUtils.isSuperAdminPhone('0146979833'), isTrue); // Starts with 0
 
-      // Typing '9' -> becomes '9'
-      res = formatter.formatEditUpdate(
-        const TextEditingValue(text: ''),
-        const TextEditingValue(text: '9'),
-      );
-      expect(res.text, equals('9'));
+      // 912209596 -> +249912209596
+      expect(PhoneUtils.isSuperAdminPhone('0912209596'), isTrue);
 
-      // Pasting '0912345678' -> zero is stripped -> '912345678'
-      res = formatter.formatEditUpdate(
-        const TextEditingValue(text: ''),
-        const TextEditingValue(text: '0912345678'),
-      );
-      expect(res.text, equals('912345678'));
-
-      // Pasting '+249912345678' -> '912345678'
-      res = formatter.formatEditUpdate(
-        const TextEditingValue(text: ''),
-        const TextEditingValue(text: '+249912345678'),
-      );
-      expect(res.text, equals('912345678'));
-
-      // Pasting 12 digits -> truncated to 9 digits
-      res = formatter.formatEditUpdate(
-        const TextEditingValue(text: ''),
-        const TextEditingValue(text: '912345678999'),
-      );
-      expect(res.text, equals('912345678'));
-      expect(res.text.length, equals(9));
+      expect(PhoneUtils.isSuperAdminPhone('0912345678'), isFalse);
     });
   });
 }

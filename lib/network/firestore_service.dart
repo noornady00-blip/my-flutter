@@ -264,12 +264,12 @@ class FirestoreService implements DatabaseContract {
 
       // 2. Free up phone_directory
       if (effectivePhone != null && effectivePhone.isNotEmpty) {
-        final unified = PhoneUtils.toUnifiedPhone(effectivePhone);
+        final unified = PhoneUtils.normalize(effectivePhone);
         batch.delete(_db.collection('phone_directory').doc(unified));
-        final candidates = PhoneUtils.generatePhoneCandidates(effectivePhone);
-        for (final cand in candidates) {
-          batch.delete(_db.collection('phone_directory').doc(cand));
-        }
+
+
+
+
       }
 
       await batch.commit();
@@ -308,12 +308,12 @@ class FirestoreService implements DatabaseContract {
       batch.delete(_db.collection('lawyer_requests').doc(uid));
 
       if (effectivePhone != null && effectivePhone.isNotEmpty) {
-        final unified = PhoneUtils.toUnifiedPhone(effectivePhone);
+        final unified = PhoneUtils.normalize(effectivePhone);
         batch.delete(_db.collection('phone_directory').doc(unified));
-        final candidates = PhoneUtils.generatePhoneCandidates(effectivePhone);
-        for (final cand in candidates) {
-          batch.delete(_db.collection('phone_directory').doc(cand));
-        }
+
+
+
+
       }
 
       await batch.commit();
@@ -516,12 +516,12 @@ class FirestoreService implements DatabaseContract {
       batch.delete(_db.collection('lawyer_requests').doc(uid));
 
       if (effectivePhone != null && effectivePhone.isNotEmpty) {
-        final unified = PhoneUtils.toUnifiedPhone(effectivePhone);
+        final unified = PhoneUtils.normalize(effectivePhone);
         batch.delete(_db.collection('phone_directory').doc(unified));
-        final candidates = PhoneUtils.generatePhoneCandidates(effectivePhone);
-        for (final cand in candidates) {
-          batch.delete(_db.collection('phone_directory').doc(cand));
-        }
+
+
+
+
       }
 
       await batch.commit();
@@ -580,7 +580,7 @@ class FirestoreService implements DatabaseContract {
         final admin = UserModel.fromMap(data, doc.id);
         final rawPhone = admin.phone;
 
-        if (PhoneUtils.isPrimaryAdmin1(rawPhone)) {
+        if (PhoneUtils.normalize(rawPhone) == "+249146979833") {
           // Keep only one primary 1 - prefer the standard doc or the one with complete data
           if (primary1 == null || doc.id == 'HEsYK0F5TGMFCZtKE7qUq0kFfqQ2') {
             primary1 = admin.copyWith(
@@ -591,7 +591,7 @@ class FirestoreService implements DatabaseContract {
               status: 'active',
             );
           }
-        } else if (PhoneUtils.isPrimaryAdmin2(rawPhone)) {
+        } else if (PhoneUtils.normalize(rawPhone) == "+249912209596") {
           // Keep only one primary 2
           if (primary2 == null || doc.id == 'VQ5M7vEKaubtw3H3tOtDMHgB4yg2') {
             primary2 = admin.copyWith(
@@ -603,7 +603,7 @@ class FirestoreService implements DatabaseContract {
             );
           }
         } else {
-          final cleanDigits = PhoneUtils.extractLocalSudanDigits(rawPhone);
+          final cleanDigits = PhoneUtils.toLocalDisplay(rawPhone);
           final key = cleanDigits.isNotEmpty ? cleanDigits : rawPhone.replaceAll(RegExp(r'[^0-9]'), '');
           if (key.isNotEmpty && !seenSecondaryPhones.contains(key)) {
             seenSecondaryPhones.add(key);
@@ -649,12 +649,12 @@ class FirestoreService implements DatabaseContract {
     if (_adminsSeeded) return;
     _adminsSeeded = true;
     try {
-      // 1. Admin 1: 01146979833
+      // 1. Admin 1: 146979833 / 01146979833
       const admin1Uid = 'HEsYK0F5TGMFCZtKE7qUq0kFfqQ2';
       final admin1Data = {
         'uid': admin1Uid,
-        'name': 'المشرف الأساسي (01146979833)',
-        'phone': '01146979833',
+        'name': 'المشرف الأساسي',
+        'phone': '+249146979833',
         'role': 'admin',
         'status': 'active',
         'accountId': '5642 1902 3114',
@@ -664,6 +664,10 @@ class FirestoreService implements DatabaseContract {
       };
       await _db.collection('users').doc(admin1Uid).set(admin1Data, SetOptions(merge: true)).catchError((_) {});
       await _db.collection('admins').doc(admin1Uid).set(admin1Data, SetOptions(merge: true)).catchError((_) {});
+      await _db.collection('phone_directory').doc('+249146979833').set(admin1Data, SetOptions(merge: true)).catchError((_) {});
+      await _db.collection('phone_directory').doc('249146979833').set(admin1Data, SetOptions(merge: true)).catchError((_) {});
+      await _db.collection('phone_directory').doc('146979833').set(admin1Data, SetOptions(merge: true)).catchError((_) {});
+      await _db.collection('phone_directory').doc('0146979833').set(admin1Data, SetOptions(merge: true)).catchError((_) {});
       await _db.collection('phone_directory').doc('01146979833').set(admin1Data, SetOptions(merge: true)).catchError((_) {});
       await _db.collection('phone_directory').doc('1146979833').set(admin1Data, SetOptions(merge: true)).catchError((_) {});
       await _db.collection('phone_directory').doc('+2491146979833').set(admin1Data, SetOptions(merge: true)).catchError((_) {});
@@ -688,10 +692,10 @@ class FirestoreService implements DatabaseContract {
       };
       await _db.collection('users').doc(admin2Uid).set(admin2Data, SetOptions(merge: true)).catchError((_) {});
       await _db.collection('admins').doc(admin2Uid).set(admin2Data, SetOptions(merge: true)).catchError((_) {});
-      await _db.collection('phone_directory').doc('0912209596').set(admin2Data, SetOptions(merge: true)).catchError((_) {});
-      await _db.collection('phone_directory').doc('912209596').set(admin2Data, SetOptions(merge: true)).catchError((_) {});
       await _db.collection('phone_directory').doc('+249912209596').set(admin2Data, SetOptions(merge: true)).catchError((_) {});
       await _db.collection('phone_directory').doc('249912209596').set(admin2Data, SetOptions(merge: true)).catchError((_) {});
+      await _db.collection('phone_directory').doc('912209596').set(admin2Data, SetOptions(merge: true)).catchError((_) {});
+      await _db.collection('phone_directory').doc('0912209596').set(admin2Data, SetOptions(merge: true)).catchError((_) {});
       await _db.collection('account_ids').doc('564219023115').set({
         'uid': admin2Uid,
         'role': 'admin',
@@ -706,11 +710,11 @@ class FirestoreService implements DatabaseContract {
             .get();
         for (final doc in existingAdminsSnap.docs) {
           final phone = doc.data()['phone']?.toString() ?? '';
-          if (PhoneUtils.isPrimaryAdmin1(phone) && doc.id != admin1Uid) {
+          if (PhoneUtils.normalize(phone) == "+249146979833" && doc.id != admin1Uid) {
             await _db.collection('users').doc(doc.id).delete().catchError((_) {});
             await _db.collection('admins').doc(doc.id).delete().catchError((_) {});
           }
-          if (PhoneUtils.isPrimaryAdmin2(phone) && doc.id != admin2Uid) {
+          if (PhoneUtils.normalize(phone) == "+249912209596" && doc.id != admin2Uid) {
             await _db.collection('users').doc(doc.id).delete().catchError((_) {});
             await _db.collection('admins').doc(doc.id).delete().catchError((_) {});
           }
@@ -786,10 +790,10 @@ class FirestoreService implements DatabaseContract {
 
       final phoneCandidates = <String>{};
       if (phone.isNotEmpty) {
-        phoneCandidates.addAll(PhoneUtils.generatePhoneCandidates(phone));
-        final unified = PhoneUtils.toUnifiedPhone(phone);
+
+        final unified = PhoneUtils.normalize(phone);
         phoneCandidates.add(unified);
-        final cleanDigits = PhoneUtils.extractLocalSudanDigits(phone);
+        final cleanDigits = PhoneUtils.toLocalDisplay(phone);
         if (cleanDigits.isNotEmpty) phoneCandidates.add(cleanDigits);
         final rawDigits = phone.replaceAll(RegExp(r'[^0-9]'), '');
         if (rawDigits.isNotEmpty) phoneCandidates.add(rawDigits);

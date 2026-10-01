@@ -74,18 +74,18 @@ void main() {
     });
 
     test('formatWhatsAppNumber converts Sudanese local and international numbers correctly', () {
-      // Local 10-digit starting with 0
-      expect(PasswordResetModel.formatWhatsAppNumber('01146979833'), '2491146979833');
+      // Local 9-digit starting with 0
+      expect(PasswordResetModel.formatWhatsAppNumber('0146979833'), '249146979833');
       expect(PasswordResetModel.formatWhatsAppNumber('0912345678'), '249912345678');
 
       // International with leading 00249
-      expect(PasswordResetModel.formatWhatsAppNumber('002491146979833'), '2491146979833');
+      expect(PasswordResetModel.formatWhatsAppNumber('00249146979833'), '249146979833');
 
       // International with +
-      expect(PasswordResetModel.formatWhatsAppNumber('+2491146979833'), '2491146979833');
+      expect(PasswordResetModel.formatWhatsAppNumber('+249146979833'), '249146979833');
 
       // 9-digit without leading 0
-      expect(PasswordResetModel.formatWhatsAppNumber('1146979833'), '2491146979833');
+      expect(PasswordResetModel.formatWhatsAppNumber('146979833'), '249146979833');
     });
   });
 

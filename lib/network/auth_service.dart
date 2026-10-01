@@ -12,10 +12,9 @@ import 'package:crypto/crypto.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import '../firebase_options.dart';
 import 'firestore_service.dart';
 
 import '../data/models/user_model.dart';
@@ -60,8 +59,14 @@ class AuthService implements AuthContract {
   /// Checks whether a phone number is registered across users, lawyers, and admin accounts
   Future<Map<String, dynamic>?> checkPhoneRegistration(String phone) async {
     try {
-      final bool isPrimary1 = PhoneUtils.isPrimaryAdmin1(phone);
-      final bool isPrimary2 = PhoneUtils.isPrimaryAdmin2(phone);
+      final input = PhoneUtils.normalize(phone.trim());
+      final digits = input.replaceAll(RegExp(r'[^0-9]'), '');
+      final localDigits = PhoneUtils.toLocalDisplay(input);
+      final normPhone = PhoneUtils.normalize(input);
+      final cleanDigits = normPhone.replaceAll(RegExp(r'[^0-9]'), '');
+
+      final bool isPrimary1 = (PhoneUtils.isValid(phone) && PhoneUtils.normalize(phone) == "+249146979833");
+      final bool isPrimary2 = (PhoneUtils.isValid(phone) && PhoneUtils.normalize(phone) == "+249912209596");
 
       if (isPrimary1) {
         return {
@@ -69,8 +74,8 @@ class AuthService implements AuthContract {
           'role': 'admin',
           'isPrimary': true,
           'data': {
-            'name': 'المشرف الأساسي (01146979833)',
-            'phone': '01146979833',
+            'name': 'المشرف الأساسي',
+            'phone': '+249146979833',
             'role': 'admin',
             'isPrimary': true,
           },
@@ -89,7 +94,12 @@ class AuthService implements AuthContract {
         };
       }
 
-      final candidates = PhoneUtils.generatePhoneCandidates(phone).take(3).toList();
+      final candidates = <String>{
+        if (cleanDigits.isNotEmpty) cleanDigits,
+        if (localDigits.isNotEmpty) localDigits,
+        if (normPhone.isNotEmpty) normPhone,
+        if (digits.isNotEmpty) digits,
+      }.toList();
       if (candidates.isEmpty) return null;
 
       for (final q in candidates) {
@@ -216,9 +226,9 @@ class AuthService implements AuthContract {
         };
       }
 
-      final normPhone = PhoneUtils.normalizeSudanPhone(phone);
+      final normPhone = PhoneUtils.normalize(phone);
       final cleanDigits = normPhone.replaceAll(RegExp(r'[^0-9]'), '');
-      final localDigits = PhoneUtils.extractLocalSudanDigits(phone);
+      final localDigits = PhoneUtils.toLocalDisplay(phone);
 
       // Prevent registering admin phone numbers as clients
       if (cleanDigits.endsWith('146979833') ||
@@ -282,7 +292,7 @@ class AuthService implements AuthContract {
           authKey,
           fbPassword,
           password,
-          PhoneUtils.normalizeDigits(password),
+          PhoneUtils.normalize(password),
           if (localDigits.isNotEmpty) internalAuthKey(localDigits),
           '123456',
           '12345678',
@@ -462,12 +472,12 @@ class AuthService implements AuthContract {
         };
       }
 
-      final normPhone = PhoneUtils.normalizeSudanPhone(phone);
+      final normPhone = PhoneUtils.normalize(phone);
       final normWhatsapp = whatsapp.trim().isNotEmpty
-          ? PhoneUtils.normalizeSudanPhone(whatsapp)
+          ? PhoneUtils.normalize(whatsapp)
           : normPhone;
       final cleanDigits = normPhone.replaceAll(RegExp(r'[^0-9]'), '');
-      final localDigits = PhoneUtils.extractLocalSudanDigits(phone);
+      final localDigits = PhoneUtils.toLocalDisplay(phone);
 
       // Prevent registering admin phone numbers as lawyers
       if (cleanDigits.endsWith('146979833') ||
@@ -531,7 +541,7 @@ class AuthService implements AuthContract {
           authKey,
           fbPassword,
           password,
-          PhoneUtils.normalizeDigits(password),
+          PhoneUtils.normalize(password),
           if (localDigits.isNotEmpty) internalAuthKey(localDigits),
           '123456',
           '12345678',
@@ -783,7 +793,7 @@ class AuthService implements AuthContract {
         };
       }
 
-      final cleanDigits = PhoneUtils.extractLocalSudanDigits(normalizedPhone);
+      final cleanDigits = PhoneUtils.toLocalDisplay(normalizedPhone);
       final rawDigits = normalizedPhone.replaceAll(RegExp(r'[^0-9]'), '');
 
       // 3. Fast Phone Directory Lookup in Parallel
@@ -1141,13 +1151,13 @@ class AuthService implements AuthContract {
       }
 
       // 2. Input normalization (handle Arabic numerals, spaces, trims)
-      final input = PhoneUtils.normalizeDigits(phoneOrEmail.trim());
+      final input = PhoneUtils.normalize(phoneOrEmail.trim());
       final cleanPassword = password.trim();
-      final normPassword = PhoneUtils.normalizeDigits(cleanPassword);
+      final normPassword = PhoneUtils.normalize(cleanPassword);
 
       final digits = input.replaceAll(RegExp(r'[^0-9]'), '');
-      final localDigits = PhoneUtils.extractLocalSudanDigits(input);
-      final normPhone = PhoneUtils.normalizeSudanPhone(input);
+      final localDigits = PhoneUtils.toLocalDisplay(input);
+      final normPhone = PhoneUtils.normalize(input);
       final cleanDigits = normPhone.replaceAll(RegExp(r'[^0-9]'), '');
 
       // 3. Primary admin routing
@@ -1173,7 +1183,7 @@ class AuthService implements AuthContract {
 
       // 4. Fast Phone Directory Lookup in Parallel (< 50ms)
       DocumentSnapshot<Map<String, dynamic>>? dirSnap;
-      final phoneFormats = PhoneUtils.generatePhoneCandidates(input);
+      final phoneFormats = [];
       if (cleanDigits.isNotEmpty) phoneFormats.add(cleanDigits);
       if (localDigits.isNotEmpty) phoneFormats.add(localDigits);
       if (normPhone.isNotEmpty) phoneFormats.add(normPhone);
@@ -1222,14 +1232,7 @@ class AuthService implements AuthContract {
       final discoveredUid = recordData['uid']?.toString() ?? registered?['uid']?.toString() ?? dirSnap?.id;
 
       // 5. Role mismatch checks (INSTANT < 50ms)
-      if (discoveredRole == 'admin') {
-        if (role == 'client' || role == 'lawyer') {
-          return {
-            'success': false,
-            'error':
-                'هذا الحساب مخصص لإدارة التطبيق، يرجى اختيار تبويب (إدارة) لتسجيل الدخول.',
-          };
-        }
+      if (discoveredRole == 'admin' || isPrimaryAdmin) {
         return await adminLogin(emailOrPhone: phoneOrEmail, password: password);
       }
 
@@ -1626,9 +1629,7 @@ class AuthService implements AuthContract {
         return {'success': false, 'error': 'يرجى إدخال كلمة المرور للمشرف'};
       }
 
-      final normPhone = PhoneUtils.normalizeSudanPhone(cleanPhone);
-      final cleanDigits = PhoneUtils.extractLocalSudanDigits(cleanPhone);
-      final rawDigits = cleanPhone.replaceAll(RegExp(r'[^0-9]'), '');
+      final normPhone = PhoneUtils.normalize(cleanPhone);
 
       // Check if this phone number is registered as client or lawyer
       final reg = await checkPhoneRegistration(cleanPhone);
@@ -1640,106 +1641,29 @@ class AuthService implements AuthContract {
         };
       }
 
-      // Standard admin email format
-      final emailCandidate = cleanDigits.isNotEmpty ? cleanDigits : rawDigits;
-      final email = cleanPhone.contains('@')
-          ? cleanPhone
-          : 'admin_$emailCandidate@mahameek.admin.com';
-
-      // Ensure password has minimum 6 characters for Firebase Auth
-      final effectivePassword =
-          cleanPass.length < 6 ? cleanPass.padRight(6, '0') : cleanPass;
-
-      // Create via secondary FirebaseApp to avoid signing out current active admin session
-      final FirebaseApp secondaryApp = await Firebase.initializeApp(
-        name: 'AdminAccountCreator_${DateTime.now().millisecondsSinceEpoch}',
-        options: Firebase.app().options,
-      );
-
-      final secondaryAuth = FirebaseAuth.instanceFor(app: secondaryApp);
-      UserCredential cred;
-      try {
-        cred = await secondaryAuth.createUserWithEmailAndPassword(
-          email: email,
-          password: effectivePassword,
-        );
-      } on FirebaseAuthException catch (e) {
-        await secondaryApp.delete();
-        if (e.code == 'email-already-in-use') {
-          return {
-            'success': false,
-            'error': 'يوجد حساب مشرف مسجل بالفعل بهذا الرقم ($cleanPhone).',
-          };
-        }
-        if (e.code == 'weak-password') {
-          return {
-            'success': false,
-            'error': 'كلمة المرور ضعيفة جداً. يرجى اختيار كلمة مرور أقوى.',
-          };
-        }
-        return {
-          'success': false,
-          'error': 'تعذر إنشاء حساب المشرف: ${_authError(e.code)}',
-        };
-      } catch (e) {
-        await secondaryApp.delete();
-        return {
-          'success': false,
-          'error': 'تعذر إنشاء حساب المشرف: $e',
-        };
-      }
-
-      final newUid = cred.user!.uid;
-      final accountId = await AccountIdUtils.generateUnique12DigitId(_db);
-
-      final newHash = hashPassword(cleanPass);
-      final adminData = {
-        'uid': newUid,
+      final callable = FirebaseFunctions.instance.httpsCallable('adminCreateAdminAccount');
+      final res = await callable.call({
         'name': cleanName,
         'phone': normPhone,
-        'rawPhone': cleanPhone,
-        'cleanDigits': cleanDigits,
-        'email': email,
-        'role': 'admin',
-        'accountId': accountId,
-        'passwordHash': newHash,
-        'adminResetPassword': cleanPass,
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      };
-
-      // Assign role: 'admin' in Firestore
-      await _db.collection('users').doc(newUid).set(adminData, SetOptions(merge: true));
-      await _db.collection('admins').doc(newUid).set(adminData, SetOptions(merge: true));
-      await _db.collection('account_ids').doc(accountId).set({
-        'uid': newUid,
-        'role': 'admin',
-        'createdAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-      // Register all phone variants in phone_directory
-      final phoneCandidates = PhoneUtils.generatePhoneCandidates(cleanPhone);
-      phoneCandidates.addAll(PhoneUtils.generatePhoneCandidates(normPhone));
-      if (cleanDigits.isNotEmpty) phoneCandidates.add(cleanDigits);
-      if (rawDigits.isNotEmpty) phoneCandidates.add(rawDigits);
-
-      for (final cand in phoneCandidates) {
-        if (cand.isNotEmpty) {
-          await _db.collection('phone_directory').doc(cand).set(adminData, SetOptions(merge: true)).catchError((_) {});
-        }
-      }
-
-      await secondaryApp.delete();
+        'password': cleanPass,
+      });
 
       return {
         'success': true,
-        'uid': newUid,
-        'email': email,
+        'uid': res.data['uid'],
+        'email': '',
         'name': cleanName,
         'phone': normPhone,
-        'message': 'تم إنشاء وتوثيق حساب المشرف بنجاح عبر Firebase Auth!',
+        'message': 'تم إنشاء حساب المشرف بنجاح عبر النظام',
       };
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('createAdminAccount functions error: ${e.code} - ${e.message}');
+      if (e.code == 'already-exists') {
+        return {'success': false, 'error': 'هذا الرقم مسجل مسبقاً في النظام.'};
+      }
+      return {'success': false, 'error': e.message ?? 'فشل إنشاء حساب المشرف'};
     } catch (e) {
+      debugPrint('createAdminAccount error: $e');
       return {
         'success': false,
         'error': 'حدث خطأ غير متوقع أثناء إنشاء حساب المشرف: $e',
@@ -1767,27 +1691,33 @@ class AuthService implements AuthContract {
         };
       }
 
-      final input = PhoneUtils.normalizeDigits(emailOrPhone.trim());
+      final input = PhoneUtils.normalize(emailOrPhone.trim());
       final cleanPassword = password.trim();
       final digits = input.replaceAll(RegExp(r'[^0-9]'), '');
-      final cleanDigits = PhoneUtils.extractLocalSudanDigits(input);
+      final cleanDigits = PhoneUtils.toLocalDisplay(input);
 
-      final bool isPrimary1 = PhoneUtils.isPrimaryAdmin1(input);
-      final bool isPrimary2 = PhoneUtils.isPrimaryAdmin2(input);
+      final bool isPrimary1 = PhoneUtils.normalize(input) == "+249146979833";
+      final bool isPrimary2 = PhoneUtils.normalize(input) == "+249912209596";
       final bool isPrimaryAdmin = isPrimary1 || isPrimary2;
 
       // 1. Primary Admins Fast Path (< 200ms)
       if (isPrimaryAdmin) {
-        final String adminPhone = isPrimary1 ? '01146979833' : '+249912209596';
+        final String adminPhone = isPrimary1 ? '+249146979833' : '+249912209596';
         final List<String> emailCandidates = isPrimary1
-            ? ['admin_01146979833@mahameek.admin.com']
+            ? [
+                '146979833@mahameek.com',
+                'admin_01146979833@mahameek.admin.com',
+                'admin_146979833@mahameek.admin.com',
+                '249146979833@mahameek.com',
+              ]
             : [
+                '912209596@mahameek.com',
                 'admin_912209596@mahameek.admin.com',
-                '912209596@mahameek.admin.com',
                 'admin_0912209596@mahameek.admin.com',
+                '249912209596@mahameek.com',
               ];
         final String adminEmail = emailCandidates.first;
-        String adminName = isPrimary1 ? 'المشرف الأساسي (01146979833)' : 'صاحب التطبيق';
+        String adminName = isPrimary1 ? 'المشرف الأساسي' : 'صاحب التطبيق';
         final String primaryUid = isPrimary1
             ? 'HEsYK0F5TGMFCZtKE7qUq0kFfqQ2'
             : 'VQ5M7vEKaubtw3H3tOtDMHgB4yg2';
@@ -1797,10 +1727,21 @@ class AuthService implements AuthContract {
         String? storedHash;
 
         final checkCandidates = <String>{
-          if (isPrimary1) ...['01146979833', '1146979833', '+2491146979833', '2491146979833']
-          else ...['912209596', '0912209596', '+249912209596', '249912209596'],
-          ...PhoneUtils.generatePhoneCandidates(adminPhone),
-          ...PhoneUtils.generatePhoneCandidates(input),
+          if (isPrimary1) ...[
+            '+249146979833',
+            '249146979833',
+            '146979833',
+            '0146979833',
+            '01146979833',
+            '1146979833',
+            '+2491146979833',
+          ]
+          else ...[
+            '+249912209596',
+            '249912209596',
+            '912209596',
+            '0912209596',
+          ],
         };
 
         for (final k in checkCandidates) {
@@ -1845,8 +1786,8 @@ class AuthService implements AuthContract {
 
         if (hasCustom) {
           final inHash = hashPassword(cleanPassword);
-          final normHash = hashPassword(PhoneUtils.normalizeDigits(cleanPassword));
-          validAdminPass = (storedReset != null && (storedReset == cleanPassword || storedReset == PhoneUtils.normalizeDigits(cleanPassword))) ||
+          final normHash = hashPassword(PhoneUtils.normalize(cleanPassword));
+          validAdminPass = (storedReset != null && (storedReset == cleanPassword || storedReset == PhoneUtils.normalize(cleanPassword))) ||
               (storedHash != null && (storedHash == inHash || storedHash == normHash || storedHash == cleanPassword));
         } else {
           validAdminPass = isPrimary1
@@ -1979,7 +1920,7 @@ class AuthService implements AuthContract {
       String? secUid;
       Map<String, dynamic> regData = {};
 
-      final nonPrimaryCandidates = PhoneUtils.generatePhoneCandidates(input);
+final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
       if (cleanDigits.isNotEmpty) nonPrimaryCandidates.add(cleanDigits);
       if (digits.isNotEmpty) nonPrimaryCandidates.add(digits);
 
@@ -2058,8 +1999,8 @@ class AuthService implements AuthContract {
 
       if (storedHash != null || adminReset != null) {
         final inputHash = hashPassword(cleanPassword);
-        final normInputHash = hashPassword(PhoneUtils.normalizeDigits(cleanPassword));
-        final bool isMatch = (adminReset != null && (adminReset == cleanPassword || adminReset == PhoneUtils.normalizeDigits(cleanPassword))) ||
+        final normInputHash = hashPassword(PhoneUtils.normalize(cleanPassword));
+        final bool isMatch = (adminReset != null && (adminReset == cleanPassword || adminReset == PhoneUtils.normalize(cleanPassword))) ||
             (storedHash != null && (storedHash == inputHash || storedHash == normInputHash || storedHash == cleanPassword)) ||
             (cleanPassword == '123456' || cleanPassword == '123000' || cleanPassword == '123');
         if (!isMatch) {
@@ -2214,7 +2155,7 @@ class AuthService implements AuthContract {
         await _db.collection('users').doc(secUid).set(syncData, SetOptions(merge: true)).catchError((_) {});
         await _db.collection('admins').doc(secUid).set(syncData, SetOptions(merge: true)).catchError((_) {});
       }
-      for (final cand in PhoneUtils.generatePhoneCandidates(adminPhone)) {
+      for (final cand in <String>{ PhoneUtils.normalize(adminPhone) }) {
         if (cand.isNotEmpty) {
           await _db.collection('phone_directory').doc(cand).set(syncData, SetOptions(merge: true)).catchError((_) {});
         }
@@ -2405,80 +2346,7 @@ class AuthService implements AuthContract {
   // 🔑 ADMIN DIRECT USER PASSWORD RESET
   // ===========================================================================
 
-  // ===========================================================================
-  // 🔐 BACKGROUND FIREBASE AUTH PASSWORD SYNCHRONIZER
-  // ===========================================================================
 
-  Future<bool> _syncUserAuthPassword({
-    required List<String> emailTargets,
-    required String newPassword,
-    List<String>? candidateOldPasswords,
-  }) async {
-    FirebaseApp? secondaryApp;
-    try {
-      final appName = 'AuthSync_${DateTime.now().millisecondsSinceEpoch}';
-      secondaryApp = await Firebase.initializeApp(
-        name: appName,
-        options: Firebase.app().options,
-      );
-      final secondaryAuth = FirebaseAuth.instanceFor(app: secondaryApp);
-      final effectiveNew = newPassword.length < 6 ? newPassword.padRight(6, '0') : newPassword;
-      final pwList = <String>{
-        effectiveNew,
-        ...?candidateOldPasswords,
-        '123000',
-        '123456',
-        '123',
-        '12345678',
-        '000000',
-      }.where((s) => s.trim().isNotEmpty).toList();
-
-      for (final email in emailTargets) {
-        if (email.trim().isEmpty) continue;
-        for (final pw in pwList) {
-          try {
-            final cred = await secondaryAuth.signInWithEmailAndPassword(
-              email: email.trim(),
-              password: pw,
-            );
-            if (cred.user != null) {
-              if (pw != effectiveNew) {
-                await cred.user!.updatePassword(effectiveNew);
-                debugPrint('✅ [AuthService] Successfully updated Firebase Auth password for $email');
-              }
-              return true;
-            }
-          } catch (_) {}
-        }
-      }
-
-      // If user did not exist yet, attempt to create it so login never fails
-      for (final email in emailTargets) {
-        if (email.trim().isEmpty) continue;
-        try {
-          final cred = await secondaryAuth.createUserWithEmailAndPassword(
-            email: email.trim(),
-            password: effectiveNew,
-          );
-          if (cred.user != null) {
-            debugPrint('✅ [AuthService] Created missing Firebase Auth account for $email');
-            return true;
-          }
-        } catch (_) {}
-      }
-
-      return false;
-    } catch (e) {
-      debugPrint('[AuthService] _syncUserAuthPassword notice: $e');
-      return false;
-    } finally {
-      if (secondaryApp != null) {
-        try {
-          await secondaryApp.delete();
-        } catch (_) {}
-      }
-    }
-  }
 
   // ===========================================================================
   // 🔑 ADMIN DIRECT USER PASSWORD RESET
@@ -2492,7 +2360,7 @@ class AuthService implements AuthContract {
     String? targetUid,
   }) async {
     try {
-      final cleanPass = PhoneUtils.normalizeDigits(newPassword.trim());
+      final cleanPass = PhoneUtils.normalize(newPassword.trim());
       if (cleanPass.length < 6) {
         return {
           'success': false,
@@ -2500,249 +2368,47 @@ class AuthService implements AuthContract {
         };
       }
 
-      final cleanDigits = PhoneUtils.extractLocalSudanDigits(phone);
-      final rawDigits = phone.replaceAll(RegExp(r'[^0-9]'), '');
-      if (cleanDigits.isEmpty && rawDigits.isEmpty && (targetUid == null || targetUid.isEmpty)) {
-        return {'success': false, 'error': 'رقم الهاتف غير صالح'};
+      // Step 1: Use normalization to ensure we have a valid phone number.
+      String normalizedPhone = '';
+      try {
+        normalizedPhone = PhoneUtils.normalize(phone);
+      } catch (e) {
+        return {'success': false, 'error': e.toString()};
       }
 
       String? resolvedUid = targetUid;
-      DocumentSnapshot<Map<String, dynamic>>? resolvedDoc;
 
-      // 1. If targetUid is provided, fetch document directly
-      if (resolvedUid != null && resolvedUid.isNotEmpty) {
-        try {
-          var doc = await _db.collection('admins').doc(resolvedUid).get();
-          if (!doc.exists) {
-            doc = await _db.collection('users').doc(resolvedUid).get();
-          }
-          if (!doc.exists) {
-            doc = await _db.collection('lawyers').doc(resolvedUid).get();
-          }
-          if (doc.exists) resolvedDoc = doc;
-        } catch (_) {}
-      }
-
-      // 2. Look up in phone_directory candidates
-      if (resolvedUid == null || resolvedUid.isEmpty) {
-        final candList = PhoneUtils.generatePhoneCandidates(phone).toList();
-        if (cleanDigits.isNotEmpty) candList.add(cleanDigits);
-        if (rawDigits.isNotEmpty) candList.add(rawDigits);
-        for (final c in candList) {
-          try {
-            final dirSnap = await _db.collection('phone_directory').doc(c).get();
-            if (dirSnap.exists && dirSnap.data()?['uid'] != null) {
-              final u = dirSnap.data()!['uid'].toString();
-              if (u.isNotEmpty && u != c) {
-                resolvedUid = u;
-                break;
-              }
-            }
-          } catch (_) {}
-        }
-      }
-
-      // 3. Query admins collection directly
+      // 2. Look up in phone_directory if targetUid is null
       if (resolvedUid == null || resolvedUid.isEmpty) {
         try {
-          final allAdmins = await _db.collection('admins').get();
-          for (final doc in allAdmins.docs) {
-            final p = doc.data()['phone']?.toString().replaceAll(RegExp(r'[^0-9]'), '');
-            final c = doc.data()['cleanDigits']?.toString();
-            if (p == cleanDigits || p == rawDigits || c == cleanDigits || (p != null && (p.endsWith(cleanDigits) || cleanDigits.endsWith(p)))) {
-              resolvedUid = doc.id;
-              resolvedDoc = doc;
-              break;
-            }
+          final dirSnap = await _db.collection('phone_directory').doc(normalizedPhone).get();
+          if (dirSnap.exists && dirSnap.data()?['uid'] != null) {
+            resolvedUid = dirSnap.data()!['uid'].toString();
           }
         } catch (_) {}
       }
 
-      // 4. Query users collection
       if (resolvedUid == null || resolvedUid.isEmpty) {
-        try {
-          QuerySnapshot<Map<String, dynamic>> userSnap = await _db
-              .collection('users')
-              .where('phone', isEqualTo: phone.trim())
-              .limit(1)
-              .get();
-
-          if (userSnap.docs.isEmpty && cleanDigits.isNotEmpty) {
-            userSnap = await _db
-                .collection('users')
-                .where('phone', isEqualTo: cleanDigits)
-                .limit(1)
-                .get();
-          }
-
-          if (userSnap.docs.isNotEmpty) {
-            resolvedUid = userSnap.docs.first.id;
-            resolvedDoc = userSnap.docs.first;
-          } else {
-            final allUsers = await _db.collection('users').get();
-            for (final doc in allUsers.docs) {
-              final p = doc.data()['phone']?.toString().replaceAll(RegExp(r'[^0-9]'), '');
-              final c = doc.data()['cleanDigits']?.toString();
-              if (p == cleanDigits || p == rawDigits || c == cleanDigits || (p != null && (p.endsWith(cleanDigits) || cleanDigits.endsWith(p)))) {
-                resolvedUid = doc.id;
-                resolvedDoc = doc;
-                break;
-              }
-            }
-          }
-        } catch (_) {}
-      }
-
-      // 5. Query lawyers collection if still not found
-      if (resolvedUid == null || resolvedUid.isEmpty) {
-        try {
-          final allLawyers = await _db.collection('lawyers').get();
-          for (final doc in allLawyers.docs) {
-            final p = doc.data()['phone']?.toString().replaceAll(RegExp(r'[^0-9]'), '');
-            if (p == cleanDigits || p == rawDigits || (p != null && (p.endsWith(cleanDigits) || cleanDigits.endsWith(p)))) {
-              resolvedUid = doc.id;
-              resolvedDoc = doc;
-              break;
-            }
-          }
-        } catch (_) {}
-      }
-
-      if (resolvedUid == null) {
         return {
           'success': false,
           'error': 'لم يتم العثور على حساب مسجل برقم الهاتف: $phone',
         };
       }
 
-      // Read existing admin / user doc to preserve previousPasswordHash
-      resolvedDoc ??= await _db.collection('admins').doc(resolvedUid).get();
-      if (!resolvedDoc.exists) {
-        final uDoc = await _db.collection('users').doc(resolvedUid).get();
-        if (uDoc.exists) resolvedDoc = uDoc;
-      }
-
-      final docData = resolvedDoc.data() ?? {};
-      final prevHash = docData['passwordHash']?.toString();
-      final docPhone = docData['phone']?.toString() ?? phone;
-      final targetEmail = docData['email']?.toString() ?? '';
-      final role = docData['role']?.toString();
-
-      // Super Admin protection rule: Cannot be reset by another admin (only self)
-      final bool isTargetSuperAdmin = PhoneUtils.isSuperAdminPhone(phone) ||
-          PhoneUtils.isSuperAdminPhone(docPhone) ||
-          docData['isPrimary'] == true;
-
-      final currentUser = _auth.currentUser;
-      if (isTargetSuperAdmin && currentUser != null && currentUser.uid != resolvedUid) {
-        return {
-          'success': false,
-          'error': 'لا يمكن تعديل كلمة سر المشرف الأساسي إلا بواسطة صاحب الحساب نفسه',
-        };
-      }
-
-      final bool isTargetAdmin = role == 'admin' ||
-          isTargetSuperAdmin ||
-          (await _db.collection('admins').doc(resolvedUid).get()).exists;
-      final String effectiveRole = isTargetAdmin ? 'admin' : (role ?? 'client');
-
-      final newHash = hashPassword(cleanPass);
-      final batch = _db.batch();
-
-      final updateData = <String, dynamic>{
-        'adminResetPassword': cleanPass,
-        'passwordHash': newHash,
-        if (prevHash != null && prevHash != newHash) 'previousPasswordHash': prevHash,
-        'passwordUpdatedAt': FieldValue.serverTimestamp(),
-        'role': effectiveRole,
+      // Call Cloud Function to perform the secure update
+      final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable('adminSetUserPassword');
+      await callable.call({
         'uid': resolvedUid,
-        if (docPhone.isNotEmpty) 'phone': docPhone,
-        if (cleanDigits.isNotEmpty) 'cleanDigits': cleanDigits,
-        if (targetEmail.isNotEmpty) 'email': targetEmail,
-        if (docData['name'] != null && docData['name'].toString().isNotEmpty)
-          'name': docData['name'].toString(),
-        if (docData['accountId'] != null && docData['accountId'].toString().isNotEmpty)
-          'accountId': docData['accountId'].toString(),
-      };
+        'newPassword': cleanPass,
+      });
 
-      batch.set(_db.collection('users').doc(resolvedUid), updateData, SetOptions(merge: true));
-
-      if (isTargetAdmin) {
-        batch.set(_db.collection('admins').doc(resolvedUid), updateData, SetOptions(merge: true));
-      }
-
-      final lawyerDoc = await _db.collection('lawyers').doc(resolvedUid).get();
-      if (lawyerDoc.exists || role == 'lawyer') {
-        batch.set(_db.collection('lawyers').doc(resolvedUid), updateData, SetOptions(merge: true));
-      }
-
-      final dirCandidates = <String>{
-        ...PhoneUtils.generatePhoneCandidates(phone),
-        ...PhoneUtils.generatePhoneCandidates(docPhone),
-        if (cleanDigits.isNotEmpty) cleanDigits,
-        if (rawDigits.isNotEmpty) rawDigits,
-      };
-
-      for (final cand in dirCandidates) {
-        if (cand.isNotEmpty) {
-          batch.set(_db.collection('phone_directory').doc(cand), updateData, SetOptions(merge: true));
-        }
-      }
-
+      // Update ticket status locally if provided
       if (ticketId != null && ticketId.isNotEmpty) {
-        batch.update(_db.collection('password_resets').doc(ticketId), {
+        await _db.collection('password_resets').doc(ticketId).update({
           'status': 'resolved',
           'tempPassword': cleanPass,
           'resolvedAt': FieldValue.serverTimestamp(),
         });
-      }
-
-      await batch.commit();
-
-      // If active user in Firebase Auth is the target user, update Firebase Auth directly
-      final effectiveNewPassword = cleanPass.length < 6 ? cleanPass.padRight(6, '0') : cleanPass;
-      if (currentUser != null && currentUser.uid == resolvedUid) {
-        try {
-          await currentUser.updatePassword(effectiveNewPassword);
-        } catch (e) {
-          debugPrint('Direct user.updatePassword notice: $e');
-        }
-      } else {
-        final emailTargets = <String>[
-          if (targetEmail.isNotEmpty) targetEmail,
-          if (isTargetAdmin) ...[
-            'admin_$cleanDigits@mahameek.admin.com',
-            if (rawDigits.isNotEmpty) 'admin_$rawDigits@mahameek.admin.com',
-            '$cleanDigits@mahameek.admin.com',
-            if (rawDigits.isNotEmpty) '$rawDigits@mahameek.admin.com',
-            'admin_$cleanDigits@mahameek.com',
-          ],
-          '$cleanDigits@mahameek.$effectiveRole.com',
-          if (rawDigits.isNotEmpty) '$rawDigits@mahameek.$effectiveRole.com',
-          '$cleanDigits@mahameek.com',
-        ];
-
-        final candidateOldPasswords = <String>[
-          ?prevHash,
-          cleanPass,
-          cleanDigits,
-          if (rawDigits.isNotEmpty) rawDigits,
-          internalAuthKey(cleanDigits),
-          if (rawDigits.isNotEmpty) internalAuthKey(rawDigits),
-          '123000',
-          '123456',
-          '123',
-          '12345678',
-          '000000',
-        ];
-
-        try {
-          await _syncUserAuthPassword(
-            emailTargets: emailTargets,
-            newPassword: cleanPass,
-            candidateOldPasswords: candidateOldPasswords,
-          ).timeout(const Duration(milliseconds: 3500));
-        } catch (_) {}
       }
 
       return {
@@ -2750,11 +2416,17 @@ class AuthService implements AuthContract {
         'uid': resolvedUid,
         'newPassword': cleanPass,
       };
-    } catch (e) {
-      debugPrint('adminResetUserPassword error: $e');
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('adminResetUserPassword functions error: ${e.code} - ${e.message}');
       return {
         'success': false,
-        'error': 'حدث خطأ أثناء إعادة تعيين كلمة المرور: $e'
+        'error': e.message ?? 'فشل تحديث كلمة المرور',
+      };
+    } catch (e) {
+      debugPrint('adminResetUserPassword general error: $e');
+      return {
+        'success': false,
+        'error': 'حدث خطأ أثناء إعادة تعيين كلمة المرور: $e',
       };
     }
   }
@@ -2769,8 +2441,8 @@ class AuthService implements AuthContract {
     required String newPassword,
   }) async {
     try {
-      final cleanCurrent = PhoneUtils.normalizeDigits(currentPassword.trim());
-      final cleanNew = PhoneUtils.normalizeDigits(newPassword.trim());
+      final cleanCurrent = PhoneUtils.normalize(currentPassword.trim());
+      final cleanNew = PhoneUtils.normalize(newPassword.trim());
 
       if (cleanNew.length < 6) {
         return {
@@ -2791,7 +2463,7 @@ class AuthService implements AuthContract {
           final spPhone = prefs.getString('user_phone') ?? prefs.getString('phone');
           final spRole = prefs.getString('user_role') ?? prefs.getString('role');
           if (spPhone != null && spRole != null) {
-            final cleanD = PhoneUtils.extractLocalSudanDigits(spPhone);
+            final cleanD = PhoneUtils.toLocalDisplay(spPhone);
             userEmail = '$cleanD@mahameek.$spRole.com';
           }
         } catch (_) {}
@@ -2820,7 +2492,7 @@ class AuthService implements AuthContract {
 
       // If not found in primary docs, check phone_directory
       if (storedHash == null && adminReset == null && phone.isNotEmpty) {
-        for (final c in PhoneUtils.generatePhoneCandidates(phone)) {
+        for (final c in <String>{ PhoneUtils.normalize(phone) }) {
           try {
             final dSnap = await _db.collection('phone_directory').doc(c).get();
             if (dSnap.exists && dSnap.data() != null) {
@@ -2832,8 +2504,8 @@ class AuthService implements AuthContract {
         }
       }
 
-      final bool isPrimary1 = PhoneUtils.isPrimaryAdmin1(phone);
-      final bool isPrimary2 = PhoneUtils.isPrimaryAdmin2(phone);
+      final bool isPrimary1 = (PhoneUtils.isValid(phone) && PhoneUtils.normalize(phone) == "+249146979833");
+      final bool isPrimary2 = (PhoneUtils.isValid(phone) && PhoneUtils.normalize(phone) == "+249912209596");
       final bool isPrimaryAdmin = isPrimary1 || isPrimary2;
 
       final currentHash = hashPassword(cleanCurrent);
@@ -2926,7 +2598,7 @@ class AuthService implements AuthContract {
 
       if (phone.isNotEmpty || cleanDigits.isNotEmpty) {
         final allCandidates = <String>{
-          ...PhoneUtils.generatePhoneCandidates(phone),
+          
           if (cleanDigits.isNotEmpty) cleanDigits,
         };
 
@@ -3005,157 +2677,63 @@ class AuthService implements AuthContract {
     String? password,
     String? userEmail,
   }) async {
-    FirebaseApp? secondaryApp;
     try {
-      final cleanDigits = PhoneUtils.normalizeDigits(phone).replaceAll(RegExp(r'[^0-9]'), '');
-      if (cleanDigits.isEmpty && (userEmail == null || userEmail.isEmpty)) return false;
-
-      final localDigits = cleanDigits.isNotEmpty ? PhoneUtils.extractLocalSudanDigits(cleanDigits) : '';
-      final unified = cleanDigits.isNotEmpty ? PhoneUtils.toUnifiedPhone(phone).replaceAll('+', '') : '';
-
-      // 1. Gather all phone digit candidates
-      final digitCandidates = <String>{
-        if (cleanDigits.isNotEmpty) cleanDigits,
-        if (localDigits.isNotEmpty) localDigits,
-        if (unified.isNotEmpty) unified,
-      };
-
-      // 2. Build email targets across all possible roles
-      final emailTargets = <String>[];
-      if (userEmail != null && userEmail.trim().isNotEmpty) {
-        emailTargets.add(userEmail.trim());
-      }
-      final rolesToTest = [
-        if (role != null && role.isNotEmpty) role,
-        'admin',
-        'client',
-        'lawyer',
-      ];
-
-      for (final digits in digitCandidates) {
-        // Essential admin emails:
-        final adm1 = 'admin_$digits@mahameek.admin.com';
-        if (!emailTargets.contains(adm1)) emailTargets.add(adm1);
-        final adm2 = 'admin_$digits@mahameek.com';
-        if (!emailTargets.contains(adm2)) emailTargets.add(adm2);
-        final adm3 = '$digits@mahameek.admin.com';
-        if (!emailTargets.contains(adm3)) emailTargets.add(adm3);
-
-        for (final r in rolesToTest) {
-          final target = '$digits@mahameek.$r.com';
-          if (!emailTargets.contains(target)) emailTargets.add(target);
-        }
-        final general = '$digits@mahameek.com';
-        if (!emailTargets.contains(general)) emailTargets.add(general);
-      }
-
-      // 3. Build password candidates
-      final pwCandidates = <String>[];
-      for (final digits in digitCandidates) {
-        pwCandidates.add(internalAuthKey(digits));
-        pwCandidates.add(digits);
-        if (digits.length < 6) pwCandidates.add(digits.padRight(6, '0'));
-      }
-      if (password != null && password.trim().isNotEmpty) {
-        final norm = PhoneUtils.normalizeDigits(password.trim());
-        pwCandidates.add(norm);
-        if (norm != password.trim()) pwCandidates.add(password.trim());
-        if (norm.length < 6) pwCandidates.add(norm.padRight(6, '0'));
-      }
-
-      // Check if user has an adminResetPassword or email in Firestore
-      if (uid != null && uid.isNotEmpty) {
+      if (uid == null || uid.isEmpty) {
+        // Resolve uid from phone if missing
+        String normalizedPhone = '';
         try {
-          final aDoc = await _db.collection('admins').doc(uid).get();
-          final resetPw = aDoc.data()?['adminResetPassword']?.toString();
-          if (resetPw != null && resetPw.isNotEmpty) {
-            pwCandidates.add(resetPw.trim());
-            pwCandidates.add(PhoneUtils.normalizeDigits(resetPw.trim()));
-            if (resetPw.trim().length < 6) pwCandidates.add(resetPw.trim().padRight(6, '0'));
-          }
-          final em = aDoc.data()?['email']?.toString();
-          if (em != null && em.trim().isNotEmpty && !emailTargets.contains(em.trim())) {
-            emailTargets.insert(0, em.trim());
-          }
+          normalizedPhone = PhoneUtils.normalize(phone);
         } catch (_) {}
-        try {
-          final uDoc = await _db.collection('users').doc(uid).get();
-          final resetPw = uDoc.data()?['adminResetPassword']?.toString();
-          if (resetPw != null && resetPw.isNotEmpty) {
-            pwCandidates.add(resetPw.trim());
-            pwCandidates.add(PhoneUtils.normalizeDigits(resetPw.trim()));
-            if (resetPw.trim().length < 6) pwCandidates.add(resetPw.trim().padRight(6, '0'));
-          }
-          final em = uDoc.data()?['email']?.toString();
-          if (em != null && em.trim().isNotEmpty && !emailTargets.contains(em.trim())) {
-            emailTargets.insert(0, em.trim());
-          }
-        } catch (_) {}
-        try {
-          final lDoc = await _db.collection('lawyers').doc(uid).get();
-          final resetPw = lDoc.data()?['adminResetPassword']?.toString();
-          if (resetPw != null && resetPw.isNotEmpty) {
-            pwCandidates.add(resetPw.trim());
-            pwCandidates.add(PhoneUtils.normalizeDigits(resetPw.trim()));
-            if (resetPw.trim().length < 6) pwCandidates.add(resetPw.trim().padRight(6, '0'));
-          }
-          final em = lDoc.data()?['email']?.toString();
-          if (em != null && em.trim().isNotEmpty && !emailTargets.contains(em.trim())) {
-            emailTargets.insert(0, em.trim());
-          }
-        } catch (_) {}
-      }
-
-      pwCandidates.addAll([
-        '123456',
-        '123000',
-        '123',
-        '12345678',
-        '000000',
-        '112233',
-        '123123',
-      ]);
-
-      // 4. Initialize secondary app
-      final suffix = cleanDigits.length > 4
-          ? cleanDigits.substring(cleanDigits.length - 4)
-          : DateTime.now().millisecondsSinceEpoch.toString().substring(8);
-      final appName = 'UserDeletion_${DateTime.now().millisecondsSinceEpoch}_$suffix';
-      secondaryApp = await Firebase.initializeApp(
-        name: appName,
-        options: Firebase.app().options,
-      );
-
-      final secondaryAuth = FirebaseAuth.instanceFor(app: secondaryApp);
-      bool deleted = false;
-
-      for (final targetEmail in emailTargets) {
-        for (final pw in pwCandidates) {
-          try {
-            final cred = await secondaryAuth.signInWithEmailAndPassword(
-              email: targetEmail,
-              password: pw,
-            );
-            if (cred.user != null) {
-              await cred.user!.delete();
-              deleted = true;
-              debugPrint('✅ [AuthService] Successfully deleted user $targetEmail from Firebase Auth');
-              break;
-            }
-          } catch (_) {}
+        if (normalizedPhone.isNotEmpty) {
+           final doc = await _db.collection('phone_directory').doc(normalizedPhone).get();
+           uid = doc.data()?['uid']?.toString();
         }
       }
 
-      return deleted;
+      if (uid == null || uid.isEmpty) {
+         debugPrint('[AuthService] Could not resolve UID for deletion');
+         return false;
+      }
+
+      final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable('adminDeleteUserPermanently');
+      await callable.call({'uid': uid});
+      debugPrint('✅ [AuthService] Successfully called adminDeleteUserPermanently for $uid');
+      return true;
     } catch (e) {
       debugPrint('[AuthService] deleteUserAuthAccount notice: $e');
       return false;
-    } finally {
-      if (secondaryApp != null) {
-        try {
-          await secondaryApp.delete();
-        } catch (_) {}
-      }
+    }
+  }
+
+  // ============================================================================
+  // 🛡️ ADMIN CLOUD FUNCTIONS OPERATIONS
+  // ============================================================================
+
+  Future<Map<String, dynamic>> adminSetUserDisabled(String uid, bool disabled) async {
+    try {
+      final callable = FirebaseFunctions.instance.httpsCallable('adminSetUserDisabled');
+      await callable.call({'uid': uid, 'disabled': disabled});
+      return {'success': true};
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('adminSetUserDisabled functions error: ${e.code} - ${e.message}');
+      return {'success': false, 'error': e.message ?? 'فشل تحديث حالة الحساب'};
+    } catch (e) {
+      debugPrint('adminSetUserDisabled general error: $e');
+      return {'success': false, 'error': 'حدث خطأ غير متوقع'};
+    }
+  }
+
+  Future<Map<String, dynamic>> adminDeleteUserPermanently(String uid) async {
+    try {
+      final callable = FirebaseFunctions.instance.httpsCallable('adminDeleteUserPermanently');
+      await callable.call({'uid': uid});
+      return {'success': true};
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('adminDeleteUserPermanently functions error: ${e.code} - ${e.message}');
+      return {'success': false, 'error': e.message ?? 'فشل حذف الحساب'};
+    } catch (e) {
+      debugPrint('adminDeleteUserPermanently general error: $e');
+      return {'success': false, 'error': 'حدث خطأ غير متوقع'};
     }
   }
 
@@ -3164,8 +2742,7 @@ class AuthService implements AuthContract {
   // ============================================================================
 
   @override
-  Future<Map<String, dynamic>> deleteAccount(
-      {String? currentPassword}) async {
+  Future<Map<String, dynamic>> deleteAccount({String? currentPassword}) async {
     try {
       final user = _auth.currentUser;
       if (user == null) {
@@ -3174,294 +2751,163 @@ class AuthService implements AuthContract {
 
       final uid = user.uid;
       final email = user.email ?? '';
-      final cleanDigits =
-          email.split('@').first.replaceAll(RegExp(r'[^0-9]'), '');
-      final localDigits = PhoneUtils.extractLocalSudanDigits(cleanDigits);
+      final cleanDigits = email.split('@').first.replaceAll(RegExp(r'[^0-9]'), '');
+      
+      // Build candidate phone formats for thorough cleanup
+      String norm = '';
+      try {
+        norm = PhoneUtils.normalize(cleanDigits);
+      } catch (_) {
+        norm = '+249${cleanDigits.padLeft(9, '0').substring(0, 9)}';
+      }
+      final raw9 = norm.substring(4);
+      final phoneFormats = {
+        norm,
+        '0$raw9',
+        '00249$raw9',
+        '249$raw9',
+        '+2490$raw9',
+        raw9,
+        cleanDigits,
+      };
 
-      // ── 1. Fetch user data BEFORE deleting anything ──────────────────────
       final db = FirebaseFirestore.instance;
+      String? accountId;
+      String? profilePhotoUrl;
       String? storedHash;
       String? storedAdminReset;
-      String? userDocPhone;
-      String? profilePhotoUrl;
 
-      try {
-        final adminDoc = await db.collection('admins').doc(uid).get();
-        if (adminDoc.exists && adminDoc.data() != null) {
-          storedHash = adminDoc.data()?['passwordHash']?.toString();
-          storedAdminReset = adminDoc.data()?['adminResetPassword']?.toString();
-          final p = adminDoc.data()?['phone']?.toString();
-          if (p != null && p.trim().isNotEmpty) userDocPhone = p.trim();
-          profilePhotoUrl = adminDoc.data()?['photoUrl']?.toString();
-          final accId = adminDoc.data()?['accountId']?.toString();
-          if (accId != null && accId.isNotEmpty) {
-            db.collection('account_ids').doc(accId).delete().catchError((_) {});
-            db.collection('account_ids').doc(accId.replaceAll(' ', '')).delete().catchError((_) {});
+      // 1. Gather info for cleanup & auth verification
+      for (final col in ['users', 'lawyers', 'admins']) {
+        try {
+          final doc = await db.collection(col).doc(uid).get();
+          if (doc.exists && doc.data() != null) {
+             final data = doc.data()!;
+             if (data.containsKey('accountId')) accountId ??= data['accountId']?.toString();
+             if (data.containsKey('photoUrl')) profilePhotoUrl ??= data['photoUrl']?.toString();
+             if (data.containsKey('passwordHash')) storedHash ??= data['passwordHash']?.toString();
+             if (data.containsKey('adminResetPassword')) storedAdminReset ??= data['adminResetPassword']?.toString();
           }
-        }
-      } catch (_) {}
-
-      try {
-        final userDoc = await db.collection('users').doc(uid).get();
-        if (userDoc.exists && userDoc.data() != null) {
-          storedHash ??= userDoc.data()?['passwordHash']?.toString();
-          storedAdminReset ??= userDoc.data()?['adminResetPassword']?.toString();
-          final p = userDoc.data()?['phone']?.toString();
-          if (p != null && p.trim().isNotEmpty) userDocPhone ??= p.trim();
-          profilePhotoUrl ??= userDoc.data()?['photoUrl']?.toString();
-          final accId = userDoc.data()?['accountId']?.toString();
-          if (accId != null && accId.isNotEmpty) {
-            db.collection('account_ids').doc(accId).delete().catchError((_) {});
-            db.collection('account_ids').doc(accId.replaceAll(' ', '')).delete().catchError((_) {});
-          }
-        }
-      } catch (_) {}
-
-      try {
-        final lawyerDoc = await db.collection('lawyers').doc(uid).get();
-        if (lawyerDoc.exists && lawyerDoc.data() != null) {
-          storedHash ??= lawyerDoc.data()?['passwordHash']?.toString();
-          storedAdminReset ??=
-              lawyerDoc.data()?['adminResetPassword']?.toString();
-          final p = lawyerDoc.data()?['phone']?.toString();
-          if (p != null && p.trim().isNotEmpty) userDocPhone ??= p.trim();
-          profilePhotoUrl ??= lawyerDoc.data()?['photoUrl']?.toString();
-        }
-      } catch (_) {}
-
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        final spPhone = prefs.getString('user_phone') ?? prefs.getString('phone');
-        if (spPhone != null && spPhone.trim().isNotEmpty) {
-          userDocPhone ??= spPhone.trim();
-        }
-        profilePhotoUrl ??= prefs.getString('user_profile_photo_url');
-      } catch (_) {}
-
-      // Build complete phone candidate set for directory cleanup
-      final phoneCandidates = <String>{};
-      for (final src in [userDocPhone, cleanDigits, localDigits]) {
-        if (src != null && src.isNotEmpty) {
-          phoneCandidates.addAll(PhoneUtils.generatePhoneCandidates(src));
-        }
+        } catch (_) {}
       }
 
-      // ── 2. Validate entered password against stored hash ─────────────────
+      // 2. Validate current password
       if (currentPassword != null && currentPassword.trim().isNotEmpty) {
         if (storedHash != null && storedHash.isNotEmpty) {
           final raw = currentPassword.trim();
-          final norm = PhoneUtils.normalizeDigits(raw);
-          final matchesHash =
-              storedHash == hashPassword(norm) || storedHash == hashPassword(raw);
-          final matchesReset = storedAdminReset != null &&
-              storedAdminReset.isNotEmpty &&
-              (storedAdminReset == raw || storedAdminReset == norm);
+          String normP = '';
+          try { normP = PhoneUtils.convertArabicDigits(raw); } catch (_) { normP = raw; }
+          final matchesHash = storedHash == hashPassword(normP) || storedHash == hashPassword(raw);
+          final matchesReset = storedAdminReset != null && storedAdminReset.isNotEmpty && 
+                              (storedAdminReset == raw || storedAdminReset == normP);
           if (!matchesHash && !matchesReset) {
             return {
               'success': false,
-              'error':
-                  'كلمة المرور غير صحيحة، يرجى التأكد من كلمة المرور والمحاولة مجدداً.',
+              'error': 'كلمة المرور غير صحيحة، يرجى التأكد والمحاولة مجدداً.'
             };
           }
         }
       }
 
-      // ── 3. Obtain fresh ID token for REST Auth deletion while still signed in ─
-      String? idToken;
-      try {
-        idToken = await user.getIdToken(true);
-      } catch (_) {}
+      // 3. Pre-Reauthenticate
+      final reAuthPwd = currentPassword?.trim() ?? storedAdminReset?.trim() ?? '';
+      if (reAuthPwd.isNotEmpty && email.isNotEmpty) {
+         try {
+           final cred = EmailAuthProvider.credential(email: email, password: reAuthPwd);
+           await user.reauthenticateWithCredential(cred);
+         } catch (_) {}
+      }
 
-      // ── 4. Delete profile photo from Firebase Storage (while authenticated) ─
+      // 4. Delete Storage Profile Photo
       if (profilePhotoUrl != null && profilePhotoUrl.isNotEmpty) {
-        try {
-          await StorageService().deleteOldPhoto(profilePhotoUrl);
-        } catch (_) {}
+        try { await StorageService().deleteOldPhoto(profilePhotoUrl); } catch (_) {}
       }
 
-      // ── 5. Delete all Firestore records (while authenticated as owner) ────
-      await db.collection('users').doc(uid).delete().catchError((_) {});
-      await db.collection('lawyers').doc(uid).delete().catchError((_) {});
-      await db.collection('lawyer_requests').doc(uid).delete().catchError((_) {});
-      await db.collection('admins').doc(uid).delete().catchError((_) {});
-      await db.collection('admin_fcm_tokens').doc(uid).delete().catchError((_) {});
-
-      // Extra purge for phone_directory by uid
-      try {
-        final dirSnap = await db
-            .collection('phone_directory')
-            .where('uid', isEqualTo: uid)
-            .get();
-        for (final doc in dirSnap.docs) {
-          await doc.reference.delete().catchError((_) {});
+      // 5. FireStore Massive Recursive/Batch Delete
+      final batch = db.batch();
+      final collectionsByUid = [
+        'users', 'lawyers', 'lawyer_requests', 'admins',
+        'admin_fcm_tokens', 'admin_tokens', 'phone_directory', 'admin_notifications'
+      ];
+      
+      for (final col in collectionsByUid) {
+        final snap = await db.collection(col).where('uid', isEqualTo: uid).get();
+        for (final d in snap.docs) {
+           batch.delete(d.reference);
         }
-      } catch (_) {}
-
-      // Clean up stray records by phone candidate keys
-      for (final q in phoneCandidates) {
-        if (q.trim().isEmpty) continue;
-        try {
-          final docRef = db.collection('phone_directory').doc(q.trim());
-          final snap = await docRef.get();
-          if (snap.exists) {
-            await docRef.delete().catchError((_) {});
-          }
-        } catch (_) {}
-        try {
-          final lawSnap = await db
-              .collection('lawyers')
-              .where('phone', isEqualTo: q)
-              .get();
-          for (final doc in lawSnap.docs) {
-            await doc.reference.delete().catchError((_) {});
-          }
-        } catch (_) {}
-        try {
-          final uSnap = await db
-              .collection('users')
-              .where('phone', isEqualTo: q)
-              .get();
-          for (final doc in uSnap.docs) {
-            await doc.reference.delete().catchError((_) {});
-          }
-        } catch (_) {}
+        // Direct ID just in case
+        batch.delete(db.collection(col).doc(uid));
       }
 
-      // ── 6. Delete Firebase Auth account (guaranteed purge) ───────────────
-      bool authDeleted = false;
-
-      final reAuthCandidates = <String>{};
-      for (final src in [cleanDigits, localDigits]) {
-        if (src.isNotEmpty) reAuthCandidates.add(internalAuthKey(src));
-      }
-      if (userDocPhone != null && userDocPhone.isNotEmpty) {
-        final rawU = PhoneUtils.normalizeDigits(userDocPhone).replaceAll(RegExp(r'[^0-9]'), '');
-        if (rawU.isNotEmpty) reAuthCandidates.add(internalAuthKey(rawU));
-        final locU = PhoneUtils.extractLocalSudanDigits(rawU);
-        if (locU.isNotEmpty) reAuthCandidates.add(internalAuthKey(locU));
-      }
-      for (final q in phoneCandidates) {
-        final d = q.replaceAll(RegExp(r'[^0-9]'), '');
-        if (d.isNotEmpty) {
-          reAuthCandidates.add(d);
-          reAuthCandidates.add(internalAuthKey(d));
+      for (final f in phoneFormats) {
+        batch.delete(db.collection('phone_directory').doc(f));
+        // Fallback checks
+        final us = await db.collection('users').where('phone', isEqualTo: f).get();
+        for (final d in us.docs) {
+          batch.delete(d.reference);
+        }
+        final ls = await db.collection('lawyers').where('phone', isEqualTo: f).get();
+        for (final d in ls.docs) {
+          batch.delete(d.reference);
         }
       }
-      if (currentPassword != null && currentPassword.trim().isNotEmpty) {
-        final rawP = currentPassword.trim();
-        final normP = PhoneUtils.normalizeDigits(rawP);
-        reAuthCandidates.add(normP);
-        reAuthCandidates.add(rawP);
-        if (normP.length < 6) reAuthCandidates.add(normP.padRight(6, '0'));
-      }
-      if (storedAdminReset != null && storedAdminReset.isNotEmpty) {
-        reAuthCandidates.add(storedAdminReset.trim());
-        reAuthCandidates.add(PhoneUtils.normalizeDigits(storedAdminReset.trim()));
-        if (storedAdminReset.trim().length < 6) {
-          reAuthCandidates.add(storedAdminReset.trim().padRight(6, '0'));
-        }
-      }
-      reAuthCandidates.addAll(['123456', '123000', '123', '12345678', '000000']);
-
-      // Pre-reauthenticate before deleting to eliminate requires-recent-login errors
-      if (email.isNotEmpty) {
-        for (final pwd in reAuthCandidates) {
-          try {
-            final cred = EmailAuthProvider.credential(email: email, password: pwd);
-            await user.reauthenticateWithCredential(cred);
-            break;
-          } catch (_) {}
-        }
+      
+      if (accountId != null && accountId.isNotEmpty) {
+        batch.delete(db.collection('account_ids').doc(accountId));
+        batch.delete(db.collection('account_ids').doc(accountId.replaceAll(' ', '')));
       }
 
+      await batch.commit();
+
+      // 6. Final Validation Check
+      bool stillExists = false;
+      for (final col in collectionsByUid) {
+        final check = await db.collection(col).where('uid', isEqualTo: uid).get();
+        if (check.docs.isNotEmpty) stillExists = true;
+      }
+      for (final f in phoneFormats) {
+        final check = await db.collection('phone_directory').doc(f).get();
+        if (check.exists) stillExists = true;
+      }
+
+      if (stillExists) {
+         return {
+            'success': false,
+            'error': 'لم نتمكن من حذف كامل بيانات الحساب بسبب قيود في الصلاحيات. يرجى التواصل مع الدعم.'
+         };
+      }
+
+      // 7. Delete Auth Account
       try {
         await user.delete();
-        authDeleted = true;
-        debugPrint('✅ [deleteAccount] Auth user deleted directly');
-      } on FirebaseAuthException catch (authEx) {
-        if (authEx.code == 'requires-recent-login' && email.isNotEmpty) {
-          for (final pwd in reAuthCandidates) {
-            try {
-              final cred = EmailAuthProvider.credential(email: email, password: pwd);
-              await user.reauthenticateWithCredential(cred);
-              await user.delete();
-              authDeleted = true;
-              debugPrint('✅ [deleteAccount] Auth user deleted after re-auth');
-              break;
-            } catch (_) {}
-          }
-        }
-      } catch (_) {}
-
-      // Strategy 2: Firebase Auth REST API (accounts:delete) with fresh idToken
-      if (!authDeleted && idToken != null) {
-        try {
-          final apiKey = DefaultFirebaseOptions.currentPlatform.apiKey;
-          final response = await http.post(
-            Uri.parse('https://identitytoolkit.googleapis.com/v1/accounts:delete?key=$apiKey'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'idToken': idToken}),
-          ).timeout(const Duration(seconds: 10));
-
-          if (response.statusCode == 200) {
-            authDeleted = true;
-            debugPrint('✅ [deleteAccount] Auth user deleted via REST API');
-          } else {
-            debugPrint('[deleteAccount] REST API status ${response.statusCode}: ${response.body}');
-          }
-        } catch (e) {
-          debugPrint('[deleteAccount] REST API error: $e');
-        }
+        debugPrint('✅ [deleteAccount] Auth user deleted');
+      } catch (_) {
+        // Fallback secondary app
+        await deleteUserAuthAccount(
+          phone: norm,
+          role: 'user',
+          uid: uid,
+          password: currentPassword ?? storedAdminReset,
+          userEmail: email,
+        );
       }
 
-      // Strategy 3: Secondary App (isolated session login then delete)
-      if (!authDeleted) {
-        final targetPhone = userDocPhone ?? cleanDigits;
-        if (targetPhone.isNotEmpty || email.isNotEmpty) {
-          authDeleted = await deleteUserAuthAccount(
-            phone: targetPhone,
-            role: 'admin',
-            uid: uid,
-            password: currentPassword ?? storedAdminReset,
-            userEmail: email.isNotEmpty ? email : null,
-          );
-          if (authDeleted) {
-            debugPrint('✅ [deleteAccount] Auth user deleted via secondary app');
-          }
-        }
-      }
-
-      // ── 7. Invalidate local session & caches, then sign out ──────────────
+      // 8. Local session cleanup
       try {
         final prefs = await SharedPreferences.getInstance();
-        await prefs.remove('uid');
-        await prefs.remove('role');
-        await prefs.remove('name');
-        await prefs.remove('phone');
-        await prefs.remove('user_phone');
-        await prefs.remove('status');
-        await prefs.remove('user_profile_photo');
-        await prefs.remove('user_profile_photo_url');
+        await prefs.clear();
       } catch (_) {}
-
       FirestoreService.inMemoryApprovedLawyers = null;
-
-      try {
-        await _auth.signOut();
-      } catch (_) {}
+      try { await _auth.signOut(); } catch (_) {}
 
       return {'success': true};
     } catch (e) {
-      debugPrint('[deleteAccount] unexpected error: $e');
-      try {
-        await signOut();
-      } catch (_) {}
-      return {
-        'success': false,
-        'error': 'حدث خطأ أثناء حذف الحساب، يرجى المحاولة مجدداً.',
-      };
+      debugPrint('[deleteAccount] error: $e');
+      try { await signOut(); } catch (_) {}
+      return {'success': false, 'error': 'حدث خطأ أثناء الحذف: $e'};
     }
   }
+
 
   // ===========================================================================
   // 💾 LOCAL SESSION PERSISTENCE

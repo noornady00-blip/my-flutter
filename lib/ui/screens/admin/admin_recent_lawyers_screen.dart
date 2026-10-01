@@ -382,7 +382,7 @@ class _AdminRecentLawyersScreenState extends State<AdminRecentLawyersScreen> {
                           ),
                           const SizedBox(width: 10),
                           Text(
-                            '📞 ${PhoneUtils.formatForDisplay(lawyer.phone)}',
+                            '📞 ${PhoneUtils.toLocalDisplay(lawyer.phone)}',
                             style: GoogleFonts.cairo(fontSize: 11, color: const Color(0xFF94A3B8)),
                             textDirection: TextDirection.ltr,
                           ),

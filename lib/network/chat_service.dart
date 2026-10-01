@@ -240,7 +240,7 @@ class ChatService {
     if (uid.isEmpty) return;
     try {
       final isLawyer = (role == 'lawyer' || role == 'approved_lawyer');
-      final cleanDigits = phone != null ? PhoneUtils.cleanDigits(phone) : '';
+      final cleanDigits = phone != null ? PhoneUtils.normalize(phone) : '';
 
       // Parallel queries across participants, specific role IDs, and phone numbers
       final queries = <Future<QuerySnapshot<Map<String, dynamic>>>>[

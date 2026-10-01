@@ -468,7 +468,7 @@ class _AdminPendingLawyersScreenState extends State<AdminPendingLawyersScreen> {
                       ),
                     ),
                     Text(
-                      PhoneUtils.formatForDisplay(lawyer.phone),
+                      PhoneUtils.toLocalDisplay(lawyer.phone),
                       style: GoogleFonts.cairo(
                         fontSize: 12,
                         fontWeight: FontWeight.w800,

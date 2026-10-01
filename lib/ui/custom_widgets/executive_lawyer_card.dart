@@ -34,7 +34,7 @@ class ExecutiveLawyerCard extends StatelessWidget {
   });
 
   Future<void> _callPhone(String phone) async {
-    final cleanPhone = PhoneUtils.normalizeSudanPhone(phone, withPlus: true);
+    final cleanPhone = PhoneUtils.normalize(phone);
     final uri = Uri(scheme: 'tel', path: cleanPhone);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);

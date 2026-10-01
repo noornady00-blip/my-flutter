@@ -286,7 +286,7 @@ class _LawyerSettingsScreenState extends State<LawyerSettingsScreen> {
         await prefs.setString('user_profile_photo_base64', base64Photo);
 
         if (_phone.isNotEmpty) {
-          final cleanPhone = PhoneUtils.cleanDigits(_phone);
+          final cleanPhone = PhoneUtils.normalize(_phone);
           if (cleanPhone.isNotEmpty) {
             final dirData = {
               'photoUrl': downloadUrl,
@@ -295,7 +295,7 @@ class _LawyerSettingsScreenState extends State<LawyerSettingsScreen> {
               'user_profile_photo_url': downloadUrl,
             };
             FirebaseFirestore.instance.collection('phone_directory').doc(cleanPhone).set(dirData, SetOptions(merge: true)).catchError((_) {});
-            final norm = PhoneUtils.normalizePhone(cleanPhone);
+            final norm = PhoneUtils.normalize(cleanPhone);
             if (norm.isNotEmpty && norm != cleanPhone) {
               FirebaseFirestore.instance.collection('phone_directory').doc(norm).set(dirData, SetOptions(merge: true)).catchError((_) {});
             }
@@ -516,8 +516,8 @@ class _LawyerSettingsScreenState extends State<LawyerSettingsScreen> {
                                 Map<String, dynamic> res;
                                 try {
                                   res = await _authService.reauthenticateAndChangePassword(
-                                    currentPassword: PhoneUtils.normalizeDigits(currentPassController.text.trim()),
-                                    newPassword: PhoneUtils.normalizeDigits(newPassController.text.trim()),
+                                    currentPassword: PhoneUtils.convertArabicDigits(currentPassController.text.trim()),
+                                    newPassword: PhoneUtils.normalize(newPassController.text.trim()),
                                   );
                                 } catch (e) {
                                   res = {'success': false, 'error': 'حدث خطأ غير متوقع، يرجى المحاولة مجدداً'};
@@ -1347,7 +1347,7 @@ class _LawyerSettingsScreenState extends State<LawyerSettingsScreen> {
                   const Icon(Icons.phone_android_rounded, size: 14, color: Color(0xFFD49B1A)),
                   const SizedBox(width: 6),
                   Text(
-                    PhoneUtils.formatForDisplay(_phone),
+                    PhoneUtils.toLocalDisplay(_phone),
                     textDirection: TextDirection.ltr,
                     style: GoogleFonts.cairo(
                       fontSize: 13,

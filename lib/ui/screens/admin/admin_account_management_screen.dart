@@ -1071,7 +1071,7 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
   Widget _buildAdminAccountCard(UserModel a) {
     final bool isSuspended = a.isSuspended;
     final bool isPrimary = PhoneUtils.isSuperAdminPhone(a.phone) || a.isPrimary;
-    final bool isSelf = PhoneUtils.isSameAdminPhone(_currentAdminPhone, a.phone);
+    final bool isSelf = PhoneUtils.normalize(_currentAdminPhone) == PhoneUtils.normalize(a.phone);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1431,7 +1431,7 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                           border: Border.all(color: const Color(0xFF0B2A5B).withValues(alpha: 0.1)),
                         ),
                         child: Text(
-                          PhoneUtils.formatForDisplay(phone),
+                          PhoneUtils.toLocalDisplay(phone),
                           textDirection: TextDirection.ltr,
                           style: GoogleFonts.cairo(
                             fontSize: 13.5,
@@ -1493,7 +1493,7 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                         onPressed: isSaving
                             ? null
                             : () async {
-                                final newPass = PhoneUtils.normalizeDigits(passCtrl.text.trim());
+                                final newPass = PhoneUtils.normalize(passCtrl.text.trim());
                                 if (newPass.length < 6) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(

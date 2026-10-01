@@ -220,7 +220,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
                             validator: (v) {
                               final val = v?.trim() ?? '';
                               if (val.isEmpty) return 'يرجى إدخال رقم الموبايل';
-                              if (!PhoneUtils.isValidSudanPhone(val)) {
+                              if (!PhoneUtils.isValid(val)) {
                                 return 'يجب إدخال رقم سوداني صحيح مكون من 9 أرقام ويبدأ بـ 9 (مثال: 912345678)';
                               }
                               return null;

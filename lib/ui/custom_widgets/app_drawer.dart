@@ -471,9 +471,9 @@ class _AppDrawerState extends State<AppDrawer> {
                 onPressed: loading
                     ? null
                     : () async {
-                        final oldP = PhoneUtils.normalizeDigits(oldPassCtrl.text.trim());
-                        final newP = PhoneUtils.normalizeDigits(newPassCtrl.text.trim());
-                        final confP = PhoneUtils.normalizeDigits(confirmPassCtrl.text.trim());
+                        final oldP = PhoneUtils.convertArabicDigits(oldPassCtrl.text.trim());
+                        final newP = PhoneUtils.convertArabicDigits(newPassCtrl.text.trim());
+                        final confP = PhoneUtils.convertArabicDigits(confirmPassCtrl.text.trim());
 
                         if (oldP.isEmpty || newP.isEmpty || confP.isEmpty) {
                           setModalState(() => error = 'يرجى تعبئة كافة الحقول المطلوبة');

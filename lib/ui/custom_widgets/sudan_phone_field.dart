@@ -199,8 +199,12 @@ class _SudanPhoneFormFieldState extends State<SudanPhoneFormField> {
         if (widget.isRequired && val.isEmpty) {
           return 'يرجى إدخال رقم الموبايل';
         }
-        if (val.isNotEmpty && val.length < PhoneUtils.sudanPhoneLength) {
-          return 'يجب إدخال 9 أرقام (مثال: 912345678)';
+        if (val.isNotEmpty) {
+          try {
+             PhoneUtils.normalize(val);
+          } catch (_) {
+             return 'رقم الهاتف يجب أن يكون مفتاح الدولة +249 ثم 9 أرقام';
+          }
         }
         return null;
       },
@@ -327,7 +331,7 @@ class _SudanPhoneFormFieldState extends State<SudanPhoneFormField> {
                           ),
                           inputFormatters: [
                             FilteringTextInputFormatter.digitsOnly,
-                            SudanPhoneInputFormatter(),
+
                           ],
                           decoration: InputDecoration(
                             hintText: widget.hintText ?? 'أدخل رقم الموبايل',

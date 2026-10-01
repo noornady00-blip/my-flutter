@@ -145,6 +145,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
     _syncAdminInfoInBackground();
   }
 
+
+
   /// تحميل الأقسام المثبتة في لوحة التحكم
   Future<void> _loadPinnedDepartments() async {
     try {
@@ -1846,7 +1848,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                           border: Border.all(color: const Color(0xFF0B2A5B).withValues(alpha: 0.1)),
                         ),
                         child: Text(
-                          PhoneUtils.formatForDisplay(phone),
+                          PhoneUtils.toLocalDisplay(phone),
                           textDirection: TextDirection.ltr,
                           style: GoogleFonts.cairo(
                             fontSize: 13.5,
@@ -1908,7 +1910,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         onPressed: isSaving
                             ? null
                             : () async {
-                                final newPass = PhoneUtils.normalizeDigits(passCtrl.text.trim());
+                                final newPass = PhoneUtils.normalize(passCtrl.text.trim());
                                 if (newPass.length < 6) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(content: Text('كلمة المرور يجب ألا تقل عن 6 أحرف', style: GoogleFonts.cairo()), backgroundColor: const Color(0xFFDC2626)),
@@ -2068,7 +2070,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                             children: [
                               Flexible(
                                 child: Text(
-                                  PhoneUtils.formatForDisplay(phone),
+                                  PhoneUtils.toLocalDisplay(phone),
                                   textDirection: TextDirection.ltr,
                                   overflow: TextOverflow.ellipsis,
                                   style: GoogleFonts.cairo(
@@ -2597,7 +2599,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                           const Icon(Icons.phone_rounded, size: 12, color: Color(0xFFD49B1A)),
                                           const SizedBox(width: 5),
                                           Text(
-                                            PhoneUtils.formatForDisplay(l.phone),
+                                            PhoneUtils.toLocalDisplay(l.phone),
                                             textDirection: TextDirection.ltr,
                                             style: GoogleFonts.cairo(
                                               fontSize: 11.5,
@@ -2835,7 +2837,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                           const Icon(Icons.phone_rounded, size: 12, color: Color(0xFF2563EB)),
                                           const SizedBox(width: 5),
                                           Text(
-                                            PhoneUtils.formatForDisplay(c.phone),
+                                            PhoneUtils.toLocalDisplay(c.phone),
                                             textDirection: TextDirection.ltr,
                                             style: GoogleFonts.cairo(
                                               fontSize: 11.5,
@@ -2971,7 +2973,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   final a = admins[index];
                   final bool isSuspended = a.isSuspended;
                   final bool isPrimary = PhoneUtils.isSuperAdminPhone(a.phone) || a.isPrimary;
-                  final bool isSelf = PhoneUtils.isSameAdminPhone(_displayAdminPhone, a.phone);
+                  final bool isSelf = PhoneUtils.normalize(_displayAdminPhone) == PhoneUtils.normalize(a.phone);
 
                   return Container(
                     decoration: BoxDecoration(
@@ -3743,7 +3745,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                       const Icon(Icons.phone_rounded, size: 11, color: Color(0xFF0B2A5B)),
                                       const SizedBox(width: 4),
                                       Text(
-                                        PhoneUtils.formatForDisplay(l.phone),
+                                        PhoneUtils.toLocalDisplay(l.phone),
                                         textDirection: TextDirection.ltr,
                                         style: GoogleFonts.cairo(fontSize: 11, fontWeight: FontWeight.w700, color: const Color(0xFF0B2A5B)),
                                       ),
@@ -3764,7 +3766,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                         const Icon(Icons.chat_bubble_outline_rounded, size: 11, color: Color(0xFF059669)),
                                         const SizedBox(width: 4),
                                         Text(
-                                          PhoneUtils.formatForDisplay(l.whatsapp),
+                                          PhoneUtils.toLocalDisplay(l.whatsapp),
                                           textDirection: TextDirection.ltr,
                                           style: GoogleFonts.cairo(fontSize: 11, fontWeight: FontWeight.w700, color: const Color(0xFF059669)),
                                         ),
@@ -3911,7 +3913,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                   const Icon(Icons.phone_rounded, size: 11, color: Color(0xFF0B2A5B)),
                                   const SizedBox(width: 4),
                                   Text(
-                                    PhoneUtils.formatForDisplay(u.phone),
+                                    PhoneUtils.toLocalDisplay(u.phone),
                                     textDirection: TextDirection.ltr,
                                     style: GoogleFonts.cairo(fontSize: 11, fontWeight: FontWeight.w700, color: const Color(0xFF0B2A5B)),
                                   ),
@@ -4144,7 +4146,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          '📞 ${PhoneUtils.formatForDisplay(a.phone)}',
+                          '📞 ${PhoneUtils.toLocalDisplay(a.phone)}',
                           textDirection: TextDirection.ltr,
                           style: GoogleFonts.cairo(
                             fontSize: 12.5,
@@ -4442,7 +4444,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          '📞 ${PhoneUtils.formatForDisplay(phone)}',
+                          '📞 ${PhoneUtils.toLocalDisplay(phone)}',
                           textDirection: TextDirection.ltr,
                           style: GoogleFonts.cairo(
                             fontSize: 12.5,
@@ -5219,9 +5221,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   onPressed: loading
                       ? null
                       : () async {
-                          final oldP = PhoneUtils.normalizeDigits(oldPassCtrl.text.trim());
-                          final newP = PhoneUtils.normalizeDigits(newPassCtrl.text.trim());
-                          final confP = PhoneUtils.normalizeDigits(confirmPassCtrl.text.trim());
+                          final oldP = PhoneUtils.normalize(oldPassCtrl.text.trim());
+                          final newP = PhoneUtils.normalize(newPassCtrl.text.trim());
+                          final confP = PhoneUtils.normalize(confirmPassCtrl.text.trim());
 
                           if (oldP.isEmpty || newP.isEmpty || confP.isEmpty) {
                             setModalState(() => error = 'يرجى ملء جميع الحقول المطلوبة');

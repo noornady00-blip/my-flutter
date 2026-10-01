@@ -240,7 +240,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
           // Also synchronize photo into phone_directory for immediate lookup by phone
           if (_userPhone.isNotEmpty) {
-            final cleanPhone = PhoneUtils.cleanDigits(_userPhone);
+            final cleanPhone = PhoneUtils.normalize(_userPhone);
             if (cleanPhone.isNotEmpty) {
               final dirData = {
                 'photoUrl': downloadUrl,
@@ -249,11 +249,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 'user_profile_photo_url': downloadUrl,
               };
               batch.set(FirebaseFirestore.instance.collection('phone_directory').doc(cleanPhone), dirData, SetOptions(merge: true));
-              final norm = PhoneUtils.normalizePhone(cleanPhone);
+              final norm = PhoneUtils.normalize(cleanPhone);
               if (norm.isNotEmpty && norm != cleanPhone) {
                 batch.set(FirebaseFirestore.instance.collection('phone_directory').doc(norm), dirData, SetOptions(merge: true));
               }
-              final local = PhoneUtils.toLocalFormat(cleanPhone);
+              final local = PhoneUtils.toLocalDisplay(cleanPhone);
               if (local.isNotEmpty && local != cleanPhone) {
                 batch.set(FirebaseFirestore.instance.collection('phone_directory').doc(local), dirData, SetOptions(merge: true));
               }
@@ -695,8 +695,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           Map<String, dynamic> res;
                           try {
                             res = await _authService.reauthenticateAndChangePassword(
-                              currentPassword: PhoneUtils.normalizeDigits(oldPassCtrl.text.trim()),
-                              newPassword: PhoneUtils.normalizeDigits(newPassCtrl.text.trim()),
+                              currentPassword: PhoneUtils.convertArabicDigits(oldPassCtrl.text.trim()),
+                              newPassword: PhoneUtils.convertArabicDigits(newPassCtrl.text.trim()),
                             );
                           } catch (e) {
                             res = {'success': false, 'error': 'حدث خطأ غير متوقع، يرجى المحاولة مجدداً'};
@@ -1428,7 +1428,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              _isLoggedIn ? PhoneUtils.formatForDisplay(_userPhone) : _userPhone,
+                              _isLoggedIn ? PhoneUtils.toLocalDisplay(_userPhone) : _userPhone,
                               style: GoogleFonts.cairo(
                                 fontSize: 13.5,
                                 fontWeight: FontWeight.w800,

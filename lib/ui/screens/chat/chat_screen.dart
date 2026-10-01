@@ -242,7 +242,7 @@ class _ChatScreenState extends State<ChatScreen> {
         // Additional phone_directory fallback if photo or details are missing
         if (photoUrl == null && photoBase64 == null) {
           final fallbackPhone = _activeChat?.getOtherPartyPhone(_currentUserId) ?? phone;
-          final cleanPhone = fallbackPhone != null ? PhoneUtils.cleanDigits(fallbackPhone) : '';
+          final cleanPhone = fallbackPhone != null ? PhoneUtils.normalize(fallbackPhone) : '';
           if (cleanPhone.isNotEmpty) {
             try {
               final dirDoc = await FirebaseFirestore.instance
@@ -879,7 +879,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _callOtherParty(String phone) async {
     if (phone.trim().isEmpty) return;
-    final normalized = PhoneUtils.normalizeSudanPhone(phone, withPlus: true);
+    final normalized = PhoneUtils.normalize(phone);
     final uri = Uri.parse('tel:$normalized');
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);

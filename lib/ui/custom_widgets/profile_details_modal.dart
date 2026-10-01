@@ -114,7 +114,7 @@ void _showFloatingCopyToast(BuildContext context, String message) {
 /// Ultra-Executive 3D Glassmorphic Profile Details Modal for Lawyers & Clients
 class ProfileDetailsModal {
   static Future<void> launchCall(String phone) async {
-    final cleanPhone = PhoneUtils.normalizeSudanPhone(phone, withPlus: true);
+    final cleanPhone = PhoneUtils.normalize(phone);
     final uri = Uri(scheme: 'tel', path: cleanPhone);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
@@ -1016,7 +1016,7 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
           child: Align(
             alignment: Alignment.centerLeft,
             child: Text(
-              isPhone ? PhoneUtils.formatForDisplay(value) : value,
+              isPhone ? PhoneUtils.toLocalDisplay(value) : value,
               textDirection: isPhone ? TextDirection.ltr : null,
               style: GoogleFonts.cairo(
                 fontSize: 13.5,
@@ -1459,7 +1459,7 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
         } catch (_) {}
       }
 
-      final cleanDigits = PhoneUtils.cleanDigits(_client.phone);
+      final cleanDigits = PhoneUtils.normalize(_client.phone);
 
       // Check phone_directory for immediate linked data and photo
       if (cleanDigits.isNotEmpty) {
@@ -1945,7 +1945,7 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
           child: Align(
             alignment: Alignment.centerLeft,
             child: Text(
-              isPhone ? PhoneUtils.formatForDisplay(value) : value,
+              isPhone ? PhoneUtils.toLocalDisplay(value) : value,
               textDirection: isPhone ? TextDirection.ltr : null,
               style: GoogleFonts.cairo(
                 fontSize: 13.5,

@@ -38,6 +38,7 @@ dependencies:
   googleapis_auth: ^1.6.0
   wakelock_plus: ^1.8.0
   image: ^4.10.1
+  cloud_functions: ^5.6.2
 
 dev_dependencies:
   flutter_test:

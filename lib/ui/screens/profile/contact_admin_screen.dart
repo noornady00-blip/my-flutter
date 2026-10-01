@@ -44,7 +44,7 @@ class _ContactAdminScreenState extends State<ContactAdminScreen> {
       }
       if (session['phone'] != null && session['phone']!.isNotEmpty) {
         if (_phoneCtrl.text.isEmpty) {
-          _phoneCtrl.text = PhoneUtils.extractLocalSudanDigits(session['phone']!);
+          _phoneCtrl.text = PhoneUtils.toLocalDisplay(session['phone']!);
         }
       }
     } catch (_) {}
@@ -168,7 +168,7 @@ class _ContactAdminScreenState extends State<ContactAdminScreen> {
       }
 
       final senderName = _nameCtrl.text.trim();
-      final senderPhone = PhoneUtils.normalizeSudanPhone(_phoneCtrl.text.trim());
+      final senderPhone = PhoneUtils.normalize(_phoneCtrl.text.trim());
       final msgBody = _msgCtrl.text.trim();
 
       await FirebaseFirestore.instance.collection('support_messages').add({

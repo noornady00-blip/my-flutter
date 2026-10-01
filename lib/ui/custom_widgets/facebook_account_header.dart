@@ -111,7 +111,7 @@ class _FacebookAccountHeaderState extends State<FacebookAccountHeader> {
     if (clean.isEmpty) return;
 
     final phoneDigits = clean.replaceAll(RegExp(r'[^0-9]'), '');
-    final normalizedPhone = PhoneUtils.normalizeSudanPhone(clean, withPlus: true);
+    final normalizedPhone = PhoneUtils.normalize(clean);
 
     if (FacebookAccountHeader._accountCache.containsKey(clean)) {
       if (mounted) {
@@ -444,7 +444,7 @@ class _FacebookAccountHeaderState extends State<FacebookAccountHeader> {
                               size: 12, color: Color(0xFF94A3B8)),
                           const SizedBox(width: 4),
                           Text(
-                            PhoneUtils.formatForDisplay(widget.phone.trim()),
+                            PhoneUtils.toLocalDisplay(widget.phone.trim()),
                             textDirection: TextDirection.ltr,
                             style: GoogleFonts.cairo(
                               fontSize: 11.5,

@@ -139,7 +139,7 @@ class _AdminPasswordResetsScreenState extends State<AdminPasswordResetsScreen> {
                           border: Border.all(color: const Color(0xFF0B2A5B).withValues(alpha: 0.1)),
                         ),
                         child: Text(
-                          PhoneUtils.formatForDisplay(phone),
+                          PhoneUtils.toLocalDisplay(phone),
                           textDirection: TextDirection.ltr,
                           style: GoogleFonts.cairo(
                             fontSize: 13.5,
@@ -365,7 +365,7 @@ class _AdminPasswordResetsScreenState extends State<AdminPasswordResetsScreen> {
                             children: [
                               Flexible(
                                 child: Text(
-                                  PhoneUtils.formatForDisplay(phone),
+                                  PhoneUtils.toLocalDisplay(phone),
                                   textDirection: TextDirection.ltr,
                                   overflow: TextOverflow.ellipsis,
                                   style: GoogleFonts.cairo(

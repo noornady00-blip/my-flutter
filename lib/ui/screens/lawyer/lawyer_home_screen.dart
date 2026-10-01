@@ -84,7 +84,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
     bool isPhone = false,
     required Future<bool> Function(String value) onSave,
   }) async {
-    final rawInitial = isPhone ? PhoneUtils.extractLocalSudanDigits(initialValue) : initialValue;
+    final rawInitial = isPhone ? PhoneUtils.toLocalDisplay(initialValue) : initialValue;
     final controller = TextEditingController(text: rawInitial);
     final formKey = GlobalKey<FormState>();
     bool saving = false;
@@ -193,7 +193,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
                               if (!formKey.currentState!.validate()) return;
                               setModalState(() => saving = true);
                               final valToSave = isPhone
-                                  ? PhoneUtils.normalizeSudanPhone(controller.text.trim())
+                                  ? PhoneUtils.normalize(controller.text.trim())
                                   : controller.text.trim();
                               final success = await onSave(valToSave);
                               if (context.mounted) {
@@ -879,7 +879,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
                         const SizedBox(width: 8),
                         Flexible(
                           child: Text(
-                            PhoneUtils.formatForDisplay(whatsapp),
+                            PhoneUtils.toLocalDisplay(whatsapp),
                             textDirection: TextDirection.ltr,
                             style: GoogleFonts.cairo(
                               fontSize: 12.5,
@@ -902,7 +902,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
               Expanded(
                 child: InkWell(
                   onTap: () async {
-                    final cleanPhone = PhoneUtils.normalizeSudanPhone(phone, withPlus: true);
+                    final cleanPhone = PhoneUtils.normalize(phone);
                     final uri = Uri(scheme: 'tel', path: cleanPhone);
                     if (await canLaunchUrl(uri)) launchUrl(uri);
                   },
@@ -935,7 +935,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
                         const SizedBox(width: 8),
                         Flexible(
                           child: Text(
-                            PhoneUtils.formatForDisplay(phone),
+                            PhoneUtils.toLocalDisplay(phone),
                             textDirection: TextDirection.ltr,
                             style: GoogleFonts.cairo(
                               fontSize: 12.5,
@@ -1073,7 +1073,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
     bool isPhone = false,
     required VoidCallback onTap,
   }) {
-    final displayValue = isPhone ? PhoneUtils.formatForDisplay(value) : value;
+    final displayValue = isPhone ? PhoneUtils.toLocalDisplay(value) : value;
 
     return InkWell(
       onTap: onTap,
