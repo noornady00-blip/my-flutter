@@ -1493,7 +1493,7 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                         onPressed: isSaving
                             ? null
                             : () async {
-                                final newPass = PhoneUtils.normalize(passCtrl.text.trim());
+                                final newPass = passCtrl.text.trim();
                                 if (newPass.length < 6) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(

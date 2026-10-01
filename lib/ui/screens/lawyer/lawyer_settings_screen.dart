@@ -516,7 +516,7 @@ class _LawyerSettingsScreenState extends State<LawyerSettingsScreen> {
                                 try {
                                   res = await _authService.reauthenticateAndChangePassword(
                                     currentPassword: PhoneUtils.convertArabicDigits(currentPassController.text.trim()),
-                                    newPassword: PhoneUtils.normalize(newPassController.text.trim()),
+                                    newPassword: PhoneUtils.convertArabicDigits(newPassController.text.trim()),
                                   );
                                 } catch (e) {
                                   res = {'success': false, 'error': 'حدث خطأ غير متوقع، يرجى المحاولة مجدداً'};

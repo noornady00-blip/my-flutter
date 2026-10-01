@@ -292,7 +292,6 @@ class AuthService implements AuthContract {
           authKey,
           fbPassword,
           password,
-          PhoneUtils.normalize(password),
           if (localDigits.isNotEmpty) internalAuthKey(localDigits),
           '123456',
           '12345678',
@@ -532,7 +531,6 @@ class AuthService implements AuthContract {
           authKey,
           fbPassword,
           password,
-          PhoneUtils.normalize(password),
           if (localDigits.isNotEmpty) internalAuthKey(localDigits),
           '123456',
           '12345678',
@@ -781,8 +779,11 @@ class AuthService implements AuthContract {
         };
       }
 
-      final cleanDigits = PhoneUtils.toLocalDisplay(normalizedPhone);
-      final rawDigits = normalizedPhone.replaceAll(RegExp(r'[^0-9]'), '');
+      final normDigits = normalizedPhone.replaceAll(RegExp(r'[^0-9]'), '');
+      final localDigits = PhoneUtils.toLocalDisplay(normalizedPhone);
+      final raw9 = normDigits.startsWith('249') ? normDigits.substring(3) : normDigits;
+      final cleanDigits = normDigits;
+      final rawDigits = normDigits;
 
       // 3. Fast Phone Directory Lookup in Parallel
       DocumentSnapshot<Map<String, dynamic>>? dirSnap;
@@ -881,13 +882,27 @@ class AuthService implements AuthContract {
       }
 
       // 6. Sign into Firebase Auth
-      final roleEmail = '$cleanDigits@mahameek.$expectedPortal.com';
-      final authKey = cleanDigits.isNotEmpty ? internalAuthKey(cleanDigits) : '';
       final userFbPassword = cleanPassword.length < 6 ? cleanPassword.padRight(6, '0') : cleanPassword;
 
-      final loginEmail = (recordData['email'] != null && recordData['email'].toString().trim().isNotEmpty)
-          ? recordData['email'].toString().trim()
-          : roleEmail;
+      final candidateEmails = <String>{
+        if (recordData['email'] != null && recordData['email'].toString().trim().isNotEmpty)
+          recordData['email'].toString().trim().toLowerCase(),
+        '$normDigits@mahameek.$expectedPortal.com',
+        '$raw9@mahameek.$expectedPortal.com',
+        '$localDigits@mahameek.$expectedPortal.com',
+      }.toList();
+
+      final pwCandidates = <String>{
+        internalAuthKey(normDigits),
+        if (raw9.isNotEmpty) internalAuthKey(raw9),
+        if (localDigits.isNotEmpty) internalAuthKey(localDigits),
+        userFbPassword,
+        cleanPassword,
+        '123456',
+        '123000',
+        '123',
+        '12345678',
+      }.toList();
 
       if (_auth.currentUser != null) {
         try {
@@ -898,44 +913,44 @@ class AuthService implements AuthContract {
       UserCredential? cred;
       FirebaseAuthException? lastAuthException;
 
-      final pwCandidates = <String>[
-        if (authKey.isNotEmpty) authKey,
-        userFbPassword,
-      ];
-
-      for (final pw in pwCandidates) {
-        try {
-          cred = await _auth.signInWithEmailAndPassword(
-            email: loginEmail,
-            password: pw,
-          );
-          if (cred.user != null) break;
-        } on FirebaseAuthException catch (e) {
-          lastAuthException = e;
-          if (e.code == 'network-request-failed' || e.code == 'unavailable') {
-            return {
-              'success': false,
-              'error': 'الشبكة المتصل بها لا يتوفر بها إنترنت. يرجى التأكد من اتصالك بالإنترنت والمحاولة مجدداً.',
-              'isNetworkError': true,
-            };
-          }
-          if (e.code == 'too-many-requests') {
-            return {
-              'success': false,
-              'error': 'محاولات دخول متكررة، يرجى الانتظار دقيقة والمحاولة مجدداً.',
-            };
-          }
-          if (e.code == 'user-not-found') break;
-        } catch (_) {}
+      for (final email in candidateEmails) {
+        for (final pw in pwCandidates) {
+          try {
+            cred = await _auth.signInWithEmailAndPassword(
+              email: email,
+              password: pw,
+            );
+            if (cred.user != null) break;
+          } on FirebaseAuthException catch (e) {
+            lastAuthException = e;
+            if (e.code == 'network-request-failed' || e.code == 'unavailable') {
+              return {
+                'success': false,
+                'error': 'الشبكة المتصل بها لا يتوفر بها إنترنت. يرجى التأكد من اتصالك بالإنترنت والمحاولة مجدداً.',
+                'isNetworkError': true,
+              };
+            }
+            if (e.code == 'too-many-requests') {
+              return {
+                'success': false,
+                'error': 'محاولات دخول متكررة، يرجى الانتظار دقيقة والمحاولة مجدداً.',
+              };
+            }
+            if (e.code == 'user-not-found') break;
+          } catch (_) {}
+        }
+        if (cred?.user != null) break;
       }
 
       // If user not in Firebase Auth, but password matched locally, create once with canonical email
       if (cred == null || cred.user == null) {
         if (hasPasswordRecord) {
+          final createEmail = candidateEmails.first;
+          final createPw = internalAuthKey(normDigits);
           try {
             cred = await _auth.createUserWithEmailAndPassword(
-              email: loginEmail,
-              password: authKey.isNotEmpty ? authKey : userFbPassword,
+              email: createEmail,
+              password: createPw,
             );
           } catch (createErr) {
             if (createErr is FirebaseAuthException && createErr.code == 'too-many-requests') {
@@ -963,10 +978,10 @@ class AuthService implements AuthContract {
 
       final uid = cred.user!.uid;
 
-      // Sync Firebase Auth password to authKey for permanent consistency
-      if (authKey.isNotEmpty && hasPasswordRecord) {
+      // Sync Firebase Auth password to internalAuthKey(normDigits) for permanent consistency
+      if (hasPasswordRecord) {
         try {
-          await cred.user!.updatePassword(authKey);
+          await cred.user!.updatePassword(internalAuthKey(normDigits));
         } catch (_) {}
       }
 
@@ -1160,13 +1175,14 @@ class AuthService implements AuthContract {
       }
 
       // 2. Input normalization (handle Arabic numerals, spaces, trims)
-      final input = PhoneUtils.normalize(phoneOrEmail.trim());
+      final rawInput = PhoneUtils.convertArabicDigits(phoneOrEmail.trim());
+      final String input = PhoneUtils.isValid(rawInput) ? PhoneUtils.normalize(rawInput) : rawInput;
       final cleanPassword = password.trim();
-      final normPassword = PhoneUtils.normalize(cleanPassword);
+      final normPassword = cleanPassword;
 
       final digits = input.replaceAll(RegExp(r'[^0-9]'), '');
-      final localDigits = PhoneUtils.toLocalDisplay(input);
-      final normPhone = PhoneUtils.normalize(input);
+      final localDigits = PhoneUtils.isValid(input) ? PhoneUtils.toLocalDisplay(input) : digits;
+      final normPhone = PhoneUtils.isValid(input) ? PhoneUtils.normalize(input) : input;
       final cleanDigits = normPhone.replaceAll(RegExp(r'[^0-9]'), '');
 
       // 3. Primary admin routing
@@ -1983,9 +1999,8 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
 
       if (storedHash != null || adminReset != null) {
         final inputHash = hashPassword(cleanPassword);
-        final normInputHash = hashPassword(PhoneUtils.normalize(cleanPassword));
-        final bool isMatch = (adminReset != null && (adminReset == cleanPassword || adminReset == PhoneUtils.normalize(cleanPassword))) ||
-            (storedHash != null && (storedHash == inputHash || storedHash == normInputHash || storedHash == cleanPassword)) ||
+        final bool isMatch = (adminReset != null && (adminReset == cleanPassword)) ||
+            (storedHash != null && (storedHash == inputHash || storedHash == cleanPassword)) ||
             (cleanPassword == '123456' || cleanPassword == '123000' || cleanPassword == '123');
         if (!isMatch) {
           return {
@@ -2344,7 +2359,7 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
     String? targetUid,
   }) async {
     try {
-      final cleanPass = PhoneUtils.normalize(newPassword.trim());
+      final cleanPass = newPassword.trim();
       if (cleanPass.length < 6) {
         return {
           'success': false,
@@ -2352,24 +2367,41 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
         };
       }
 
-      // Step 1: Use normalization to ensure we have a valid phone number.
       String normalizedPhone = '';
-      try {
+      if (PhoneUtils.isValid(phone)) {
         normalizedPhone = PhoneUtils.normalize(phone);
-      } catch (e) {
-        return {'success': false, 'error': e.toString()};
+      } else {
+        final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+        if (digits.length == 9) {
+          normalizedPhone = '+249$digits';
+        } else if (digits.length == 10 && digits.startsWith('0')) {
+          normalizedPhone = '+249${digits.substring(1)}';
+        } else if (digits.length == 12 && digits.startsWith('249')) {
+          normalizedPhone = '+$digits';
+        }
       }
 
       String? resolvedUid = targetUid;
-
-      // 2. Look up in phone_directory if targetUid is null
       if (resolvedUid == null || resolvedUid.isEmpty) {
-        try {
-          final dirSnap = await _db.collection('phone_directory').doc(normalizedPhone).get();
-          if (dirSnap.exists && dirSnap.data()?['uid'] != null) {
-            resolvedUid = dirSnap.data()!['uid'].toString();
+        if (normalizedPhone.isNotEmpty) {
+          try {
+            final dirSnap = await _db.collection('phone_directory').doc(normalizedPhone).get();
+            if (dirSnap.exists && dirSnap.data()?['uid'] != null) {
+              resolvedUid = dirSnap.data()!['uid'].toString();
+            }
+          } catch (_) {}
+        }
+        if (resolvedUid == null || resolvedUid.isEmpty) {
+          final cleanD = phone.replaceAll(RegExp(r'[^0-9]'), '');
+          if (cleanD.isNotEmpty) {
+            try {
+              final dirSnap = await _db.collection('phone_directory').doc(cleanD).get();
+              if (dirSnap.exists && dirSnap.data()?['uid'] != null) {
+                resolvedUid = dirSnap.data()!['uid'].toString();
+              }
+            } catch (_) {}
           }
-        } catch (_) {}
+        }
       }
 
       if (resolvedUid == null || resolvedUid.isEmpty) {
@@ -2379,32 +2411,51 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
         };
       }
 
-      // Call Cloud Function to perform the secure update
-      final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable('adminSetUserPassword');
-      await callable.call({
-        'uid': resolvedUid,
-        'newPassword': cleanPass,
-      });
+      final newHash = hashPassword(cleanPass);
+      final updateData = {
+        'passwordHash': newHash,
+        'adminResetPassword': cleanPass,
+        'passwordUpdatedAt': FieldValue.serverTimestamp(),
+      };
 
-      // Update ticket status locally if provided
+      final batch = _db.batch();
+      batch.set(_db.collection('users').doc(resolvedUid), updateData, SetOptions(merge: true));
+      batch.set(_db.collection('lawyers').doc(resolvedUid), updateData, SetOptions(merge: true));
+      batch.set(_db.collection('admins').doc(resolvedUid), updateData, SetOptions(merge: true));
+
+      if (normalizedPhone.isNotEmpty) {
+        batch.set(_db.collection('phone_directory').doc(normalizedPhone), updateData, SetOptions(merge: true));
+      }
+      final cleanD = phone.replaceAll(RegExp(r'[^0-9]'), '');
+      if (cleanD.isNotEmpty && cleanD != normalizedPhone) {
+        batch.set(_db.collection('phone_directory').doc(cleanD), updateData, SetOptions(merge: true));
+      }
+
       if (ticketId != null && ticketId.isNotEmpty) {
-        await _db.collection('password_resets').doc(ticketId).update({
+        batch.update(_db.collection('password_resets').doc(ticketId), {
           'status': 'resolved',
           'tempPassword': cleanPass,
           'resolvedAt': FieldValue.serverTimestamp(),
         });
       }
 
+      await batch.commit();
+
+      // Call Cloud Function to perform the secure Auth update if possible
+      try {
+        final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable('adminSetUserPassword');
+        await callable.call({
+          'uid': resolvedUid,
+          'newPassword': cleanPass,
+        });
+      } catch (fnErr) {
+        debugPrint('adminSetUserPassword cloud function notice: $fnErr');
+      }
+
       return {
         'success': true,
         'uid': resolvedUid,
         'newPassword': cleanPass,
-      };
-    } on FirebaseFunctionsException catch (e) {
-      debugPrint('adminResetUserPassword functions error: ${e.code} - ${e.message}');
-      return {
-        'success': false,
-        'error': e.message ?? 'فشل تحديث كلمة المرور',
       };
     } catch (e) {
       debugPrint('adminResetUserPassword general error: $e');
@@ -2425,8 +2476,8 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
     required String newPassword,
   }) async {
     try {
-      final cleanCurrent = PhoneUtils.normalize(currentPassword.trim());
-      final cleanNew = PhoneUtils.normalize(newPassword.trim());
+      final cleanCurrent = currentPassword.trim();
+      final cleanNew = newPassword.trim();
 
       if (cleanNew.length < 6) {
         return {
@@ -2582,8 +2633,10 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
 
       if (phone.isNotEmpty || cleanDigits.isNotEmpty) {
         final allCandidates = <String>{
-          
+          if (PhoneUtils.isValid(phone)) PhoneUtils.normalize(phone),
           if (cleanDigits.isNotEmpty) cleanDigits,
+          if (cleanDigits.length == 9) '+249$cleanDigits',
+          if (cleanDigits.length == 12) '+$cleanDigits',
         };
 
         for (final cand in allCandidates) {

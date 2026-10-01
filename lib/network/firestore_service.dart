@@ -218,6 +218,27 @@ class FirestoreService implements DatabaseContract {
     });
   }
 
+  Future<void> _updatePhoneDirectoryStatus(String uid, String status) async {
+    try {
+      final uDoc = await _db.collection('users').doc(uid).get();
+      final lDoc = await _db.collection('lawyers').doc(uid).get();
+      final aDoc = await _db.collection('admins').doc(uid).get();
+      final phone = uDoc.data()?['phone']?.toString() ??
+          lDoc.data()?['phone']?.toString() ??
+          aDoc.data()?['phone']?.toString();
+      if (phone != null && phone.isNotEmpty) {
+        if (PhoneUtils.isValid(phone)) {
+          final norm = PhoneUtils.normalize(phone);
+          await _db.collection('phone_directory').doc(norm).set({'status': status}, SetOptions(merge: true));
+        }
+        final clean = phone.replaceAll(RegExp(r'[^0-9]'), '');
+        if (clean.isNotEmpty) {
+          await _db.collection('phone_directory').doc(clean).set({'status': status}, SetOptions(merge: true));
+        }
+      }
+    } catch (_) {}
+  }
+
   /// Approve / Activate a lawyer
   @override
   Future<void> approveLawyer(String uid) async {
@@ -226,6 +247,7 @@ class FirestoreService implements DatabaseContract {
         .collection('users')
         .doc(uid)
         .set({'status': 'approved'}, SetOptions(merge: true));
+    await _updatePhoneDirectoryStatus(uid, 'approved');
   }
 
   /// Suspend / Deactivate a lawyer
@@ -236,6 +258,7 @@ class FirestoreService implements DatabaseContract {
         .collection('users')
         .doc(uid)
         .set({'status': 'suspended'}, SetOptions(merge: true));
+    await _updatePhoneDirectoryStatus(uid, 'suspended');
   }
 
   /// Activate a suspended lawyer back to approved
@@ -301,19 +324,25 @@ class FirestoreService implements DatabaseContract {
       final userDoc = await _db.collection('users').doc(uid).get();
       final userPhone = userDoc.data()?['phone']?.toString();
       final effectivePhone = phone ?? userPhone;
+      final accountId = lawyerDoc.data()?['accountId']?.toString() ?? userDoc.data()?['accountId']?.toString();
 
       final batch = _db.batch();
       batch.delete(_db.collection('lawyers').doc(uid));
       batch.delete(_db.collection('users').doc(uid));
       batch.delete(_db.collection('lawyer_requests').doc(uid));
+      if (accountId != null && accountId.isNotEmpty) {
+        batch.delete(_db.collection('account_ids').doc(accountId));
+      }
 
       if (effectivePhone != null && effectivePhone.isNotEmpty) {
-        final unified = PhoneUtils.normalize(effectivePhone);
-        batch.delete(_db.collection('phone_directory').doc(unified));
-
-
-
-
+        if (PhoneUtils.isValid(effectivePhone)) {
+          final unified = PhoneUtils.normalize(effectivePhone);
+          batch.delete(_db.collection('phone_directory').doc(unified));
+        }
+        final clean = effectivePhone.replaceAll(RegExp(r'[^0-9]'), '');
+        if (clean.isNotEmpty) {
+          batch.delete(_db.collection('phone_directory').doc(clean));
+        }
       }
 
       await batch.commit();
@@ -489,11 +518,13 @@ class FirestoreService implements DatabaseContract {
   @override
   Future<void> suspendClient(String uid) async {
     await _db.collection('users').doc(uid).update({'status': 'suspended'});
+    await _updatePhoneDirectoryStatus(uid, 'suspended');
   }
 
   @override
   Future<void> activateClient(String uid) async {
     await _db.collection('users').doc(uid).update({'status': 'active'});
+    await _updatePhoneDirectoryStatus(uid, 'active');
   }
 
   @override
@@ -509,19 +540,25 @@ class FirestoreService implements DatabaseContract {
       final lawyerDoc = await _db.collection('lawyers').doc(uid).get();
       final lawyerPhone = lawyerDoc.data()?['phone']?.toString();
       final effectivePhone = phone ?? lawyerPhone;
+      final accountId = userDoc.data()?['accountId']?.toString() ?? lawyerDoc.data()?['accountId']?.toString();
 
       final batch = _db.batch();
       batch.delete(_db.collection('users').doc(uid));
       batch.delete(_db.collection('lawyers').doc(uid));
       batch.delete(_db.collection('lawyer_requests').doc(uid));
+      if (accountId != null && accountId.isNotEmpty) {
+        batch.delete(_db.collection('account_ids').doc(accountId));
+      }
 
       if (effectivePhone != null && effectivePhone.isNotEmpty) {
-        final unified = PhoneUtils.normalize(effectivePhone);
-        batch.delete(_db.collection('phone_directory').doc(unified));
-
-
-
-
+        if (PhoneUtils.isValid(effectivePhone)) {
+          final unified = PhoneUtils.normalize(effectivePhone);
+          batch.delete(_db.collection('phone_directory').doc(unified));
+        }
+        final clean = effectivePhone.replaceAll(RegExp(r'[^0-9]'), '');
+        if (clean.isNotEmpty) {
+          batch.delete(_db.collection('phone_directory').doc(clean));
+        }
       }
 
       await batch.commit();
@@ -706,11 +743,11 @@ class FirestoreService implements DatabaseContract {
             .get();
         for (final doc in existingAdminsSnap.docs) {
           final phone = doc.data()['phone']?.toString() ?? '';
-          if (PhoneUtils.normalize(phone) == "+249146979833" && doc.id != admin1Uid) {
+          if (PhoneUtils.isValid(phone) && PhoneUtils.normalize(phone) == "+249146979833" && doc.id != admin1Uid) {
             await _db.collection('users').doc(doc.id).delete().catchError((_) {});
             await _db.collection('admins').doc(doc.id).delete().catchError((_) {});
           }
-          if (PhoneUtils.normalize(phone) == "+249912209596" && doc.id != admin2Uid) {
+          if (PhoneUtils.isValid(phone) && PhoneUtils.normalize(phone) == "+249912209596" && doc.id != admin2Uid) {
             await _db.collection('users').doc(doc.id).delete().catchError((_) {});
             await _db.collection('admins').doc(doc.id).delete().catchError((_) {});
           }
@@ -727,6 +764,7 @@ class FirestoreService implements DatabaseContract {
     batch.update(_db.collection('users').doc(uid), {'status': 'suspended'});
     batch.update(_db.collection('admins').doc(uid), {'status': 'suspended'});
     await batch.commit();
+    await _updatePhoneDirectoryStatus(uid, 'suspended');
   }
 
   @override
@@ -735,6 +773,7 @@ class FirestoreService implements DatabaseContract {
     batch.update(_db.collection('users').doc(uid), {'status': 'active'});
     batch.update(_db.collection('admins').doc(uid), {'status': 'active'});
     await batch.commit();
+    await _updatePhoneDirectoryStatus(uid, 'active');
   }
 
   @override

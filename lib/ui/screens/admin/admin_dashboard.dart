@@ -1910,7 +1910,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         onPressed: isSaving
                             ? null
                             : () async {
-                                final newPass = PhoneUtils.normalize(passCtrl.text.trim());
+                                final newPass = passCtrl.text.trim();
                                 if (newPass.length < 6) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(content: Text('كلمة المرور يجب ألا تقل عن 6 أحرف', style: GoogleFonts.cairo()), backgroundColor: const Color(0xFFDC2626)),
@@ -5221,9 +5221,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   onPressed: loading
                       ? null
                       : () async {
-                          final oldP = PhoneUtils.normalize(oldPassCtrl.text.trim());
-                          final newP = PhoneUtils.normalize(newPassCtrl.text.trim());
-                          final confP = PhoneUtils.normalize(confirmPassCtrl.text.trim());
+                          final oldP = oldPassCtrl.text.trim();
+                          final newP = newPassCtrl.text.trim();
+                          final confP = confirmPassCtrl.text.trim();
 
                           if (oldP.isEmpty || newP.isEmpty || confP.isEmpty) {
                             setModalState(() => error = 'يرجى ملء جميع الحقول المطلوبة');
