@@ -1699,14 +1699,15 @@ class AuthService implements AuthContract {
         return {'success': false, 'error': rateLimitError};
       }
 
-      final input = PhoneUtils.normalize(emailOrPhone.trim());
-      final cleanPassword = password.trim();
-      final digits = input.replaceAll(RegExp(r'[^0-9]'), '');
-      final cleanDigits = PhoneUtils.toLocalDisplay(input);
-
-      final bool isPrimary1 = PhoneUtils.normalize(input) == "+249146979833";
-      final bool isPrimary2 = PhoneUtils.normalize(input) == "+249912209596";
+      final cleanDigits = PhoneUtils.convertArabicDigits(emailOrPhone.trim()).replaceAll(RegExp(r'[^0-9]'), '');
+      final bool isPrimary1 = cleanDigits.endsWith('146979833') || cleanDigits.endsWith('1146979833');
+      final bool isPrimary2 = cleanDigits.endsWith('912209596');
       final bool isPrimaryAdmin = isPrimary1 || isPrimary2;
+      final String input = isPrimary1
+          ? '+249146979833'
+          : (isPrimary2 ? '+249912209596' : (PhoneUtils.isValid(emailOrPhone) ? PhoneUtils.normalize(emailOrPhone) : emailOrPhone.trim()));
+      final cleanPassword = password.trim();
+      final digits = cleanDigits;
 
       // 1. Primary Admins Fast Path (< 200ms)
       if (isPrimaryAdmin) {
@@ -1794,9 +1795,8 @@ class AuthService implements AuthContract {
 
         if (hasCustom) {
           final inHash = hashPassword(cleanPassword);
-          final normHash = hashPassword(PhoneUtils.normalize(cleanPassword));
-          validAdminPass = (storedReset != null && (storedReset == cleanPassword || storedReset == PhoneUtils.normalize(cleanPassword))) ||
-              (storedHash != null && (storedHash == inHash || storedHash == normHash || storedHash == cleanPassword));
+          validAdminPass = (storedReset != null && storedReset == cleanPassword) ||
+              (storedHash != null && (storedHash == inHash || storedHash == cleanPassword));
         } else {
           validAdminPass = isPrimary1
               ? (cleanPassword == '123' || cleanPassword == '123000' || cleanPassword == '123456')

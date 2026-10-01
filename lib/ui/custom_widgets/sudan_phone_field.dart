@@ -199,12 +199,8 @@ class _SudanPhoneFormFieldState extends State<SudanPhoneFormField> {
         if (widget.isRequired && val.isEmpty) {
           return 'يرجى إدخال رقم الموبايل';
         }
-        if (val.isNotEmpty) {
-          try {
-             PhoneUtils.normalize(val);
-          } catch (_) {
-             return 'رقم الهاتف يجب أن يكون مفتاح الدولة +249 ثم 9 أرقام';
-          }
+        if (val.isNotEmpty && val.length != 9) {
+          return 'يجب أن يتكون رقم الموبايل من 9 أرقام بعد الصفر';
         }
         return null;
       },
@@ -299,7 +295,7 @@ class _SudanPhoneFormFieldState extends State<SudanPhoneFormField> {
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              '+249',
+                              '+249  0',
                               style: GoogleFonts.cairo(
                                 fontSize: 14.5,
                                 fontWeight: FontWeight.w800,
@@ -331,10 +327,10 @@ class _SudanPhoneFormFieldState extends State<SudanPhoneFormField> {
                           ),
                           inputFormatters: [
                             FilteringTextInputFormatter.digitsOnly,
-
+                            LengthLimitingTextInputFormatter(9),
                           ],
                           decoration: InputDecoration(
-                            hintText: widget.hintText ?? 'أدخل رقم الموبايل',
+                            hintText: widget.hintText ?? 'XXXXXXXXX (9 أرقام)',
                             hintStyle: GoogleFonts.cairo(
                               color: const Color(0xFF94A3B8),
                               fontSize: 13.5,
@@ -352,9 +348,17 @@ class _SudanPhoneFormFieldState extends State<SudanPhoneFormField> {
                                 const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
                           ),
                           onChanged: (val) {
-                            fieldState.didChange(val);
+                            var cleaned = val;
+                            if (cleaned.startsWith('0')) {
+                              cleaned = cleaned.replaceFirst(RegExp(r'^0+'), '');
+                              widget.controller?.value = TextEditingValue(
+                                text: cleaned,
+                                selection: TextSelection.collapsed(offset: cleaned.length),
+                              );
+                            }
+                            fieldState.didChange(cleaned);
                             if (widget.onChanged != null) {
-                              widget.onChanged!(val);
+                              widget.onChanged!(cleaned);
                             }
                           },
                         ),

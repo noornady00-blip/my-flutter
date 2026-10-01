@@ -739,12 +739,11 @@ class _LoginScreenState extends State<LoginScreen> {
                           if (v == null || v.trim().isEmpty) {
                             return 'يرجى إدخال رقم الموبايل';
                           }
-                          try {
-                            PhoneUtils.normalize(v.trim());
-                            return null;
-                          } catch (e) {
-                            return 'يجب أن يتكون رقم الموبايل من 9 أرقام (مثال: 912345678)';
+                          final digits = PhoneUtils.convertArabicDigits(v.trim()).replaceAll(RegExp(r'[^0-9]'), '');
+                          if (digits.length != 9) {
+                            return 'يجب أن يتكون رقم الموبايل من 9 أرقام بعد الصفر';
                           }
+                          return null;
                         },
                       ),
 

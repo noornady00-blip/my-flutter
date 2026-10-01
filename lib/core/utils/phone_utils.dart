@@ -22,16 +22,20 @@ class PhoneUtils {
 
     if (res.startsWith('00249')) {
       res = res.substring(5);
-    } else if (res.startsWith('249') && res.length == 12) {
+    } else if (res.startsWith('249') && res.length >= 11) {
       res = res.substring(3);
     }
 
-    if (res.length == 10 && res.startsWith('0')) {
+    while (res.startsWith('0') && res.length > 9) {
       res = res.substring(1);
     }
 
     if (res.length != 9) {
-      throw const FormatException('رقم الهاتف يجب أن يكون مفتاح الدولة +249 ثم 9 أرقام');
+      if (res.length > 9) {
+        res = res.substring(res.length - 9);
+      } else {
+        throw const FormatException('رقم الهاتف يجب أن يكون 9 أرقام');
+      }
     }
 
     return '+249$res';
