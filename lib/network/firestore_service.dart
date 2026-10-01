@@ -586,7 +586,7 @@ class FirestoreService implements DatabaseContract {
             primary1 = admin.copyWith(
               name: 'المشرف الأساسي (01146979833)',
               phone: '01146979833',
-              accountId: admin.accountId.isNotEmpty ? admin.accountId : '5642 1902 3114',
+              accountId: '111111111111',
               isPrimary: true,
               status: 'active',
             );
@@ -597,7 +597,7 @@ class FirestoreService implements DatabaseContract {
             primary2 = admin.copyWith(
               name: 'صاحب التطبيق',
               phone: '+249912209596',
-              accountId: admin.accountId.isNotEmpty ? admin.accountId : '5642 1902 3115',
+              accountId: '222222222222',
               isPrimary: true,
               status: 'active',
             );
@@ -619,7 +619,7 @@ class FirestoreService implements DatabaseContract {
         phone: '01146979833',
         role: 'admin',
         status: 'active',
-        accountId: '5642 1902 3114',
+        accountId: '111111111111',
         isPrimary: true,
         createdAt: DateTime(2026, 1, 1),
       );
@@ -631,7 +631,7 @@ class FirestoreService implements DatabaseContract {
         phone: '+249912209596',
         role: 'admin',
         status: 'active',
-        accountId: '5642 1902 3115',
+        accountId: '222222222222',
         isPrimary: true,
         createdAt: DateTime(2026, 1, 1),
       );
@@ -657,7 +657,7 @@ class FirestoreService implements DatabaseContract {
         'phone': '+249146979833',
         'role': 'admin',
         'status': 'active',
-        'accountId': '5642 1902 3114',
+        'accountId': '111111111111',
         'email': 'admin_01146979833@mahameek.admin.com',
         'isPrimary': true,
         'updatedAt': FieldValue.serverTimestamp(),
@@ -671,7 +671,12 @@ class FirestoreService implements DatabaseContract {
       await _db.collection('phone_directory').doc('01146979833').set(admin1Data, SetOptions(merge: true)).catchError((_) {});
       await _db.collection('phone_directory').doc('1146979833').set(admin1Data, SetOptions(merge: true)).catchError((_) {});
       await _db.collection('phone_directory').doc('+2491146979833').set(admin1Data, SetOptions(merge: true)).catchError((_) {});
-      await _db.collection('account_ids').doc('564219023114').set({
+      await _db.collection('account_ids').doc('111111111111').set({
+        'uid': admin1Uid,
+        'role': 'admin',
+        'createdAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true)).catchError((_) {});
+      await _db.collection('account_ids').doc('11111111111').set({
         'uid': admin1Uid,
         'role': 'admin',
         'createdAt': FieldValue.serverTimestamp(),
@@ -685,7 +690,7 @@ class FirestoreService implements DatabaseContract {
         'phone': '+249912209596',
         'role': 'admin',
         'status': 'active',
-        'accountId': '5642 1902 3115',
+        'accountId': '222222222222',
         'email': 'admin_912209596@mahameek.admin.com',
         'isPrimary': true,
         'updatedAt': FieldValue.serverTimestamp(),
@@ -696,7 +701,7 @@ class FirestoreService implements DatabaseContract {
       await _db.collection('phone_directory').doc('249912209596').set(admin2Data, SetOptions(merge: true)).catchError((_) {});
       await _db.collection('phone_directory').doc('912209596').set(admin2Data, SetOptions(merge: true)).catchError((_) {});
       await _db.collection('phone_directory').doc('0912209596').set(admin2Data, SetOptions(merge: true)).catchError((_) {});
-      await _db.collection('account_ids').doc('564219023115').set({
+      await _db.collection('account_ids').doc('222222222222').set({
         'uid': admin2Uid,
         'role': 'admin',
         'createdAt': FieldValue.serverTimestamp(),

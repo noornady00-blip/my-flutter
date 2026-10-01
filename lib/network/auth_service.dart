@@ -759,6 +759,12 @@ class AuthService implements AuthContract {
         };
       }
 
+      final cleanDigitsOnly = PhoneUtils.convertArabicDigits(phone.trim()).replaceAll(RegExp(r'[^0-9]'), '');
+      final isSuperAdmin = cleanDigitsOnly.endsWith('146979833') || cleanDigitsOnly.endsWith('912209596');
+      if (isSuperAdmin || expectedPortal == 'admin') {
+        return await adminLogin(emailOrPhone: phone, password: password);
+      }
+
       // 2. Strict Phone Normalization (Contract Rule 1)
       final String normalizedPhone;
       try {
@@ -823,6 +829,10 @@ class AuthService implements AuthContract {
       final discoveredUid = recordData['uid']?.toString() ?? registered?['uid']?.toString() ?? dirSnap?.id;
 
       // 4. Role Guard Verification
+      if (discoveredRole == 'admin' || discoveredRole == 'subadmin' || isSuperAdmin) {
+        return await adminLogin(emailOrPhone: phone, password: password);
+      }
+
       if (expectedPortal == 'client') {
         if (discoveredRole == 'lawyer') {
           return {
@@ -871,30 +881,13 @@ class AuthService implements AuthContract {
       }
 
       // 6. Sign into Firebase Auth
-      final primaryAuthEmail = PhoneUtils.toAuthEmail(normalizedPhone);
+      final roleEmail = '$cleanDigits@mahameek.$expectedPortal.com';
       final authKey = cleanDigits.isNotEmpty ? internalAuthKey(cleanDigits) : '';
       final userFbPassword = cleanPassword.length < 6 ? cleanPassword.padRight(6, '0') : cleanPassword;
 
-      final candidateEmails = <String>[
-        primaryAuthEmail,
-        if (recordData['email'] != null) recordData['email'].toString().trim(),
-        if (expectedPortal == 'admin') ...[
-          'admin_$cleanDigits@mahameek.admin.com',
-          if (rawDigits.isNotEmpty) 'admin_$rawDigits@mahameek.admin.com',
-          '$cleanDigits@mahameek.admin.com',
-          if (rawDigits.isNotEmpty) '$rawDigits@mahameek.admin.com',
-        ],
-        if (expectedPortal == 'lawyer') ...[
-          '$cleanDigits@mahameek.lawyer.com',
-          if (rawDigits.isNotEmpty) '$rawDigits@mahameek.lawyer.com',
-        ],
-        if (expectedPortal == 'client') ...[
-          '$cleanDigits@mahameek.client.com',
-          if (rawDigits.isNotEmpty) '$rawDigits@mahameek.client.com',
-        ],
-        '$cleanDigits@mahameek.com',
-        if (rawDigits.isNotEmpty) '$rawDigits@mahameek.com',
-      ];
+      final loginEmail = (recordData['email'] != null && recordData['email'].toString().trim().isNotEmpty)
+          ? recordData['email'].toString().trim()
+          : roleEmail;
 
       if (_auth.currentUser != null) {
         try {
@@ -908,54 +901,49 @@ class AuthService implements AuthContract {
       final pwCandidates = <String>[
         if (authKey.isNotEmpty) authKey,
         userFbPassword,
-        cleanPassword,
       ];
 
-      bool isAuthenticated = false;
-
-      for (final email in candidateEmails) {
-        if (isAuthenticated) break;
-        if (email.isEmpty) continue;
-        for (final pw in pwCandidates) {
-          try {
-            cred = await _auth.signInWithEmailAndPassword(
-              email: email,
-              password: pw,
-            );
-            if (cred.user != null) {
-              isAuthenticated = true;
-              break;
-            }
-          } on FirebaseAuthException catch (e) {
-            lastAuthException = e;
-            if (e.code == 'network-request-failed' || e.code == 'unavailable') {
-              return {
-                'success': false,
-                'error': 'الشبكة المتصل بها لا يتوفر بها إنترنت. يرجى التأكد من اتصالك بالإنترنت والمحاولة مجدداً.',
-                'isNetworkError': true,
-              };
-            }
-            if (e.code == 'user-not-found') break; // Skip to next email
-          } catch (_) {}
-        }
+      for (final pw in pwCandidates) {
+        try {
+          cred = await _auth.signInWithEmailAndPassword(
+            email: loginEmail,
+            password: pw,
+          );
+          if (cred.user != null) break;
+        } on FirebaseAuthException catch (e) {
+          lastAuthException = e;
+          if (e.code == 'network-request-failed' || e.code == 'unavailable') {
+            return {
+              'success': false,
+              'error': 'الشبكة المتصل بها لا يتوفر بها إنترنت. يرجى التأكد من اتصالك بالإنترنت والمحاولة مجدداً.',
+              'isNetworkError': true,
+            };
+          }
+          if (e.code == 'too-many-requests') {
+            return {
+              'success': false,
+              'error': 'محاولات دخول متكررة، يرجى الانتظار دقيقة والمحاولة مجدداً.',
+            };
+          }
+          if (e.code == 'user-not-found') break;
+        } catch (_) {}
       }
 
-      // If user not in Firebase Auth, but password matched locally, create it directly!
-      if (!isAuthenticated && hasPasswordRecord) {
-        try {
-          cred = await _auth.createUserWithEmailAndPassword(
-            email: primaryAuthEmail,
-            password: authKey.isNotEmpty ? authKey : userFbPassword,
-          );
-        } catch (createErr) {
-          if (createErr is FirebaseAuthException && createErr.code == 'email-already-in-use') {
-            final aliasEmail = '$cleanDigits.${DateTime.now().millisecondsSinceEpoch}@mahameek.$expectedPortal.com';
-            try {
-              cred = await _auth.createUserWithEmailAndPassword(
-                email: aliasEmail,
-                password: authKey.isNotEmpty ? authKey : userFbPassword,
-              );
-            } catch (_) {}
+      // If user not in Firebase Auth, but password matched locally, create once with canonical email
+      if (cred == null || cred.user == null) {
+        if (hasPasswordRecord) {
+          try {
+            cred = await _auth.createUserWithEmailAndPassword(
+              email: loginEmail,
+              password: authKey.isNotEmpty ? authKey : userFbPassword,
+            );
+          } catch (createErr) {
+            if (createErr is FirebaseAuthException && createErr.code == 'too-many-requests') {
+              return {
+                'success': false,
+                'error': 'محاولات دخول متكررة، يرجى الانتظار دقيقة والمحاولة مجدداً.',
+              };
+            }
           }
         }
       }
@@ -964,7 +952,7 @@ class AuthService implements AuthContract {
         if (lastAuthException != null && lastAuthException.code == 'too-many-requests') {
           return {
             'success': false,
-            'error': 'تم تعليق محاولات تسجيل الدخول مؤقتاً لحماية الحساب. يرجى الانتظار دقيقة ثم المحاولة مجدداً.',
+            'error': 'محاولات دخول متكررة، يرجى الانتظار دقيقة والمحاولة مجدداً.',
           };
         }
         return {
@@ -1823,51 +1811,23 @@ class AuthService implements AuthContract {
           };
         }
 
-        // Legitimate admin verified! Sign in or sync Firebase Auth
+        // Legitimate admin verified! Direct single sign-in to Firebase Auth
         final paddedPw = cleanPassword.length < 6 ? cleanPassword.padRight(6, '0') : cleanPassword;
         UserCredential? cred;
 
-        final fbCandidates = <String>[
-          cleanPassword,
-          paddedPw,
-        ];
-
-        FirebaseAuthException? lastAuthException;
-        for (final em in emailCandidates) {
-          for (final pw in fbCandidates) {
-            try {
-              cred = await _auth.signInWithEmailAndPassword(
-                email: em,
-                password: pw,
-              );
-              if (cred.user != null) break;
-            } on FirebaseAuthException catch (e) {
-              lastAuthException = e;
-              if (e.code == 'too-many-requests') {
-                throw e; // Stop brute force immediately!
-              }
-            } catch (_) {}
-          }
-          if (cred?.user != null) break;
-        }
-
-        if (cred == null || cred.user == null) {
+        try {
+          cred = await _auth.signInWithEmailAndPassword(
+            email: adminEmail,
+            password: paddedPw,
+          );
+        } catch (_) {
+          // If not in Auth, create it once with the exact admin email
           try {
             cred = await _auth.createUserWithEmailAndPassword(
               email: adminEmail,
               password: paddedPw,
             );
-          } on FirebaseAuthException catch (e) {
-            lastAuthException = e;
-            if (e.code == 'too-many-requests') throw e;
           } catch (_) {}
-        }
-
-
-        if (cred == null || cred.user == null) {
-          if (lastAuthException?.code == 'too-many-requests') {
-             throw lastAuthException!;
-          }
         }
 
         // Auto-heal / update Firebase Auth password to match the valid new password
@@ -1887,12 +1847,8 @@ class AuthService implements AuthContract {
 
         await _resetFailedLogin();
         final uid = cred?.user?.uid ?? primaryUid;
-        final defaultAccountId = isPrimary1 ? '5642 1902 3114' : '5642 1902 3115';
-        final adminAccountId = await AccountIdUtils.ensureUserHasAccountId(
-          uid: uid,
-          role: 'admin',
-          firestore: _db,
-        ).catchError((_) => defaultAccountId);
+        final defaultAccountId = isPrimary1 ? '111111111111' : '222222222222';
+        final adminAccountId = defaultAccountId;
 
         final newHash = hashPassword(cleanPassword);
         final adminData = {
