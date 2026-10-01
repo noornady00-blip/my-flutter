@@ -1130,6 +1130,39 @@ class AuthService implements AuthContract {
   }
 
   // ===========================================================================
+  // 🔐 CLIENT-SIDE RATE LIMITER (1 Minute after 5 fails)
+  // ===========================================================================
+
+  Future<String?> _checkLoginRateLimit() async {
+    final prefs = await SharedPreferences.getInstance();
+    final blockUntil = prefs.getInt('login_block_until') ?? 0;
+    if (DateTime.now().millisecondsSinceEpoch < blockUntil) {
+      return 'لقد تجاوزت الحد المسموح به من المحاولات. يرجى الانتظار دقيقة واحدة ثم المحاولة مجدداً.';
+    }
+    return null;
+  }
+
+  Future<void> _recordFailedLogin() async {
+    final prefs = await SharedPreferences.getInstance();
+    final blockUntil = prefs.getInt('login_block_until') ?? 0;
+    if (DateTime.now().millisecondsSinceEpoch < blockUntil) return;
+
+    int attempts = (prefs.getInt('login_failed_attempts') ?? 0) + 1;
+    if (attempts >= 5) {
+      await prefs.setInt('login_block_until', DateTime.now().millisecondsSinceEpoch + 60000); // 1 minute
+      await prefs.setInt('login_failed_attempts', 0);
+    } else {
+      await prefs.setInt('login_failed_attempts', attempts);
+    }
+  }
+
+  Future<void> _resetFailedLogin() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('login_failed_attempts');
+    await prefs.remove('login_block_until');
+  }
+
+  // ===========================================================================
   // 🔐 UNIFIED LOGIN (CLIENT / LAWYER / ADMIN)
   // ===========================================================================
 
@@ -1148,6 +1181,12 @@ class AuthService implements AuthContract {
               'الشبكة المتصل بها لا يتوفر بها إنترنت. يرجى التأكد من اتصالك بالإنترنت والمحاولة مجدداً.',
           'isNetworkError': true,
         };
+      }
+
+      // 1.5 Client-side rate limit check
+      final rateLimitError = await _checkLoginRateLimit();
+      if (rateLimitError != null) {
+        return {'success': false, 'error': rateLimitError};
       }
 
       // 2. Input normalization (handle Arabic numerals, spaces, trims)
@@ -1282,6 +1321,7 @@ class AuthService implements AuthContract {
 
         if (!isMatch) {
           // Password truly doesn't match! Instant rejection in < 60ms without Firebase Auth throttling!
+          await _recordFailedLogin();
           return {
             'success': false,
             'error': 'كلمة المرور غير صحيحة، يرجى التأكد من كلمة المرور والمحاولة مجدداً.',
@@ -1389,6 +1429,7 @@ class AuthService implements AuthContract {
       }
 
       // 8. Post-login: Load user profile & sync
+      await _resetFailedLogin();
       final uid = cred.user!.uid;
 
       // Sync Firebase Auth password to authKey for permanent consistency
@@ -1691,6 +1732,11 @@ class AuthService implements AuthContract {
         };
       }
 
+      final rateLimitError = await _checkLoginRateLimit();
+      if (rateLimitError != null) {
+        return {'success': false, 'error': rateLimitError};
+      }
+
       final input = PhoneUtils.normalize(emailOrPhone.trim());
       final cleanPassword = password.trim();
       final digits = input.replaceAll(RegExp(r'[^0-9]'), '');
@@ -1796,6 +1842,7 @@ class AuthService implements AuthContract {
         }
 
         if (!validAdminPass) {
+          await _recordFailedLogin();
           return {
             'success': false,
             'error': 'كلمة المرور غير صحيحة، يرجى التأكد من كلمة المرور والمحاولة مجدداً.',
@@ -1878,6 +1925,7 @@ class AuthService implements AuthContract {
           }
         }
 
+        await _resetFailedLogin();
         final uid = cred?.user?.uid ?? primaryUid;
         final defaultAccountId = isPrimary1 ? '5642 1902 3114' : '5642 1902 3115';
         final adminAccountId = await AccountIdUtils.ensureUserHasAccountId(
