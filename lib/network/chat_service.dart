@@ -375,6 +375,7 @@ class ChatService {
       'lastSenderRole': senderRole,
       'lastMessageTime': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
+      'isLastMessageRead': false,
     };
 
     // Only increment unread count for recipient if NOT stopped by recipient
@@ -383,10 +384,12 @@ class ChatService {
         updateData['lawyerId'] = senderId;
         updateData['clientId'] = recipientId;
         updateData['unreadByClient'] = FieldValue.increment(1);
+        updateData['unreadByLawyer'] = 0;
       } else if (senderRole == 'client') {
         updateData['clientId'] = senderId;
         updateData['lawyerId'] = recipientId;
         updateData['unreadByLawyer'] = FieldValue.increment(1);
+        updateData['unreadByClient'] = 0;
       } else if (senderRole == 'admin') {
         updateData['unreadByClient'] = FieldValue.increment(1);
         updateData['unreadByLawyer'] = FieldValue.increment(1);
@@ -625,6 +628,10 @@ class ChatService {
       final lawyerId = data['lawyerId']?.toString() ?? '';
 
       final Map<String, dynamic> update = {};
+      final lastSenderId = data['lastSenderId']?.toString() ?? '';
+      if (lastSenderId.isNotEmpty && lastSenderId != currentUserId) {
+        update['isLastMessageRead'] = true;
+      }
       if (currentUserId == clientId) {
         update['unreadByClient'] = 0;
       }
@@ -644,7 +651,7 @@ class ChatService {
       }
 
       // If user matched neither clientId nor lawyerId explicitly, clear both for safety
-      if (update.isEmpty) {
+      if (!update.containsKey('unreadByClient') && !update.containsKey('unreadByLawyer')) {
         update['unreadByClient'] = 0;
         update['unreadByLawyer'] = 0;
       }
@@ -658,7 +665,7 @@ class ChatService {
             .doc(chatId)
             .collection('messages')
             .where('isRead', isEqualTo: false)
-            .limit(50)
+            .limit(100)
             .get();
 
         if (unreadMsgsSnap.docs.isNotEmpty) {

@@ -340,13 +340,13 @@ class _ChatListScreenState extends State<ChatListScreen> {
                     children: [
                       // Quick Filter Tabs Row
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                        padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
                         child: Row(
                           children: [
                             _buildFilterChip('all', 'الكل', allChats.length, Icons.all_inbox_rounded, brandNavy),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: 6),
                             _buildFilterChip('unread', 'غير مقروءة', unreadCount, Icons.mark_chat_unread_rounded, const Color(0xFFDC2626)),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: 6),
                             _buildFilterChip('pinned', 'المثبتة', pinnedCount, Icons.push_pin_rounded, const Color(0xFFD49B1A)),
                           ],
                         ),
@@ -501,7 +501,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
           borderRadius: BorderRadius.circular(12),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 8),
+            padding: const EdgeInsets.symmetric(vertical: 6.5, horizontal: 4),
             decoration: BoxDecoration(
               color: isSelected ? activeColor : Colors.white,
               borderRadius: BorderRadius.circular(12),
@@ -525,42 +525,49 @@ class _ChatListScreenState extends State<ChatListScreen> {
                       ),
                     ],
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  icon,
-                  size: 13.5,
-                  color: isSelected ? Colors.white : const Color(0xFF64748B),
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  title,
-                  style: GoogleFonts.cairo(
-                    fontSize: 11.5,
-                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.center,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    icon,
+                    size: 13,
                     color: isSelected ? Colors.white : const Color(0xFF64748B),
                   ),
-                ),
-                if (count > 0) ...[
-                  const SizedBox(width: 4),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: isSelected ? Colors.white.withValues(alpha: 0.25) : const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      count > 99 ? '+99' : '$count',
-                      style: GoogleFonts.cairo(
-                        fontSize: 9.5,
-                        fontWeight: FontWeight.w800,
-                        color: isSelected ? Colors.white : const Color(0xFF475569),
-                      ),
+                  const SizedBox(width: 3.5),
+                  Text(
+                    title,
+                    maxLines: 1,
+                    softWrap: false,
+                    style: GoogleFonts.cairo(
+                      fontSize: 11,
+                      fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                      color: isSelected ? Colors.white : const Color(0xFF64748B),
                     ),
                   ),
+                  if (count > 0) ...[
+                    const SizedBox(width: 3.5),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 4.5, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: isSelected ? Colors.white.withValues(alpha: 0.25) : const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        count > 99 ? '+99' : '$count',
+                        style: GoogleFonts.cairo(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          color: isSelected ? Colors.white : const Color(0xFF475569),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),
@@ -1277,10 +1284,15 @@ class _SwipeableChatTileState extends State<_SwipeableChatTile>
                                             ),
                                             const SizedBox(width: 4),
                                           ] else if (chat.lastSenderId == widget.currentUserId) ...[
-                                            Icon(
-                                              Icons.done_all_rounded,
-                                              size: 15,
-                                              color: unread == 0 ? const Color(0xFF0284C7) : const Color(0xFF94A3B8),
+                                            Builder(
+                                              builder: (_) {
+                                                final bool isReadByOther = chat.isLastMessageReadByRecipient(widget.currentUserId);
+                                                return Icon(
+                                                  isReadByOther ? Icons.done_all_rounded : Icons.done_rounded,
+                                                  size: 15,
+                                                  color: isReadByOther ? const Color(0xFF0284C7) : const Color(0xFF94A3B8),
+                                                );
+                                              },
                                             ),
                                             const SizedBox(width: 4),
                                           ],

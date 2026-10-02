@@ -1713,7 +1713,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   Icon(
                     message.isRead ? Icons.done_all_rounded : Icons.done_rounded,
                     size: 15,
-                    color: message.isRead ? const Color(0xFF22C55E) : Colors.white60,
+                    color: message.isRead ? const Color(0xFF38BDF8) : Colors.white60,
                   ),
                 ],
               ],

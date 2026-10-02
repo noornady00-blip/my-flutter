@@ -124,6 +124,23 @@ void main() {
       final fromMap = ChatModel.fromMap(map, 'chat_client_lawyer');
       expect(fromMap.clientName, 'عمر العميل');
       expect(fromMap.lawyerName, 'أ. طارق المحامي');
+      expect(chat.isLastMessageReadByRecipient('client_uid'), isFalse);
+
+      final readChat = ChatModel(
+        id: 'chat_read',
+        participants: ['client_uid', 'lawyer_uid'],
+        clientId: 'client_uid',
+        clientPhone: '0912345678',
+        lawyerId: 'lawyer_uid',
+        lawyerPhone: '0987654321',
+        clientName: 'عمر العميل',
+        lawyerName: 'أ. طارق المحامي',
+        lastMessage: 'تمام، استلمت الرسالة',
+        lastSenderId: 'client_uid',
+        unreadByLawyer: 0,
+        isLastMessageRead: true,
+      );
+      expect(readChat.isLastMessageReadByRecipient('client_uid'), isTrue);
     });
 
     test('ChatMessageModel serialization', () {

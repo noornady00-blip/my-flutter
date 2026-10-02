@@ -32,6 +32,7 @@ class ChatModel {
   final DateTime lastMessageTime;
   final int unreadByClient;
   final int unreadByLawyer;
+  final bool isLastMessageRead;
   final List<String> pinnedBy;
   final List<String> deletedBy;
   final List<String> mutedBy;
@@ -61,6 +62,7 @@ class ChatModel {
     DateTime? lastMessageTime,
     this.unreadByClient = 0,
     this.unreadByLawyer = 0,
+    this.isLastMessageRead = false,
     this.pinnedBy = const [],
     this.deletedBy = const [],
     this.mutedBy = const [],
@@ -139,6 +141,7 @@ class ChatModel {
       lastMessageTime: parseDate(map['lastMessageTime']),
       unreadByClient: (map['unreadByClient'] is num) ? (map['unreadByClient'] as num).toInt() : 0,
       unreadByLawyer: (map['unreadByLawyer'] is num) ? (map['unreadByLawyer'] as num).toInt() : 0,
+      isLastMessageRead: map['isLastMessageRead'] == true,
       pinnedBy: parsedPinnedBy,
       deletedBy: parsedDeletedBy,
       mutedBy: parsedMutedBy,
@@ -171,6 +174,7 @@ class ChatModel {
       'lastMessageTime': Timestamp.fromDate(lastMessageTime),
       'unreadByClient': unreadByClient,
       'unreadByLawyer': unreadByLawyer,
+      'isLastMessageRead': isLastMessageRead,
       'pinnedBy': pinnedBy,
       'deletedBy': deletedBy,
       'mutedBy': mutedBy,
@@ -223,5 +227,18 @@ class ChatModel {
   /// Helper to get the other party's UID
   String getOtherPartyUid(String currentUserId) {
     return currentUserId == clientId ? lawyerId : clientId;
+  }
+
+  /// Determines whether the recipient of the last message has read it.
+  /// If current user is the last sender, returns whether the other party has read the message.
+  bool isLastMessageReadByRecipient(String currentUserId) {
+    if (lastSenderId != currentUserId) return true;
+    if (isLastMessageRead) return true;
+    if (currentUserId == clientId) {
+      return unreadByLawyer == 0;
+    } else if (currentUserId == lawyerId) {
+      return unreadByClient == 0;
+    }
+    return unreadByClient == 0 && unreadByLawyer == 0;
   }
 }
