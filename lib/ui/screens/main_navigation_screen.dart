@@ -5,6 +5,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../network/auth_service.dart';
 import '../../network/chat_service.dart';
 import '../../core/services/keep_alive_service.dart';
+import '../../core/utils/phone_utils.dart';
+import '../../core/utils/account_id_utils.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../custom_widgets/floating_nav_bar.dart';
 import '../custom_widgets/account_suspended_dialog.dart';
 import '../custom_widgets/app_drawer.dart';
@@ -108,7 +111,52 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       final role = session['role'] ?? _role;
       final col = role == 'lawyer' ? 'lawyers' : 'users';
       final doc = await FirebaseFirestore.instance.collection(col).doc(user.uid).get();
-      if (doc.exists && doc.data()?['status'] == 'suspended' && mounted) {
+      if (!doc.exists) {
+        // Auto-heal account in Firestore if document was lost or wiped
+        final prefs = await SharedPreferences.getInstance();
+        final name = session['name'] ?? user.displayName ?? prefs.getString('name') ?? 'مستخدم';
+        final phone = session['phone'] ?? prefs.getString('phone') ?? '';
+        final accId = session['accountId'] ?? prefs.getString('accountId') ?? '';
+        final photoUrl = session['photoUrl'] ?? prefs.getString('user_profile_photo_url');
+        final photoBase64 = prefs.getString('user_profile_photo_base64') ?? prefs.getString('user_profile_photo');
+
+        final restoreData = <String, dynamic>{
+          'uid': user.uid,
+          'name': name,
+          'role': role,
+          'status': 'active',
+          'createdAt': FieldValue.serverTimestamp(),
+          if (phone.isNotEmpty) 'phone': phone,
+          if (accId.isNotEmpty) 'accountId': accId,
+          if (photoUrl != null && photoUrl.isNotEmpty) 'photoUrl': photoUrl,
+          if (photoBase64 != null && photoBase64.isNotEmpty) 'photoBase64': photoBase64,
+        };
+        await FirebaseFirestore.instance.collection(col).doc(user.uid).set(restoreData, SetOptions(merge: true));
+
+        if (accId.isNotEmpty) {
+          final cleanAcc = AccountIdUtils.clean12Digits(accId);
+          if (cleanAcc.isNotEmpty) {
+            await FirebaseFirestore.instance.collection('account_ids').doc(cleanAcc).set({
+              'uid': user.uid,
+              'role': role,
+              'createdAt': FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true));
+          }
+        }
+        if (phone.isNotEmpty) {
+          final cleanPhone = PhoneUtils.normalize(phone);
+          if (cleanPhone.isNotEmpty) {
+            await FirebaseFirestore.instance.collection('phone_directory').doc(cleanPhone).set({
+              'uid': user.uid,
+              'name': name,
+              'role': role,
+              'accountId': accId,
+              if (photoUrl != null && photoUrl.isNotEmpty) 'photoUrl': photoUrl,
+              if (photoBase64 != null && photoBase64.isNotEmpty) 'photoBase64': photoBase64,
+            }, SetOptions(merge: true));
+          }
+        }
+      } else if (doc.data()?['status'] == 'suspended' && mounted) {
         await AuthService().signOut();
         if (mounted) {
           Navigator.pushAndRemoveUntil(

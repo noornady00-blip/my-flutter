@@ -6,6 +6,7 @@
 // ==============================================================================
 
 import 'dart:ui';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -191,6 +192,7 @@ class ProfileDetailsModal {
     bool isAdmin = false,
     VoidCallback? onDelete,
     bool isAlreadyInChat = false,
+    String? activeChatId,
   }) {
     showModalBottomSheet(
       context: context,
@@ -207,6 +209,7 @@ class ProfileDetailsModal {
             isAdmin: isAdmin,
             onDelete: onDelete,
             isAlreadyInChat: isAlreadyInChat,
+            activeChatId: activeChatId,
           ),
         ),
       ),
@@ -225,9 +228,37 @@ class ProfileDetailsModal {
     String? fallbackAccountId,
     bool isAdmin = false,
     bool isAlreadyInChat = false,
+    String? activeChatId,
   }) async {
     String effectiveRole = (role ?? '').toLowerCase().trim();
     final cleanUid = uid.trim();
+
+    // 0. If activeChatId is provided and any key fallback is missing, load chat doc directly
+    if (activeChatId != null && activeChatId.isNotEmpty) {
+      try {
+        final chatDoc = await FirebaseFirestore.instance
+            .collection('chats')
+            .doc(activeChatId)
+            .get()
+            .timeout(const Duration(seconds: 2));
+        if (chatDoc.exists && chatDoc.data() != null) {
+          final cData = chatDoc.data()!;
+          if (effectiveRole == 'lawyer') {
+            fallbackName ??= cData['lawyerName']?.toString();
+            if (fallbackPhone == null || fallbackPhone.isEmpty) fallbackPhone = cData['lawyerPhone']?.toString();
+            fallbackPhoto ??= cData['lawyerPhoto']?.toString();
+            fallbackPhotoBase64 ??= cData['lawyerPhotoBase64']?.toString();
+            if (fallbackAccountId == null || fallbackAccountId.isEmpty) fallbackAccountId = cData['lawyerAccountId']?.toString();
+          } else {
+            fallbackName ??= cData['clientName']?.toString();
+            if (fallbackPhone == null || fallbackPhone.isEmpty) fallbackPhone = cData['clientPhone']?.toString();
+            fallbackPhoto ??= cData['clientPhoto']?.toString();
+            fallbackPhotoBase64 ??= cData['clientPhotoBase64']?.toString();
+            if (fallbackAccountId == null || fallbackAccountId.isEmpty) fallbackAccountId = cData['clientAccountId']?.toString();
+          }
+        }
+      } catch (_) {}
+    }
 
     // Verify if this UID belongs to a registered lawyer in Firestore
     if (effectiveRole != 'lawyer' && cleanUid.isNotEmpty) {
@@ -293,6 +324,32 @@ class ProfileDetailsModal {
       } catch (_) {}
     }
 
+    // Fallback search in users by accountId if still missing phone or photo
+    if ((fallbackPhone == null || fallbackPhone.isEmpty || fallbackPhoto == null) &&
+        fallbackAccountId != null &&
+        fallbackAccountId.isNotEmpty) {
+      try {
+        final cleanAcc = AccountIdUtils.clean12Digits(fallbackAccountId);
+        if (cleanAcc.isNotEmpty) {
+          final accSnap = await FirebaseFirestore.instance
+              .collection('users')
+              .where('accountId', isEqualTo: cleanAcc)
+              .limit(1)
+              .get()
+              .timeout(const Duration(seconds: 2));
+          if (accSnap.docs.isNotEmpty) {
+            final data = accSnap.docs.first.data();
+            if (fallbackPhone == null || fallbackPhone.isEmpty) fallbackPhone = data['phone']?.toString();
+            fallbackPhoto ??= data['photoUrl']?.toString() ?? data['user_profile_photo_url']?.toString();
+            fallbackPhotoBase64 ??= data['photoBase64']?.toString() ?? data['user_profile_photo_base64']?.toString();
+            if (fallbackName == null || fallbackName.isEmpty || fallbackName == 'عميل' || fallbackName == 'مستخدم المنصة') {
+              fallbackName = data['name']?.toString();
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
     if (!context.mounted) return;
 
     final cleanName = (fallbackName != null &&
@@ -326,7 +383,13 @@ class ProfileDetailsModal {
         role: effectiveRole.isNotEmpty ? effectiveRole : 'client',
         createdAt: DateTime.now(),
       );
-      showClientModal(context, client: initialClient, isAdmin: isAdmin, isAlreadyInChat: isAlreadyInChat);
+      showClientModal(
+        context,
+        client: initialClient,
+        isAdmin: isAdmin,
+        isAlreadyInChat: isAlreadyInChat,
+        activeChatId: activeChatId,
+      );
     }
   }
 }
@@ -1508,12 +1571,14 @@ class _ClientModalSheet extends StatefulWidget {
   final bool isAdmin;
   final VoidCallback? onDelete;
   final bool isAlreadyInChat;
+  final String? activeChatId;
 
   const _ClientModalSheet({
     required this.client,
     required this.isAdmin,
     this.onDelete,
     this.isAlreadyInChat = false,
+    this.activeChatId,
   });
 
   @override
@@ -1531,6 +1596,7 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
         _client.name.isEmpty ||
         _client.name == 'عميل' ||
         _client.name == 'مستخدم المنصة' ||
+        _client.phone.isEmpty ||
         _client.photoBase64 == null ||
         _client.photoBase64!.trim().isEmpty ||
         _client.photoUrl == null ||
@@ -1621,6 +1687,57 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
         }
       }
 
+      // Check active chat document and chats collection if userDoc is missing
+      if (userDoc == null || !userDoc.exists) {
+        if (widget.activeChatId != null && widget.activeChatId!.isNotEmpty) {
+          try {
+            final cDoc = await FirebaseFirestore.instance
+                .collection('chats')
+                .doc(widget.activeChatId)
+                .get()
+                .timeout(const Duration(seconds: 3));
+            if (cDoc.exists && cDoc.data() != null) {
+              final cData = cDoc.data()!;
+              final cPhone = cData['clientPhone']?.toString() ?? '';
+              final cPhoto = cData['clientPhoto']?.toString() ?? '';
+              final cBase64 = cData['clientPhotoBase64']?.toString() ?? '';
+              final cAccId = cData['clientAccountId']?.toString() ?? '';
+              final cName = cData['clientName']?.toString() ?? '';
+              if (cPhone.isNotEmpty && (directoryData['phone'] == null || directoryData['phone'].toString().isEmpty)) directoryData['phone'] = cPhone;
+              if (cPhoto.isNotEmpty && (directoryData['photoUrl'] == null || directoryData['photoUrl'].toString().isEmpty)) directoryData['photoUrl'] = cPhoto;
+              if (cBase64.isNotEmpty && (directoryData['photoBase64'] == null || directoryData['photoBase64'].toString().isEmpty)) directoryData['photoBase64'] = cBase64;
+              if (cAccId.isNotEmpty && (directoryData['accountId'] == null || directoryData['accountId'].toString().isEmpty)) directoryData['accountId'] = cAccId;
+              if (cName.isNotEmpty && cName != 'عميل' && (directoryData['name'] == null || directoryData['name'].toString().isEmpty)) directoryData['name'] = cName;
+            }
+          } catch (_) {}
+        }
+
+        // Query chats collection for any conversation involving this client
+        if (directoryData['phone'] == null || directoryData['photoUrl'] == null) {
+          try {
+            final chatSnap = await FirebaseFirestore.instance
+                .collection('chats')
+                .where('clientId', isEqualTo: _client.uid)
+                .limit(2)
+                .get()
+                .timeout(const Duration(seconds: 3));
+            for (final doc in chatSnap.docs) {
+              final cData = doc.data();
+              final cPhone = cData['clientPhone']?.toString() ?? '';
+              final cPhoto = cData['clientPhoto']?.toString() ?? '';
+              final cBase64 = cData['clientPhotoBase64']?.toString() ?? '';
+              final cAccId = cData['clientAccountId']?.toString() ?? '';
+              final cName = cData['clientName']?.toString() ?? '';
+              if (cPhone.isNotEmpty && (directoryData['phone'] == null || directoryData['phone'].toString().isEmpty)) directoryData['phone'] = cPhone;
+              if (cPhoto.isNotEmpty && (directoryData['photoUrl'] == null || directoryData['photoUrl'].toString().isEmpty)) directoryData['photoUrl'] = cPhoto;
+              if (cBase64.isNotEmpty && (directoryData['photoBase64'] == null || directoryData['photoBase64'].toString().isEmpty)) directoryData['photoBase64'] = cBase64;
+              if (cAccId.isNotEmpty && (directoryData['accountId'] == null || directoryData['accountId'].toString().isEmpty)) directoryData['accountId'] = cAccId;
+              if (cName.isNotEmpty && cName != 'عميل' && (directoryData['name'] == null || directoryData['name'].toString().isEmpty)) directoryData['name'] = cName;
+            }
+          } catch (_) {}
+        }
+      }
+
       DocumentSnapshot<Map<String, dynamic>>? lawyerDoc;
       final targetUid = _client.uid.isNotEmpty && !_client.uid.startsWith('guest_')
           ? _client.uid
@@ -1684,6 +1801,21 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
               createdAt: fetched.createdAt,
             );
           });
+
+          // Auto-heal missing client document in users collection for future accesses
+          if ((userDoc == null || !userDoc.exists) && targetUid != null && targetUid.isNotEmpty && !targetUid.startsWith('guest_')) {
+            unawaited(FirebaseFirestore.instance.collection('users').doc(targetUid).set({
+              'uid': targetUid,
+              'name': _client.name,
+              'role': _client.role,
+              'status': 'active',
+              if (_client.phone.isNotEmpty) 'phone': _client.phone,
+              if (_client.accountId.isNotEmpty) 'accountId': _client.accountId,
+              if (resolvedUrl != null && resolvedUrl.isNotEmpty) 'photoUrl': resolvedUrl,
+              if (resolvedBase64 != null && resolvedBase64.isNotEmpty) 'photoBase64': resolvedBase64,
+              'createdAt': FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true)).catchError((_) {}));
+          }
         }
       }
     } catch (_) {}
@@ -1778,14 +1910,11 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
                     padding: const EdgeInsets.all(3.5),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      gradient: isAdminRole
-                          ? const LinearGradient(
-                              colors: [Color(0xFFD49B1A), Color(0xFF0B2A5B)],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            )
-                          : null,
-                      color: isAdminRole ? null : const Color(0xFF0B2A5B),
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFFD49B1A), Color(0xFF0B2A5B)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
                       boxShadow: [
                         BoxShadow(
                           color: const Color(0xFF0B2A5B).withValues(alpha: 0.25),
@@ -1914,8 +2043,13 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
                         backgroundColor: const Color(0xFF0B2A5B),
                         borderColor: const Color(0xFF1E2E5C),
                         shadowColor: const Color(0xFF0B2A5B),
-                        onTap: () =>
-                            ProfileDetailsModal.launchCall(client.phone),
+                        onTap: () {
+                          if (client.phone.trim().isEmpty) {
+                            _showFloatingCopyToast(context, 'رقم الهاتف غير متوفر لهذا العميل حالياً');
+                            return;
+                          }
+                          ProfileDetailsModal.launchCall(client.phone);
+                        },
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -1929,8 +2063,13 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
                         backgroundColor: const Color(0xFF16A34A),
                         borderColor: const Color(0xFF15803D),
                         shadowColor: const Color(0xFF16A34A),
-                        onTap: () =>
-                            ProfileDetailsModal.launchWhatsApp(client.phone),
+                        onTap: () {
+                          if (client.phone.trim().isEmpty) {
+                            _showFloatingCopyToast(context, 'رقم الهاتف غير متوفر لهذا العميل حالياً');
+                            return;
+                          }
+                          ProfileDetailsModal.launchWhatsApp(client.phone);
+                        },
                       ),
                     ),
                   ],
@@ -1965,21 +2104,23 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
                     const Divider(height: 20, color: Color(0xFFE2E8F0)),
                   ],
 
-                  // Phone
-                  if (!isAdminRole && client.phone.isNotEmpty) ...[
+                  // Phone (Always displayed gracefully for clients/lawyers)
+                  if (!isAdminRole) ...[
                     _buildDetailRow(
                       context: context,
                       iconWidget: const Icon(Icons.phone_android_rounded,
                           color: Color(0xFF3B82F6), size: 18),
                       label: 'رقم الموبايل',
-                      value: client.phone,
-                      isPhone: true,
+                      value: client.phone.isNotEmpty ? client.phone : 'غير متوفر',
+                      isPhone: client.phone.isNotEmpty,
                       color: const Color(0xFF3B82F6),
-                      onCopy: () {
-                        Clipboard.setData(ClipboardData(text: client.phone));
-                        _showFloatingCopyToast(
-                            context, 'تم نسخ رقم الموبايل بنجاح');
-                      },
+                      onCopy: client.phone.isNotEmpty
+                          ? () {
+                              Clipboard.setData(ClipboardData(text: client.phone));
+                              _showFloatingCopyToast(
+                                  context, 'تم نسخ رقم الموبايل بنجاح');
+                            }
+                          : null,
                     ),
                     const Divider(height: 20, color: Color(0xFFE2E8F0)),
                   ],
@@ -2098,29 +2239,41 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
   }
 
   Widget _buildAvatarFallback() {
-    final name = _client.name.trim();
-    if (name.isNotEmpty) {
-      return Container(
-        color: const Color(0xFFEFF6FF),
-        child: Center(
+    final String initial = _client.name.trim().isNotEmpty
+        ? _client.name.trim().characters.first
+        : 'ع';
+
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF1E2E5C),
+            Color(0xFF0B2A5B),
+            Color(0xFF0A1229),
+          ],
+        ),
+      ),
+      child: Center(
+        child: ShaderMask(
+          shaderCallback: (bounds) => const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFFFFE082),
+              Color(0xFFD49B1A),
+            ],
+          ).createShader(bounds),
           child: Text(
-            name.characters.first,
+            initial,
             style: GoogleFonts.cairo(
-              fontSize: 38,
+              fontSize: 42,
               fontWeight: FontWeight.w900,
-              color: const Color(0xFF1D4ED8),
+              color: Colors.white,
+              height: 1.05,
             ),
           ),
-        ),
-      );
-    }
-    return Container(
-      color: const Color(0xFFEFF6FF),
-      child: const Center(
-        child: Icon(
-          Icons.person_rounded,
-          color: Color(0xFF1D4ED8),
-          size: 52,
         ),
       ),
     );

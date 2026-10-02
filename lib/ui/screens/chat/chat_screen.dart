@@ -24,6 +24,7 @@ import '../../../network/auth_service.dart';
 import '../../../network/notification_service.dart';
 import '../../../core/utils/phone_utils.dart';
 import '../../../core/utils/image_utils.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../custom_widgets/profile_details_modal.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -364,6 +365,67 @@ class _ChatScreenState extends State<ChatScreen> {
     _liveOtherPhotoUrl = widget.clientPhotoUrl ?? widget.lawyerPhotoUrl;
     _liveOtherPhotoBase64 = widget.clientPhotoBase64 ?? widget.lawyerPhotoBase64;
 
+    // Auto-heal current user's document in Firestore if wiped or incomplete
+    if (_currentUserId.isNotEmpty && !_currentUserId.startsWith('guest_')) {
+      unawaited(() async {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final localPhone = prefs.getString('phone') ?? session?['phone'] ?? '';
+          final localPhotoUrl = prefs.getString('user_profile_photo_url') ?? prefs.getString('photoUrl') ?? session?['photoUrl'];
+          final localPhotoBase64 = prefs.getString('user_profile_photo_base64') ?? prefs.getString('user_profile_photo');
+
+          final userCol = _currentUserRole == 'lawyer' ? 'lawyers' : 'users';
+          final docRef = FirebaseFirestore.instance.collection(userCol).doc(_currentUserId);
+          final docSnap = await docRef.get().timeout(const Duration(seconds: 3));
+
+          final Map<String, dynamic> healData = {};
+          if (!docSnap.exists) {
+            healData['uid'] = _currentUserId;
+            healData['name'] = _currentUserName;
+            healData['role'] = _currentUserRole;
+            healData['status'] = 'active';
+            healData['createdAt'] = FieldValue.serverTimestamp();
+            if (localPhone.isNotEmpty) healData['phone'] = localPhone;
+            if (_currentUserAccountId.isNotEmpty) healData['accountId'] = _currentUserAccountId;
+            if (localPhotoUrl != null && localPhotoUrl.isNotEmpty) healData['photoUrl'] = localPhotoUrl;
+            if (localPhotoBase64 != null && localPhotoBase64.isNotEmpty) healData['photoBase64'] = localPhotoBase64;
+            await docRef.set(healData, SetOptions(merge: true));
+          } else {
+            final data = docSnap.data() ?? {};
+            if (localPhone.isNotEmpty && (data['phone'] == null || data['phone'].toString().isEmpty)) {
+              healData['phone'] = localPhone;
+            }
+            if (_currentUserAccountId.isNotEmpty && (data['accountId'] == null || data['accountId'].toString().isEmpty)) {
+              healData['accountId'] = _currentUserAccountId;
+            }
+            if (localPhotoUrl != null && localPhotoUrl.isNotEmpty && (data['photoUrl'] == null || data['photoUrl'].toString().isEmpty)) {
+              healData['photoUrl'] = localPhotoUrl;
+            }
+            if (localPhotoBase64 != null && localPhotoBase64.isNotEmpty && (data['photoBase64'] == null || data['photoBase64'].toString().isEmpty)) {
+              healData['photoBase64'] = localPhotoBase64;
+            }
+            if (healData.isNotEmpty) {
+              await docRef.set(healData, SetOptions(merge: true));
+            }
+          }
+
+          if (localPhone.isNotEmpty) {
+            final cleanPhone = PhoneUtils.normalize(localPhone);
+            if (cleanPhone.isNotEmpty) {
+              await FirebaseFirestore.instance.collection('phone_directory').doc(cleanPhone).set({
+                'uid': _currentUserId,
+                'name': _currentUserName,
+                'role': _currentUserRole,
+                'accountId': _currentUserAccountId,
+                if (localPhotoUrl != null && localPhotoUrl.isNotEmpty) 'photoUrl': localPhotoUrl,
+                if (localPhotoBase64 != null && localPhotoBase64.isNotEmpty) 'photoBase64': localPhotoBase64,
+              }, SetOptions(merge: true));
+            }
+          }
+        } catch (_) {}
+      }());
+    }
+
     if (widget.chat != null) {
       _activeChat = widget.chat;
       NotificationService.activeChatId = widget.chat!.id;
@@ -568,7 +630,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ? otherUid
         : (widget.lawyerUid ?? widget.clientUid ?? widget.otherUserUid ?? '');
     final fallbackName = displayOtherName;
-    final fallbackPhone = otherRole == 'admin' ? '' : (_liveOtherPhone ?? otherPhone);
+    final fallbackPhone = otherRole == 'admin' ? '' : (_liveOtherPhone ?? (otherPhone.isNotEmpty ? otherPhone : (widget.clientPhone ?? widget.lawyerPhone ?? '')));
     final fallbackPhoto = _liveOtherPhotoUrl ?? otherPhoto ?? widget.clientPhotoUrl ?? widget.lawyerPhotoUrl;
     final fallbackPhotoBase64 = _liveOtherPhotoBase64 ?? widget.clientPhotoBase64 ?? widget.lawyerPhotoBase64;
     final fallbackAccountId = _liveOtherAccountId ?? (otherAccountId.isNotEmpty ? otherAccountId : (widget.clientAccountId ?? widget.lawyerAccountId ?? widget.otherUserAccountId ?? ''));
@@ -584,6 +646,7 @@ class _ChatScreenState extends State<ChatScreen> {
       fallbackAccountId: fallbackAccountId,
       isAdmin: _currentUserRole == 'admin',
       isAlreadyInChat: true,
+      activeChatId: _activeChat?.id,
     );
   }
 
@@ -878,12 +941,25 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       }
 
+      String? senderPhone;
+      String? senderPhoto;
+      String? senderPhotoBase64;
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        senderPhone = prefs.getString('phone');
+        senderPhoto = prefs.getString('user_profile_photo_url') ?? prefs.getString('photoUrl');
+        senderPhotoBase64 = prefs.getString('user_profile_photo_base64') ?? prefs.getString('user_profile_photo');
+      } catch (_) {}
+
       await _chatService.sendMessage(
         chatId: _activeChat!.id,
         senderId: activeUserId,
         senderName: _currentUserName,
         senderRole: _currentUserRole,
         senderAccountId: _currentUserAccountId,
+        senderPhone: senderPhone,
+        senderPhoto: senderPhoto,
+        senderPhotoBase64: senderPhotoBase64,
         text: text,
         recipientId: recipientId,
         replyToMessageId: replying?.id,

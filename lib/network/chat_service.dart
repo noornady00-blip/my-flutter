@@ -336,6 +336,9 @@ class ChatService {
     required String senderAccountId,
     required String text,
     required String recipientId,
+    String? senderPhone,
+    String? senderPhoto,
+    String? senderPhotoBase64,
     String? replyToMessageId,
     String? replyToText,
     String? replyToSenderName,
@@ -364,6 +367,62 @@ class ChatService {
     final chatDoc = await _db.collection('chats').doc(chatId).get();
     final bool chatExists = chatDoc.exists && chatDoc.data() != null;
     final chatData = chatDoc.data() ?? {};
+
+    // Resolve sender profile info from Firestore if not provided explicitly
+    Map<String, dynamic>? senderData;
+    try {
+      final sCol = senderRole == 'lawyer' ? 'lawyers' : 'users';
+      final sDoc = await _db.collection(sCol).doc(senderId).get();
+      if (sDoc.exists && sDoc.data() != null) {
+        senderData = sDoc.data();
+      } else {
+        final altDoc = await _db.collection(senderRole == 'lawyer' ? 'users' : 'lawyers').doc(senderId).get();
+        if (altDoc.exists && altDoc.data() != null) senderData = altDoc.data();
+      }
+    } catch (_) {}
+
+    final resolvedSenderPhone = (senderPhone != null && senderPhone.trim().isNotEmpty)
+        ? senderPhone.trim()
+        : (senderData?['phone']?.toString() ?? '');
+    final resolvedSenderPhoto = (senderPhoto != null && senderPhoto.trim().isNotEmpty)
+        ? senderPhoto.trim()
+        : (senderData?['photoUrl']?.toString() ??
+            senderData?['user_profile_photo_url']?.toString() ??
+            senderData?['photo']?.toString());
+    final resolvedSenderPhotoBase64 = (senderPhotoBase64 != null && senderPhotoBase64.trim().isNotEmpty)
+        ? senderPhotoBase64.trim()
+        : (senderData?['photoBase64']?.toString() ??
+            senderData?['user_profile_photo_base64']?.toString());
+
+    // Auto-heal: Ensure sender document exists in Firestore so other parties can load it
+    if (senderData == null && senderId.isNotEmpty && !senderId.startsWith('guest_')) {
+      try {
+        final healCol = senderRole == 'lawyer' ? 'lawyers' : 'users';
+        final healMap = <String, dynamic>{
+          'uid': senderId,
+          'name': senderName.isNotEmpty ? senderName : 'مستخدم المنصة',
+          'role': senderRole,
+          'status': 'active',
+          if (senderAccountId.isNotEmpty) 'accountId': senderAccountId,
+          if (resolvedSenderPhone.isNotEmpty) 'phone': resolvedSenderPhone,
+          if (resolvedSenderPhoto != null && resolvedSenderPhoto.isNotEmpty) 'photoUrl': resolvedSenderPhoto,
+          if (resolvedSenderPhotoBase64 != null && resolvedSenderPhotoBase64.isNotEmpty) 'photoBase64': resolvedSenderPhotoBase64,
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        };
+        unawaited(_db.collection(healCol).doc(senderId).set(healMap, SetOptions(merge: true)).catchError((_) {}));
+        if (senderAccountId.isNotEmpty) {
+          unawaited(_db.collection('account_ids').doc(senderAccountId.replaceAll(' ', '')).set({
+            'uid': senderId,
+            'role': senderRole,
+            'createdAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true)).catchError((_) {}));
+        }
+        if (resolvedSenderPhone.isNotEmpty) {
+          unawaited(_db.collection('phone_directory').doc(PhoneUtils.normalize(resolvedSenderPhone)).set(healMap, SetOptions(merge: true)).catchError((_) {}));
+        }
+      } catch (_) {}
+    }
 
     final batch = _db.batch();
 
@@ -402,6 +461,29 @@ class ChatService {
       'updatedAt': FieldValue.serverTimestamp(),
       'isLastMessageRead': false,
     };
+
+    // Live update sender fields in chat document if missing
+    if (senderRole == 'client') {
+      if (resolvedSenderPhone.isNotEmpty && (chatData['clientPhone'] == null || chatData['clientPhone'].toString().isEmpty)) {
+        updateData['clientPhone'] = resolvedSenderPhone;
+      }
+      if (resolvedSenderPhoto != null && resolvedSenderPhoto.isNotEmpty && (chatData['clientPhoto'] == null || chatData['clientPhoto'].toString().isEmpty)) {
+        updateData['clientPhoto'] = resolvedSenderPhoto;
+      }
+      if (resolvedSenderPhotoBase64 != null && resolvedSenderPhotoBase64.isNotEmpty && (chatData['clientPhotoBase64'] == null || chatData['clientPhotoBase64'].toString().isEmpty)) {
+        updateData['clientPhotoBase64'] = resolvedSenderPhotoBase64;
+      }
+    } else if (senderRole == 'lawyer') {
+      if (resolvedSenderPhone.isNotEmpty && (chatData['lawyerPhone'] == null || chatData['lawyerPhone'].toString().isEmpty)) {
+        updateData['lawyerPhone'] = resolvedSenderPhone;
+      }
+      if (resolvedSenderPhoto != null && resolvedSenderPhoto.isNotEmpty && (chatData['lawyerPhoto'] == null || chatData['lawyerPhoto'].toString().isEmpty)) {
+        updateData['lawyerPhoto'] = resolvedSenderPhoto;
+      }
+      if (resolvedSenderPhotoBase64 != null && resolvedSenderPhotoBase64.isNotEmpty && (chatData['lawyerPhotoBase64'] == null || chatData['lawyerPhotoBase64'].toString().isEmpty)) {
+        updateData['lawyerPhotoBase64'] = resolvedSenderPhotoBase64;
+      }
+    }
 
     if (!chatExists || (chatData['lawyerName'] == null || chatData['lawyerName'] == 'محامٍ' || chatData['clientName'] == 'عميل')) {
       if (!chatExists) {
@@ -457,6 +539,9 @@ class ChatService {
           updateData['clientId'] = senderId;
           updateData['clientName'] = senderName;
           updateData['clientAccountId'] = senderAccountId;
+          if (resolvedSenderPhone.isNotEmpty) updateData['clientPhone'] = resolvedSenderPhone;
+          if (resolvedSenderPhoto != null && resolvedSenderPhoto.isNotEmpty) updateData['clientPhoto'] = resolvedSenderPhoto;
+          if (resolvedSenderPhotoBase64 != null && resolvedSenderPhotoBase64.isNotEmpty) updateData['clientPhotoBase64'] = resolvedSenderPhotoBase64;
         } else {
           updateData['clientId'] = recipientId;
           if (rName.isNotEmpty) updateData['clientName'] = rName;
@@ -468,6 +553,9 @@ class ChatService {
           updateData['lawyerId'] = senderId;
           updateData['lawyerName'] = senderName;
           updateData['lawyerAccountId'] = senderAccountId;
+          if (resolvedSenderPhone.isNotEmpty) updateData['lawyerPhone'] = resolvedSenderPhone;
+          if (resolvedSenderPhoto != null && resolvedSenderPhoto.isNotEmpty) updateData['lawyerPhoto'] = resolvedSenderPhoto;
+          if (resolvedSenderPhotoBase64 != null && resolvedSenderPhotoBase64.isNotEmpty) updateData['lawyerPhotoBase64'] = resolvedSenderPhotoBase64;
         }
       } catch (_) {}
     }
