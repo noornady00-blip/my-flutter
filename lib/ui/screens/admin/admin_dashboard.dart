@@ -59,6 +59,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   String _currentAdminEmail = '';
   String _currentAdminPhone = '';
+  String _currentAdminAccountId = '';
 
   String get _displayAdminPhone {
     if (_currentAdminPhone.isNotEmpty) return _currentAdminPhone;
@@ -69,6 +70,14 @@ class _AdminDashboardState extends State<AdminDashboard> {
           .replaceAll('@mahameek.lawyer.com', '');
       if (clean.isNotEmpty) return clean;
     }
+    return '';
+  }
+
+  String get _displayAdminAccountId {
+    if (_currentAdminAccountId.isNotEmpty) return _currentAdminAccountId;
+    final digits = _displayAdminPhone.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.endsWith('146979833') || digits.endsWith('1146979833')) return '111111111111';
+    if (digits.endsWith('912209596')) return '222222222222';
     return '';
   }
 
@@ -128,11 +137,16 @@ class _AdminDashboardState extends State<AdminDashboard> {
     }
 
     _authService.getSavedSession().then((session) {
-      if (mounted && (session['phone'] ?? '').isNotEmpty) {
+      if (mounted) {
         setState(() {
-          _currentAdminPhone = session['phone']!;
+          if ((session['phone'] ?? '').isNotEmpty) {
+            _currentAdminPhone = session['phone']!;
+          }
           if ((session['email'] ?? '').isNotEmpty) {
             _currentAdminEmail = session['email']!;
+          }
+          if ((session['accountId'] ?? '').isNotEmpty) {
+            _currentAdminAccountId = session['accountId']!;
           }
         });
       }
@@ -244,14 +258,57 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
     try {
       String detectedPhone = _currentAdminPhone;
+      String detectedAccountId = _currentAdminAccountId;
       final adminDoc = await FirebaseFirestore.instance.collection('admins').doc(user.uid).get();
-      if (adminDoc.exists && adminDoc.data()?['phone'] != null && adminDoc.data()!['phone'].toString().isNotEmpty) {
-        detectedPhone = adminDoc.data()!['phone'].toString();
+      if (adminDoc.exists && adminDoc.data() != null) {
+        if (adminDoc.data()!['phone'] != null && adminDoc.data()!['phone'].toString().isNotEmpty) {
+          detectedPhone = adminDoc.data()!['phone'].toString();
+        }
+        if (adminDoc.data()!['accountId'] != null && adminDoc.data()!['accountId'].toString().isNotEmpty) {
+          detectedAccountId = adminDoc.data()!['accountId'].toString();
+        }
       } else {
         final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-        if (userDoc.exists && userDoc.data()?['phone'] != null && userDoc.data()!['phone'].toString().isNotEmpty) {
-          detectedPhone = userDoc.data()!['phone'].toString();
+        if (userDoc.exists && userDoc.data() != null) {
+          if (userDoc.data()!['phone'] != null && userDoc.data()!['phone'].toString().isNotEmpty) {
+            detectedPhone = userDoc.data()!['phone'].toString();
+          }
+          if (userDoc.data()!['accountId'] != null && userDoc.data()!['accountId'].toString().isNotEmpty) {
+            detectedAccountId = userDoc.data()!['accountId'].toString();
+          }
         }
+      }
+
+      if (detectedAccountId.isEmpty && detectedPhone.isNotEmpty) {
+        try {
+          final q = await FirebaseFirestore.instance
+              .collection('admins')
+              .where('phone', isEqualTo: detectedPhone)
+              .limit(1)
+              .get();
+          if (q.docs.isNotEmpty && q.docs.first.data()['accountId'] != null) {
+            detectedAccountId = q.docs.first.data()['accountId'].toString();
+          } else {
+            final pSnap = await FirebaseFirestore.instance
+                .collection('phone_directory')
+                .doc(detectedPhone)
+                .get();
+            if (pSnap.exists && pSnap.data()?['accountId'] != null) {
+              detectedAccountId = pSnap.data()!['accountId'].toString();
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (detectedAccountId.isEmpty) {
+        try {
+          detectedAccountId = await AccountIdUtils.ensureUserHasAccountId(
+            uid: user.uid,
+            role: 'admin',
+            currentAccountId: _currentAdminAccountId,
+            firestore: FirebaseFirestore.instance,
+          );
+        } catch (_) {}
       }
 
       if (detectedPhone.isEmpty && user.email != null) {
@@ -261,11 +318,16 @@ class _AdminDashboardState extends State<AdminDashboard> {
             .replaceAll('@mahameek.lawyer.com', '');
       }
 
-      if (mounted && detectedPhone.isNotEmpty && detectedPhone != _currentAdminPhone) {
+      if (mounted) {
         setState(() {
-          _currentAdminPhone = detectedPhone;
+          if (detectedPhone.isNotEmpty) {
+            _currentAdminPhone = detectedPhone;
+          }
           if (user.email != null && user.email!.isNotEmpty) {
             _currentAdminEmail = user.email!;
+          }
+          if (detectedAccountId.isNotEmpty) {
+            _currentAdminAccountId = detectedAccountId;
           }
         });
       }
@@ -3284,6 +3346,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     final phoneCtrl = TextEditingController();
     final passCtrl = TextEditingController(text: '123456');
     bool isSaving = false;
+    String? modalError;
 
     showModalBottomSheet(
       context: context,
@@ -3325,6 +3388,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
               TextField(
                 controller: nameCtrl,
                 textDirection: TextDirection.rtl,
+                onChanged: (_) {
+                  if (modalError != null) setMState(() => modalError = null);
+                },
                 decoration: InputDecoration(
                   labelText: 'اسم المشرف بالكامل',
                   labelStyle: GoogleFonts.cairo(fontSize: 13),
@@ -3339,6 +3405,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 controller: phoneCtrl,
                 keyboardType: TextInputType.phone,
                 textDirection: TextDirection.ltr,
+                onChanged: (_) {
+                  if (modalError != null) setMState(() => modalError = null);
+                },
                 decoration: InputDecoration(
                   labelText: 'رقم هاتف المشرف (11 رقم)',
                   hintText: '011XXXXXXXX',
@@ -3356,6 +3425,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 autocorrect: false,
                 enableSuggestions: false,
                 textDirection: TextDirection.ltr,
+                onChanged: (_) {
+                  if (modalError != null) setMState(() => modalError = null);
+                },
                 decoration: InputDecoration(
                   labelText: 'كلمة المرور (6 أحرف أو أكثر)',
                   labelStyle: GoogleFonts.cairo(fontSize: 13),
@@ -3365,7 +3437,36 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
+              if (modalError != null) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEF2F2),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFFCA5A5), width: 1.2),
+                  ),
+                  child: Row(
+                    textDirection: TextDirection.rtl,
+                    children: [
+                      const Icon(Icons.error_outline_rounded, color: Color(0xFFDC2626), size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          modalError!,
+                          textDirection: TextDirection.rtl,
+                          style: GoogleFonts.cairo(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFFB91C1C),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
               ElevatedButton(
                 onPressed: isSaving
                     ? null
@@ -3375,13 +3476,19 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         final pass = PhoneUtils.convertArabicDigits(passCtrl.text.trim());
 
                         if (name.isEmpty || phone.isEmpty || pass.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('يرجى ملء جميع الحقول', style: GoogleFonts.cairo()), backgroundColor: const Color(0xFFDC2626)),
-                          );
+                          setMState(() => modalError = 'يرجى ملء جميع الحقول المطلوبة');
                           return;
                         }
 
-                        setMState(() => isSaving = true);
+                        if (pass.length < 6) {
+                          setMState(() => modalError = 'كلمة المرور يجب ألا تقل عن 6 أحرف');
+                          return;
+                        }
+
+                        setMState(() {
+                          isSaving = true;
+                          modalError = null;
+                        });
                         final res = await _authService.createAdminAccount(name: name, phone: phone, password: pass);
                         if (!mounted) return;
                         setMState(() => isSaving = false);
@@ -3395,10 +3502,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                             SnackBar(content: Text('تم إضافة المشرف بنجاح', style: GoogleFonts.cairo()), backgroundColor: const Color(0xFF10B981)),
                           );
                         } else {
-                          if (!context.mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(res['error'] ?? 'تعذر إضافة المشرف', style: GoogleFonts.cairo()), backgroundColor: const Color(0xFFDC2626)),
-                          );
+                          setMState(() => modalError = res['error']?.toString() ?? 'تعذر إضافة المشرف');
                         }
                       },
                 style: ElevatedButton.styleFrom(
@@ -4763,6 +4867,50 @@ class _AdminDashboardState extends State<AdminDashboard> {
                           ),
                         ],
                       ),
+                      if (_displayAdminAccountId.isNotEmpty) ...[
+                        const SizedBox(height: 5),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            InkWell(
+                              onTap: () {
+                                Clipboard.setData(ClipboardData(text: _displayAdminAccountId));
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('تم نسخ ID بنجاح')),
+                                );
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(3),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Icon(Icons.copy_rounded, size: 12, color: Color(0xFFD49B1A)),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              AccountIdUtils.format12Digits(_displayAdminAccountId),
+                              textDirection: TextDirection.ltr,
+                              style: GoogleFonts.sourceCodePro(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: const Color(0xFFF1F5F9),
+                                letterSpacing: 0.8,
+                              ),
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              '🆔 ID:',
+                              style: GoogleFonts.cairo(
+                                fontSize: 11,
+                                color: const Color(0xFF94A3B8),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),

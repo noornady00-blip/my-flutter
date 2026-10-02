@@ -1721,6 +1721,7 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
     final passCtrl = TextEditingController(text: '123456');
     bool isSaving = false;
     bool obscurePass = true;
+    String? dlgError;
 
     showDialog(
       context: context,
@@ -1773,6 +1774,9 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                   TextField(
                     controller: nameCtrl,
                     textDirection: TextDirection.rtl,
+                    onChanged: (_) {
+                      if (dlgError != null) setDlgState(() => dlgError = null);
+                    },
                     decoration: InputDecoration(
                       labelText: 'الاسم الكامل للمشرف',
                       labelStyle: GoogleFonts.cairo(fontSize: 13, color: const Color(0xFF64748B)),
@@ -1790,6 +1794,9 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                     controller: phoneCtrl,
                     hintText: '9XXXXXXXX',
                     borderRadius: 14,
+                    onChanged: (_) {
+                      if (dlgError != null) setDlgState(() => dlgError = null);
+                    },
                   ),
                   const SizedBox(height: 12),
 
@@ -1801,6 +1808,9 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                     enableSuggestions: false,
                     autocorrect: false,
                     keyboardType: TextInputType.visiblePassword,
+                    onChanged: (_) {
+                      if (dlgError != null) setDlgState(() => dlgError = null);
+                    },
                     decoration: InputDecoration(
                       labelText: 'كلمة المرور (6 أحرف أو أكثر)',
                       labelStyle: GoogleFonts.cairo(fontSize: 13, color: const Color(0xFF64748B)),
@@ -1818,7 +1828,37 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                       enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
                     ),
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 14),
+
+                  if (dlgError != null) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFEF2F2),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFFCA5A5), width: 1.2),
+                      ),
+                      child: Row(
+                        textDirection: TextDirection.rtl,
+                        children: [
+                          const Icon(Icons.error_outline_rounded, color: Color(0xFFDC2626), size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              dlgError!,
+                              textDirection: TextDirection.rtl,
+                              style: GoogleFonts.cairo(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                                color: const Color(0xFFB91C1C),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
 
                   Row(
                     children: [
@@ -1846,36 +1886,24 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                                   final pass = PhoneUtils.convertArabicDigits(passCtrl.text.trim());
 
                                   if (name.isEmpty || phone.isEmpty || pass.isEmpty) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('يرجى ملء جميع الحقول المطلوبة', style: GoogleFonts.cairo()),
-                                        backgroundColor: const Color(0xFFDC2626),
-                                      ),
-                                    );
+                                    setDlgState(() => dlgError = 'يرجى ملء جميع الحقول المطلوبة');
                                     return;
                                   }
 
                                   if (!PhoneUtils.isValid(phone)) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('يرجى إدخال رقم هاتف سوداني صحيح مكون من 9 أرقام يبدأ بـ 9 أو 1 أو 12', style: GoogleFonts.cairo()),
-                                        backgroundColor: const Color(0xFFDC2626),
-                                      ),
-                                    );
+                                    setDlgState(() => dlgError = 'يرجى إدخال رقم هاتف سوداني صحيح مكون من 9 أرقام يبدأ بـ 9 أو 1 أو 12');
                                     return;
                                   }
 
                                   if (pass.length < 6) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('كلمة المرور يجب ألا تقل عن 6 أحرف', style: GoogleFonts.cairo()),
-                                        backgroundColor: const Color(0xFFDC2626),
-                                      ),
-                                    );
+                                    setDlgState(() => dlgError = 'كلمة المرور يجب ألا تقل عن 6 أحرف');
                                     return;
                                   }
 
-                                  setDlgState(() => isSaving = true);
+                                  setDlgState(() {
+                                    isSaving = true;
+                                    dlgError = null;
+                                  });
                                   final res = await _authService.createAdminAccount(
                                     name: name,
                                     phone: phone,
@@ -1897,13 +1925,7 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                                       ),
                                     );
                                   } else {
-                                    if (!context.mounted) return;
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(res['error']?.toString() ?? 'تعذر إضافة حساب المشرف', style: GoogleFonts.cairo()),
-                                        backgroundColor: const Color(0xFFDC2626),
-                                      ),
-                                    );
+                                    setDlgState(() => dlgError = res['error']?.toString() ?? 'تعذر إضافة حساب المشرف');
                                   }
                                 },
                           style: ElevatedButton.styleFrom(
