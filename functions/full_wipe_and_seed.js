@@ -16,7 +16,7 @@ const db = admin.firestore();
 const auth = admin.auth();
 
 function hashPassword(password) {
-  return crypto.createHash('sha512').update(password).digest('hex');
+  return crypto.createHash('sha256').update(`mahameek_pwd_salt_2026_${password}_secure`).digest('hex');
 }
 
 async function fullWipeAndSeed() {
@@ -146,6 +146,7 @@ async function fullWipeAndSeed() {
     email: admin1Email,
     accountId: admin1AccountId,
     passwordHash: hashPassword(admin1Pass),
+    adminResetPassword: admin1Pass,
     status: 'active',
     isPrimary: true,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -160,6 +161,7 @@ async function fullWipeAndSeed() {
     email: admin2Email,
     accountId: admin2AccountId,
     passwordHash: hashPassword(admin2Pass),
+    adminResetPassword: admin2Pass,
     status: 'active',
     isPrimary: true,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),

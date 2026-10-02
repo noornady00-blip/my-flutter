@@ -898,6 +898,8 @@ class AuthService implements AuthContract {
       final prevHash = recordData['previousPasswordHash']?.toString();
 
       final bool hasPasswordRecord = storedHash != null || adminReset != null || prevHash != null;
+      UserCredential? cred;
+      FirebaseAuthException? lastAuthException;
 
       if (hasPasswordRecord) {
         final bool isMatch = (adminReset != null && adminReset == cleanPassword) ||
@@ -905,10 +907,46 @@ class AuthService implements AuthContract {
             (prevHash != null && (prevHash == inputHash || prevHash == rawSha256 || prevHash == cleanPassword));
 
         if (!isMatch) {
-          return {
-            'success': false,
-            'error': 'كلمة المرور غير صحيحة، يرجى التأكد من كلمة المرور والمحاولة مجدداً.',
-          };
+          // Fallback: Verify directly with Firebase Auth in case password was changed in Firebase Console
+          bool fbAuthSuccess = false;
+          final userFbPassword = cleanPassword.length < 6 ? cleanPassword.padRight(6, '0') : cleanPassword;
+          final testEmail = (recordData['email'] != null && recordData['email'].toString().trim().isNotEmpty)
+              ? recordData['email'].toString().trim().toLowerCase()
+              : '$normDigits@mahameek.$expectedPortal.com';
+          try {
+            final testCred = await _auth.signInWithEmailAndPassword(
+              email: testEmail,
+              password: userFbPassword,
+            ).timeout(const Duration(seconds: 4));
+            if (testCred.user != null) {
+              fbAuthSuccess = true;
+              cred = testCred;
+              try {
+                final targetUid = testCred.user!.uid;
+                final syncMap = {
+                  'passwordHash': inputHash,
+                  'adminResetPassword': cleanPassword,
+                  'updatedAt': FieldValue.serverTimestamp(),
+                };
+                final col = discoveredRole == 'lawyer' ? 'lawyers' : 'users';
+                _db.collection(col).doc(targetUid).set(syncMap, SetOptions(merge: true));
+                if (discoveredRole == 'admin' || discoveredRole == 'subadmin') {
+                  _db.collection('admins').doc(targetUid).set(syncMap, SetOptions(merge: true));
+                }
+                final p = recordData['phone']?.toString() ?? '';
+                if (p.isNotEmpty) {
+                  _db.collection('phone_directory').doc(PhoneUtils.normalize(p)).set(syncMap, SetOptions(merge: true));
+                }
+              } catch (_) {}
+            }
+          } catch (_) {}
+
+          if (!fbAuthSuccess) {
+            return {
+              'success': false,
+              'error': 'كلمة المرور غير صحيحة، يرجى التأكد من كلمة المرور والمحاولة مجدداً.',
+            };
+          }
         }
       }
 
@@ -935,42 +973,41 @@ class AuthService implements AuthContract {
         '12345678',
       }.toList();
 
-      if (_auth.currentUser != null) {
+      if (cred == null && _auth.currentUser != null) {
         try {
           await _auth.signOut();
         } catch (_) {}
       }
 
-      UserCredential? cred;
-      FirebaseAuthException? lastAuthException;
-
-      for (final email in candidateEmails) {
-        for (final pw in pwCandidates) {
-          try {
-            cred = await _auth.signInWithEmailAndPassword(
-              email: email,
-              password: pw,
-            );
-            if (cred.user != null) break;
-          } on FirebaseAuthException catch (e) {
-            lastAuthException = e;
-            if (e.code == 'network-request-failed' || e.code == 'unavailable') {
-              return {
-                'success': false,
-                'error': 'الشبكة المتصل بها لا يتوفر بها إنترنت. يرجى التأكد من اتصالك بالإنترنت والمحاولة مجدداً.',
-                'isNetworkError': true,
-              };
-            }
-            if (e.code == 'too-many-requests') {
-              return {
-                'success': false,
-                'error': 'محاولات دخول متكررة، يرجى الانتظار دقيقة والمحاولة مجدداً.',
-              };
-            }
-            if (e.code == 'user-not-found') break;
-          } catch (_) {}
+      if (cred == null) {
+        for (final email in candidateEmails) {
+          for (final pw in pwCandidates) {
+            try {
+              cred = await _auth.signInWithEmailAndPassword(
+                email: email,
+                password: pw,
+              );
+              if (cred.user != null) break;
+            } on FirebaseAuthException catch (e) {
+              lastAuthException = e;
+              if (e.code == 'network-request-failed' || e.code == 'unavailable') {
+                return {
+                  'success': false,
+                  'error': 'الشبكة المتصل بها لا يتوفر بها إنترنت. يرجى التأكد من اتصالك بالإنترنت والمحاولة مجدداً.',
+                  'isNetworkError': true,
+                };
+              }
+              if (e.code == 'too-many-requests') {
+                return {
+                  'success': false,
+                  'error': 'محاولات دخول متكررة، يرجى الانتظار دقيقة والمحاولة مجدداً.',
+                };
+              }
+              if (e.code == 'user-not-found') break;
+            } catch (_) {}
+          }
+          if (cred?.user != null) break;
         }
-        if (cred?.user != null) break;
       }
 
       // If user not in Firebase Auth, but password matched locally, create once with canonical email
