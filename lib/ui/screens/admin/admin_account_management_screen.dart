@@ -153,9 +153,15 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                       );
                     }
 
-                    final lawyers = lawyersSnap.data ?? [];
-                    final clients = clientsSnap.data ?? [];
-                    final admins = adminsSnap.data ?? [];
+                    final lawyers = (lawyersSnap.data ?? [])
+                        .where((l) => l.name.trim().isNotEmpty && l.phone.trim().isNotEmpty)
+                        .toList();
+                    final clients = (clientsSnap.data ?? [])
+                        .where((c) => c.name.trim().isNotEmpty && c.phone.trim().isNotEmpty)
+                        .toList();
+                    final admins = (adminsSnap.data ?? [])
+                        .where((a) => a.name.trim().isNotEmpty && a.phone.trim().isNotEmpty)
+                        .toList();
 
                     return CustomScrollView(
                       physics: const BouncingScrollPhysics(),

@@ -2554,10 +2554,27 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
         'passwordUpdatedAt': FieldValue.serverTimestamp(),
       };
 
+      // Determine user role before writing so we NEVER create phantom documents in other collections!
+      String targetRole = 'client';
+      try {
+        final uDoc = await _db.collection('users').doc(resolvedUid).get();
+        if (uDoc.exists && uDoc.data()?['role'] != null) {
+          targetRole = uDoc.data()!['role'].toString().toLowerCase().trim();
+        } else {
+          final pDoc = await _db.collection('phone_directory').doc(normalizedPhone).get();
+          if (pDoc.exists && pDoc.data()?['role'] != null) {
+            targetRole = pDoc.data()!['role'].toString().toLowerCase().trim();
+          }
+        }
+      } catch (_) {}
+
       final batch = _db.batch();
       batch.set(_db.collection('users').doc(resolvedUid), updateData, SetOptions(merge: true));
-      batch.set(_db.collection('lawyers').doc(resolvedUid), updateData, SetOptions(merge: true));
-      batch.set(_db.collection('admins').doc(resolvedUid), updateData, SetOptions(merge: true));
+      if (targetRole == 'lawyer') {
+        batch.set(_db.collection('lawyers').doc(resolvedUid), updateData, SetOptions(merge: true));
+      } else if (targetRole == 'admin' || targetRole == 'subadmin') {
+        batch.set(_db.collection('admins').doc(resolvedUid), updateData, SetOptions(merge: true));
+      }
 
       if (normalizedPhone.isNotEmpty) {
         batch.set(_db.collection('phone_directory').doc(normalizedPhone), updateData, SetOptions(merge: true));
@@ -2792,15 +2809,15 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
       // 1. Update primary users collection
       await _db.collection('users').doc(uid).set(userUpdate, SetOptions(merge: true));
 
-      // 2. Update admins collection if admin
-      if (adminDoc?.exists == true || isAdminRole) {
+      // 2. Update admins collection ONLY if actually admin
+      if (isAdminRole || docData['role'] == 'admin' || docData['role'] == 'subadmin') {
         try {
           await _db.collection('admins').doc(uid).set(userUpdate, SetOptions(merge: true));
         } catch (_) {}
       }
 
-      // 3. Update lawyers collection if lawyer
-      if (lawyerDoc?.exists == true || docData['role'] == 'lawyer' || spRole == 'lawyer') {
+      // 3. Update lawyers collection ONLY if actually lawyer
+      if (docData['role'] == 'lawyer' || spRole == 'lawyer') {
         try {
           await _db.collection('lawyers').doc(uid).set(userUpdate, SetOptions(merge: true));
         } catch (_) {}

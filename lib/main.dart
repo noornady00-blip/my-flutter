@@ -17,6 +17,7 @@ import 'ui/screens/admin/admin_dashboard.dart';
 import 'ui/screens/main_navigation_screen.dart';
 import 'ui/screens/auth/lawyer_pending_screen.dart';
 import 'ui/custom_widgets/global_network_banner.dart';
+import 'ui/custom_widgets/global_account_status_barrier.dart';
 import 'network/firestore_service.dart';
 
 import 'package:intl/date_symbol_data_local.dart';
@@ -221,7 +222,9 @@ class _MahameekAppState extends State<MahameekApp> with WidgetsBindingObserver {
                 maxScaleFactor: 1.35,
               ),
             ),
-            child: GlobalNetworkBannerWrapper(child: child!),
+            child: GlobalNetworkBannerWrapper(
+              child: GlobalAccountStatusBarrier(child: child!),
+            ),
           ),
         );
       },

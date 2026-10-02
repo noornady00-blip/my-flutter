@@ -183,6 +183,7 @@ class FirestoreService implements DatabaseContract {
         .map((snapshot) {
       final list = snapshot.docs
           .map((doc) => LawyerModel.fromMap(doc.data(), doc.id))
+          .where((l) => l.name.trim().isNotEmpty && l.phone.trim().isNotEmpty)
           .toList();
       list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       return list;
@@ -199,19 +200,22 @@ class FirestoreService implements DatabaseContract {
         .map((snapshot) {
       final list = snapshot.docs
           .map((doc) => LawyerModel.fromMap(doc.data(), doc.id))
+          .where((l) => l.name.trim().isNotEmpty && l.phone.trim().isNotEmpty)
           .toList();
       list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       return list;
     });
   }
 
-  /// Get all lawyers (for admin) — excludes rejected/deleted
   @override
   Stream<List<LawyerModel>> getAllLawyers() {
     return _db.collection('lawyers').snapshots().map((snapshot) {
       final list = snapshot.docs
           .map((doc) => LawyerModel.fromMap(doc.data(), doc.id))
-          .where((l) => l.status != 'rejected')
+          .where((l) =>
+              l.status != 'rejected' &&
+              l.name.trim().isNotEmpty &&
+              l.phone.trim().isNotEmpty)
           .toList();
       list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       return list;
@@ -658,7 +662,7 @@ class FirestoreService implements DatabaseContract {
         } else {
           final cleanDigits = PhoneUtils.toLocalDisplay(rawPhone);
           final key = cleanDigits.isNotEmpty ? cleanDigits : rawPhone.replaceAll(RegExp(r'[^0-9]'), '');
-          if (key.isNotEmpty && !seenSecondaryPhones.contains(key)) {
+          if (key.isNotEmpty && !seenSecondaryPhones.contains(key) && admin.name.trim().isNotEmpty) {
             seenSecondaryPhones.add(key);
             secondaryAdmins.add(admin);
           }
@@ -828,32 +832,32 @@ class FirestoreService implements DatabaseContract {
         debugPrint('[FirestoreService] deleteAdmin auth purge notice: $authErr');
       }
 
-      // 3. PURGE FROM FIRESTORE
-      final batch = _db.batch();
-      batch.delete(_db.collection('users').doc(uid));
-      batch.delete(_db.collection('admins').doc(uid));
-      batch.delete(_db.collection('admin_fcm_tokens').doc(uid));
+      // 3. PURGE FROM FIRESTORE using unique document references to prevent batch duplicate errors
+      final Map<String, DocumentReference> uniqueDocsToDelete = {};
+
+      void addDoc(DocumentReference ref) {
+        uniqueDocsToDelete[ref.path] = ref;
+      }
+
+      addDoc(_db.collection('users').doc(uid));
+      addDoc(_db.collection('admins').doc(uid));
+      addDoc(_db.collection('admin_fcm_tokens').doc(uid));
+      addDoc(_db.collection('admin_tokens').doc(uid));
 
       if (accountId.isNotEmpty) {
-        batch.delete(_db.collection('account_ids').doc(accountId));
-        batch.delete(_db.collection('account_ids').doc(accountId.replaceAll(' ', '')));
+        final cleanId = accountId.trim();
+        if (cleanId.isNotEmpty) addDoc(_db.collection('account_ids').doc(cleanId));
+        final noSpaces = cleanId.replaceAll(' ', '');
+        if (noSpaces.isNotEmpty) addDoc(_db.collection('account_ids').doc(noSpaces));
       }
 
-      final phoneCandidates = <String>{};
       if (phone.isNotEmpty) {
-
         final unified = PhoneUtils.normalize(phone);
-        phoneCandidates.add(unified);
+        if (unified.isNotEmpty) addDoc(_db.collection('phone_directory').doc(unified));
         final cleanDigits = PhoneUtils.toLocalDisplay(phone);
-        if (cleanDigits.isNotEmpty) phoneCandidates.add(cleanDigits);
+        if (cleanDigits.isNotEmpty) addDoc(_db.collection('phone_directory').doc(cleanDigits));
         final rawDigits = phone.replaceAll(RegExp(r'[^0-9]'), '');
-        if (rawDigits.isNotEmpty) phoneCandidates.add(rawDigits);
-      }
-
-      for (final cand in phoneCandidates) {
-        if (cand.isNotEmpty) {
-          batch.delete(_db.collection('phone_directory').doc(cand));
-        }
+        if (rawDigits.isNotEmpty) addDoc(_db.collection('phone_directory').doc(rawDigits));
       }
 
       // Also clean up any phone_directory docs referencing this uid
@@ -863,10 +867,14 @@ class FirestoreService implements DatabaseContract {
             .where('uid', isEqualTo: uid)
             .get();
         for (final doc in dirSnap.docs) {
-          batch.delete(doc.reference);
+          addDoc(doc.reference);
         }
       } catch (_) {}
 
+      final batch = _db.batch();
+      for (final ref in uniqueDocsToDelete.values) {
+        batch.delete(ref);
+      }
       await batch.commit();
       debugPrint('✅ [FirestoreService] Successfully deleted admin $uid from Firestore and Firebase Auth');
     } catch (e) {

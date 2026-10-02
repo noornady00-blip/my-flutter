@@ -46,9 +46,6 @@ class AppDialog {
       context: context,
       barrierDismissible: true,
       builder: (ctx) {
-        final ctrl = TextEditingController();
-        bool isValid = false;
-
         return StatefulBuilder(
           builder: (stCtx, setDlgState) {
             return Dialog(
@@ -118,38 +115,9 @@ class AppDialog {
                         textDirection: TextDirection.rtl,
                       ),
                     ),
-                    const SizedBox(height: 16),
-
-                    // 4. Double Confirmation Text Field
-                    Text(
-                      'لتأكيد الحذف، يرجى كتابة كلمة "حذف" في المربع أدناه:',
-                      style: GoogleFonts.cairo(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xFFDC2626),
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: ctrl,
-                      textAlign: TextAlign.center,
-                      decoration: InputDecoration(
-                        hintText: 'اكتب كلمة (حذف)',
-                        hintStyle: GoogleFonts.cairo(color: const Color(0xFF94A3B8)),
-                        filled: true,
-                        fillColor: const Color(0xFFF1F5F9),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                      ),
-                      onChanged: (val) {
-                        setDlgState(() {
-                          isValid = val.trim() == 'حذف';
-                        });
-                      },
-                    ),
                     const SizedBox(height: 20),
 
-                    // 5. Action Buttons Row
+                    // 4. Action Buttons Row
                     Row(
                       children: [
                         Expanded(
@@ -171,7 +139,7 @@ class AppDialog {
                         const SizedBox(width: 10),
                         Expanded(
                           child: ElevatedButton.icon(
-                            onPressed: isValid ? () => Navigator.pop(ctx, true) : null,
+                            onPressed: () => Navigator.pop(ctx, true),
                             icon: const Icon(Icons.delete_forever_rounded, size: 18),
                             label: Text(
                               confirmLabel,
@@ -179,9 +147,7 @@ class AppDialog {
                             ),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFFDC2626),
-                              disabledBackgroundColor: const Color(0xFFFDA4AF),
                               foregroundColor: Colors.white,
-                              disabledForegroundColor: Colors.white70,
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               elevation: 3,
                               shadowColor: const Color(0xFFDC2626).withValues(alpha: 0.35),
