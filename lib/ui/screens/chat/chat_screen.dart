@@ -119,6 +119,12 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    final authUser = FirebaseAuth.instance.currentUser;
+    _currentUserId = widget.currentUserId ?? authUser?.uid ?? '';
+    _currentUserRole = widget.currentUserRole ?? 'client';
+    _currentUserName = widget.currentUserName ?? (authUser?.displayName ?? 'المستخدم');
+    _currentUserAccountId = widget.currentUserAccountId ?? '';
+
     if (widget.chat != null) {
       _activeChat = widget.chat;
       NotificationService.activeChatId = widget.chat!.id;
@@ -161,86 +167,75 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _fetchOtherPartyInfoIfNeeded() async {
     if (_activeChat == null) return;
     try {
-      final otherUid = _activeChat!.getOtherPartyUid(_currentUserId);
+      String otherUid = '';
+      if (_currentUserId.isNotEmpty && _activeChat != null) {
+        final otherList = _activeChat!.participants
+            .where((p) => p.trim().isNotEmpty && p.trim() != _currentUserId)
+            .toList();
+        if (otherList.isNotEmpty) {
+          otherUid = otherList.first.trim();
+        }
+      }
+      if (otherUid.isEmpty && _activeChat != null) {
+        otherUid = _activeChat!.getOtherPartyUid(_currentUserId);
+      }
       final targetUid = otherUid.isNotEmpty
           ? otherUid
           : (widget.lawyerUid ?? widget.clientUid ?? widget.otherUserUid ?? '');
 
       if (targetUid.isNotEmpty) {
-        final uDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(targetUid)
-            .get()
-            .timeout(const Duration(seconds: 4));
+        // Query both lawyers and users collections concurrently
+        final results = await Future.wait([
+          FirebaseFirestore.instance
+              .collection('lawyers')
+              .doc(targetUid)
+              .get()
+              .timeout(const Duration(seconds: 4))
+              .catchError((_) => null as dynamic),
+          FirebaseFirestore.instance
+              .collection('users')
+              .doc(targetUid)
+              .get()
+              .timeout(const Duration(seconds: 4))
+              .catchError((_) => null as dynamic),
+        ]);
 
-        String? photoUrl;
-        String? photoBase64;
-        String? name;
-        String? accId;
-        String? phone;
-        String? r;
+        final lDoc = results[0] as DocumentSnapshot<Map<String, dynamic>>?;
+        final uDoc = results[1] as DocumentSnapshot<Map<String, dynamic>>?;
 
-        if (uDoc.exists && uDoc.data() != null) {
-          final data = uDoc.data()!;
-          r = data['role']?.toString();
-          final rawPhoto = data['photo']?.toString();
-          photoUrl = data['photoUrl']?.toString() ??
-              data['user_profile_photo_url']?.toString() ??
-              data['imageUrl']?.toString() ??
-              data['profileImage']?.toString() ??
-              (rawPhoto != null && (rawPhoto.startsWith('http') || rawPhoto.startsWith('data:image'))
-                  ? rawPhoto
-                  : null);
+        final isLawyer = (lDoc != null && lDoc.exists && lDoc.data() != null) ||
+            (uDoc != null && uDoc.exists && uDoc.data()?['role'] == 'lawyer') ||
+            (widget.lawyerUid != null && widget.lawyerUid == targetUid) ||
+            (widget.otherUserRole == 'lawyer') ||
+            (_detectedOtherRole == 'lawyer');
 
-          photoBase64 = data['photoBase64']?.toString() ??
-              data['user_profile_photo_base64']?.toString() ??
-              data['user_profile_photo']?.toString() ??
-              (rawPhoto != null && !rawPhoto.startsWith('http') && rawPhoto.length > 50
-                  ? rawPhoto
-                  : null);
+        final docData = isLawyer
+            ? (lDoc?.data() ?? uDoc?.data() ?? {})
+            : (uDoc?.data() ?? lDoc?.data() ?? {});
 
-          name = data['name']?.toString();
-          accId = data['accountId']?.toString() ?? data['memberId']?.toString();
-          phone = data['phone']?.toString();
-        }
+        final detectedRole = isLawyer ? 'lawyer' : (docData['role']?.toString() ?? 'client');
+        String? name = docData['name']?.toString();
+        String? phone = docData['phone']?.toString();
+        String? accId = docData['accountId']?.toString() ?? docData['memberId']?.toString();
 
-        // If lawyer, check lawyers collection as well for latest photo/name
-        if (_detectedOtherRole == 'lawyer' || widget.otherUserRole == 'lawyer' || widget.lawyerUid != null || r == 'lawyer') {
-          try {
-            final lDoc = await FirebaseFirestore.instance
-                .collection('lawyers')
-                .doc(targetUid)
-                .get()
-                .timeout(const Duration(seconds: 4));
+        final rawPhoto = docData['photo']?.toString();
+        String? photoUrl = docData['photoUrl']?.toString() ??
+            docData['user_profile_photo_url']?.toString() ??
+            docData['imageUrl']?.toString() ??
+            docData['profileImage']?.toString() ??
+            (rawPhoto != null && (rawPhoto.startsWith('http') || rawPhoto.startsWith('data:image'))
+                ? rawPhoto
+                : null);
 
-            if (lDoc.exists && lDoc.data() != null) {
-              final lData = lDoc.data()!;
-              final lRawPhoto = lData['photo']?.toString();
-              final lPhotoUrl = lData['photoUrl']?.toString() ??
-                  lData['user_profile_photo_url']?.toString() ??
-                  lData['imageUrl']?.toString() ??
-                  (lRawPhoto != null && (lRawPhoto.startsWith('http') || lRawPhoto.startsWith('data:image'))
-                      ? lRawPhoto
-                      : null);
+        String? photoBase64 = docData['photoBase64']?.toString() ??
+            docData['user_profile_photo_base64']?.toString() ??
+            docData['user_profile_photo']?.toString() ??
+            (rawPhoto != null && !rawPhoto.startsWith('http') && rawPhoto.length > 50
+                ? rawPhoto
+                : null);
 
-              final lPhotoBase64 = lData['photoBase64']?.toString() ??
-                  lData['user_profile_photo_base64']?.toString() ??
-                  lData['user_profile_photo']?.toString() ??
-                  (lRawPhoto != null && !lRawPhoto.startsWith('http') && lRawPhoto.length > 50
-                      ? lRawPhoto
-                      : null);
-
-              if (lPhotoUrl != null && lPhotoUrl.isNotEmpty) photoUrl = lPhotoUrl;
-              if (lPhotoBase64 != null && lPhotoBase64.isNotEmpty) photoBase64 = lPhotoBase64;
-              if (lData['name'] != null && lData['name'].toString().isNotEmpty) name = lData['name']?.toString();
-              if (lData['accountId'] != null && lData['accountId'].toString().isNotEmpty) accId = lData['accountId']?.toString();
-              if (lData['phone'] != null && lData['phone'].toString().isNotEmpty) phone = lData['phone']?.toString();
-            }
-          } catch (_) {}
-        }
-
-        // Additional phone_directory fallback if photo or details are missing
-        if (photoUrl == null && photoBase64 == null) {
+        // Additional phone_directory fallback if details are missing or generic
+        if (name == null || name.isEmpty || name == 'عميل' || name == 'محامٍ' || (photoUrl == null && photoBase64 == null)) {
           final fallbackPhone = _activeChat?.getOtherPartyPhone(_currentUserId) ?? phone;
           final cleanPhone = fallbackPhone != null ? PhoneUtils.normalize(fallbackPhone) : '';
           if (cleanPhone.isNotEmpty) {
@@ -253,14 +248,18 @@ class _ChatScreenState extends State<ChatScreen> {
               if (dirDoc.exists && dirDoc.data() != null) {
                 final dData = dirDoc.data()!;
                 final dRawPhoto = dData['photo']?.toString();
-                photoUrl = dData['photoUrl']?.toString() ??
+                photoUrl ??= dData['photoUrl']?.toString() ??
                     dData['user_profile_photo_url']?.toString() ??
                     (dRawPhoto != null && (dRawPhoto.startsWith('http') || dRawPhoto.startsWith('data:image')) ? dRawPhoto : null);
-                photoBase64 = dData['photoBase64']?.toString() ??
+                photoBase64 ??= dData['photoBase64']?.toString() ??
                     dData['user_profile_photo_base64']?.toString() ??
                     (dRawPhoto != null && !dRawPhoto.startsWith('http') && dRawPhoto.length > 50 ? dRawPhoto : null);
-                if (name == null || name.isEmpty) name = dData['name']?.toString();
-                if (accId == null || accId.isEmpty) accId = dData['accountId']?.toString();
+                if (name == null || name.isEmpty || name == 'عميل' || name == 'محامٍ') {
+                  name = dData['name']?.toString();
+                }
+                if (accId == null || accId.isEmpty) {
+                  accId = dData['accountId']?.toString();
+                }
               }
             } catch (_) {}
           }
@@ -268,7 +267,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
         if (mounted) {
           setState(() {
-            if (r != null && r.isNotEmpty) _detectedOtherRole = r;
+            _detectedOtherRole = detectedRole;
             if (photoUrl != null && photoUrl.isNotEmpty && photoUrl != 'default') _liveOtherPhotoUrl = photoUrl;
             if (photoBase64 != null && photoBase64.isNotEmpty && photoBase64 != 'default') _liveOtherPhotoBase64 = photoBase64;
             if (name != null && name.isNotEmpty) _liveOtherName = name;
@@ -277,29 +276,63 @@ class _ChatScreenState extends State<ChatScreen> {
           });
         }
 
-        // Keep parent chat document in sync with the other party's latest photo/name
+        // Keep parent chat document in sync with the other party's latest photo/name and correct participant roles
         if (_activeChat != null) {
-          final isOtherLawyer = (_detectedOtherRole == 'lawyer' || widget.otherUserRole == 'lawyer');
+          final isOtherLawyer = (detectedRole == 'lawyer');
           final Map<String, dynamic> chatUpdates = {};
           if (isOtherLawyer) {
-            if (photoUrl != null && photoUrl.isNotEmpty && _activeChat!.lawyerPhoto != photoUrl) {
-              chatUpdates['lawyerPhoto'] = photoUrl;
-            }
-            if (photoBase64 != null && photoBase64.isNotEmpty && _activeChat!.lawyerPhotoBase64 != photoBase64) {
-              chatUpdates['lawyerPhotoBase64'] = photoBase64;
-            }
-            if (name != null && name.isNotEmpty && _activeChat!.lawyerName != name) {
+            chatUpdates['lawyerId'] = targetUid;
+            if (name != null && name.isNotEmpty && name != 'محامٍ') {
               chatUpdates['lawyerName'] = name;
             }
+            if (photoUrl != null && photoUrl.isNotEmpty) {
+              chatUpdates['lawyerPhoto'] = photoUrl;
+            }
+            if (photoBase64 != null && photoBase64.isNotEmpty) {
+              chatUpdates['lawyerPhotoBase64'] = photoBase64;
+            }
+            if (phone != null && phone.isNotEmpty) {
+              chatUpdates['lawyerPhone'] = phone;
+            }
+            if (accId != null && accId.isNotEmpty) {
+              chatUpdates['lawyerAccountId'] = accId;
+            }
+            // Ensure client info is properly bound to current user
+            if (_currentUserId.isNotEmpty && _activeChat!.clientId != _currentUserId) {
+              chatUpdates['clientId'] = _currentUserId;
+              if (_currentUserName.isNotEmpty && _currentUserName != 'المستخدم') {
+                chatUpdates['clientName'] = _currentUserName;
+              }
+              if (_currentUserAccountId.isNotEmpty) {
+                chatUpdates['clientAccountId'] = _currentUserAccountId;
+              }
+            }
           } else {
-            if (photoUrl != null && photoUrl.isNotEmpty && _activeChat!.clientPhoto != photoUrl) {
+            chatUpdates['clientId'] = targetUid;
+            if (name != null && name.isNotEmpty && name != 'عميل') {
+              chatUpdates['clientName'] = name;
+            }
+            if (photoUrl != null && photoUrl.isNotEmpty) {
               chatUpdates['clientPhoto'] = photoUrl;
             }
-            if (photoBase64 != null && photoBase64.isNotEmpty && _activeChat!.clientPhotoBase64 != photoBase64) {
+            if (photoBase64 != null && photoBase64.isNotEmpty) {
               chatUpdates['clientPhotoBase64'] = photoBase64;
             }
-            if (name != null && name.isNotEmpty && _activeChat!.clientName != name) {
-              chatUpdates['clientName'] = name;
+            if (phone != null && phone.isNotEmpty) {
+              chatUpdates['clientPhone'] = phone;
+            }
+            if (accId != null && accId.isNotEmpty) {
+              chatUpdates['clientAccountId'] = accId;
+            }
+            // Ensure lawyer info is properly bound to current user
+            if (_currentUserId.isNotEmpty && _activeChat!.lawyerId != _currentUserId) {
+              chatUpdates['lawyerId'] = _currentUserId;
+              if (_currentUserName.isNotEmpty && _currentUserName != 'المستخدم') {
+                chatUpdates['lawyerName'] = _currentUserName;
+              }
+              if (_currentUserAccountId.isNotEmpty) {
+                chatUpdates['lawyerAccountId'] = _currentUserAccountId;
+              }
             }
           }
           if (chatUpdates.isNotEmpty) {

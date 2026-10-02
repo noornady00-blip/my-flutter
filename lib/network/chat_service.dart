@@ -179,42 +179,62 @@ class ChatService {
         final existing = ChatModel.fromMap(doc.data()!, doc.id);
         final Map<String, dynamic> updates = {};
 
-        // Keep client profile info up-to-date in the conversation
-        if (client.name.isNotEmpty && client.name != 'عميل' && existing.clientName != client.name) {
-          updates['clientName'] = client.name;
-        }
-        if (client.phone.isNotEmpty && existing.clientPhone != client.phone) {
+        // Detect role inversion: if existing.clientId is the lawyer or existing.lawyerId is the client
+        if (existing.clientId == lawyer.uid || existing.lawyerId == client.uid) {
+          updates['clientId'] = client.uid;
+          updates['lawyerId'] = lawyer.uid;
+          updates['clientName'] = client.name.isNotEmpty ? client.name : 'عميل';
+          updates['lawyerName'] = lawyer.name.isNotEmpty ? lawyer.name : 'محامٍ';
           updates['clientPhone'] = client.phone;
-        }
-        if (client.accountId.isNotEmpty && existing.clientAccountId != client.accountId) {
-          updates['clientAccountId'] = client.accountId;
-        }
-        if (effectiveClientPhoto != null && effectiveClientPhoto.isNotEmpty && existing.clientPhoto != effectiveClientPhoto) {
-          updates['clientPhoto'] = effectiveClientPhoto;
-        }
-        if (client.photoBase64 != null && client.photoBase64!.isNotEmpty && existing.clientPhotoBase64 != client.photoBase64) {
-          updates['clientPhotoBase64'] = client.photoBase64;
-        }
-
-        // Keep lawyer profile info up-to-date in the conversation
-        if (lawyer.name.isNotEmpty && lawyer.name != 'محامٍ' && existing.lawyerName != lawyer.name) {
-          updates['lawyerName'] = lawyer.name;
-        }
-        if (lawyer.phone.isNotEmpty && existing.lawyerPhone != lawyer.phone) {
           updates['lawyerPhone'] = lawyer.phone;
-        }
-        if (lawyer.accountId.isNotEmpty && existing.lawyerAccountId != lawyer.accountId) {
+          updates['clientAccountId'] = client.accountId;
           updates['lawyerAccountId'] = lawyer.accountId;
-        }
-        if (effectiveLawyerPhoto != null && effectiveLawyerPhoto.isNotEmpty && existing.lawyerPhoto != effectiveLawyerPhoto) {
-          updates['lawyerPhoto'] = effectiveLawyerPhoto;
-        }
-        if (lawyer.photoBase64 != null && lawyer.photoBase64!.isNotEmpty && existing.lawyerPhotoBase64 != lawyer.photoBase64) {
-          updates['lawyerPhotoBase64'] = lawyer.photoBase64;
+          if (effectiveClientPhoto != null && effectiveClientPhoto.isNotEmpty) updates['clientPhoto'] = effectiveClientPhoto;
+          if (client.photoBase64 != null && client.photoBase64!.isNotEmpty) updates['clientPhotoBase64'] = client.photoBase64;
+          if (effectiveLawyerPhoto != null && effectiveLawyerPhoto.isNotEmpty) updates['lawyerPhoto'] = effectiveLawyerPhoto;
+          if (lawyer.photoBase64 != null && lawyer.photoBase64!.isNotEmpty) updates['lawyerPhotoBase64'] = lawyer.photoBase64;
+        } else {
+          // Keep client profile info up-to-date in the conversation
+          if (client.name.isNotEmpty && client.name != 'عميل' && existing.clientName != client.name) {
+            updates['clientName'] = client.name;
+          }
+          if (client.phone.isNotEmpty && existing.clientPhone != client.phone) {
+            updates['clientPhone'] = client.phone;
+          }
+          if (client.accountId.isNotEmpty && existing.clientAccountId != client.accountId) {
+            updates['clientAccountId'] = client.accountId;
+          }
+          if (effectiveClientPhoto != null && effectiveClientPhoto.isNotEmpty && existing.clientPhoto != effectiveClientPhoto) {
+            updates['clientPhoto'] = effectiveClientPhoto;
+          }
+          if (client.photoBase64 != null && client.photoBase64!.isNotEmpty && existing.clientPhotoBase64 != client.photoBase64) {
+            updates['clientPhotoBase64'] = client.photoBase64;
+          }
+
+          // Keep lawyer profile info up-to-date in the conversation
+          if (lawyer.name.isNotEmpty && lawyer.name != 'محامٍ' && existing.lawyerName != lawyer.name) {
+            updates['lawyerName'] = lawyer.name;
+          }
+          if (lawyer.phone.isNotEmpty && existing.lawyerPhone != lawyer.phone) {
+            updates['lawyerPhone'] = lawyer.phone;
+          }
+          if (lawyer.accountId.isNotEmpty && existing.lawyerAccountId != lawyer.accountId) {
+            updates['lawyerAccountId'] = lawyer.accountId;
+          }
+          if (effectiveLawyerPhoto != null && effectiveLawyerPhoto.isNotEmpty && existing.lawyerPhoto != effectiveLawyerPhoto) {
+            updates['lawyerPhoto'] = effectiveLawyerPhoto;
+          }
+          if (lawyer.photoBase64 != null && lawyer.photoBase64!.isNotEmpty && existing.lawyerPhotoBase64 != lawyer.photoBase64) {
+            updates['lawyerPhotoBase64'] = lawyer.photoBase64;
+          }
         }
 
         if (updates.isNotEmpty) {
           unawaited(chatDocRef.set(updates, SetOptions(merge: true)).catchError((_) {}));
+          return ChatModel.fromMap({
+            ...existing.toMap(),
+            ...updates,
+          }, doc.id);
         }
         return existing;
       }
@@ -383,34 +403,67 @@ class ChatService {
       'isLastMessageRead': false,
     };
 
-    if (!chatExists) {
-      updateData['createdAt'] = FieldValue.serverTimestamp();
-      updateData['pinnedBy'] = <String>[];
-      updateData['mutedBy'] = <String>[];
-      updateData['stoppedBy'] = <String>[];
+    if (!chatExists || (chatData['lawyerName'] == null || chatData['lawyerName'] == 'محامٍ' || chatData['clientName'] == 'عميل')) {
+      if (!chatExists) {
+        updateData['createdAt'] = FieldValue.serverTimestamp();
+        updateData['pinnedBy'] = <String>[];
+        updateData['mutedBy'] = <String>[];
+        updateData['stoppedBy'] = <String>[];
+      }
 
       try {
-        final rDoc = await _db.collection('users').doc(recipientId).get();
-        final rData = rDoc.data() ?? {};
-        final rRole = rData['role']?.toString().toLowerCase() ?? '';
-        final isRecipientLawyer = (rRole == 'lawyer');
+        Map<String, dynamic>? recipientData;
+        bool isRecipientLawyer = false;
+
+        // 1. Check lawyers collection first
+        final lDoc = await _db.collection('lawyers').doc(recipientId).get();
+        if (lDoc.exists && lDoc.data() != null) {
+          recipientData = lDoc.data();
+          isRecipientLawyer = true;
+        } else {
+          // 2. Check users collection
+          final uDoc = await _db.collection('users').doc(recipientId).get();
+          if (uDoc.exists && uDoc.data() != null) {
+            recipientData = uDoc.data();
+            final rRole = recipientData?['role']?.toString().toLowerCase() ?? '';
+            isRecipientLawyer = (rRole == 'lawyer');
+          }
+        }
+
+        // 3. Sender role provides definitive ground truth if recipient was not found
+        if (senderRole == 'client') {
+          isRecipientLawyer = true;
+        } else if (senderRole == 'lawyer') {
+          isRecipientLawyer = false;
+        }
+
+        final rName = recipientData?['name']?.toString() ?? '';
+        final rPhone = recipientData?['phone']?.toString() ?? '';
+        final rPhoto = recipientData?['photoUrl']?.toString() ??
+            recipientData?['user_profile_photo_url']?.toString() ??
+            recipientData?['photo']?.toString();
+        final rPhotoBase64 = recipientData?['photoBase64']?.toString() ??
+            recipientData?['user_profile_photo_base64']?.toString();
+        final rAccountId = recipientData?['accountId']?.toString() ?? '';
 
         if (isRecipientLawyer) {
           updateData['lawyerId'] = recipientId;
-          updateData['lawyerName'] = rData['name'] ?? 'محامٍ';
-          updateData['lawyerPhone'] = rData['phone'] ?? '';
-          updateData['lawyerPhoto'] = rData['photoUrl'] ?? rData['photo'];
-          updateData['lawyerAccountId'] = rData['accountId'] ?? '';
+          if (rName.isNotEmpty) updateData['lawyerName'] = rName;
+          if (rPhone.isNotEmpty) updateData['lawyerPhone'] = rPhone;
+          if (rPhoto != null && rPhoto.isNotEmpty) updateData['lawyerPhoto'] = rPhoto;
+          if (rPhotoBase64 != null && rPhotoBase64.isNotEmpty) updateData['lawyerPhotoBase64'] = rPhotoBase64;
+          if (rAccountId.isNotEmpty) updateData['lawyerAccountId'] = rAccountId;
 
           updateData['clientId'] = senderId;
           updateData['clientName'] = senderName;
           updateData['clientAccountId'] = senderAccountId;
         } else {
           updateData['clientId'] = recipientId;
-          updateData['clientName'] = rData['name'] ?? 'عميل';
-          updateData['clientPhone'] = rData['phone'] ?? '';
-          updateData['clientPhoto'] = rData['photoUrl'] ?? rData['photo'];
-          updateData['clientAccountId'] = rData['accountId'] ?? '';
+          if (rName.isNotEmpty) updateData['clientName'] = rName;
+          if (rPhone.isNotEmpty) updateData['clientPhone'] = rPhone;
+          if (rPhoto != null && rPhoto.isNotEmpty) updateData['clientPhoto'] = rPhoto;
+          if (rPhotoBase64 != null && rPhotoBase64.isNotEmpty) updateData['clientPhotoBase64'] = rPhotoBase64;
+          if (rAccountId.isNotEmpty) updateData['clientAccountId'] = rAccountId;
 
           updateData['lawyerId'] = senderId;
           updateData['lawyerName'] = senderName;

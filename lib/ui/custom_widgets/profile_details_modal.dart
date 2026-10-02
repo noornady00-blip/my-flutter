@@ -226,11 +226,81 @@ class ProfileDetailsModal {
     bool isAdmin = false,
     bool isAlreadyInChat = false,
   }) async {
-    final effectiveRole = role?.toLowerCase() ?? '';
+    String effectiveRole = (role ?? '').toLowerCase().trim();
     final cleanUid = uid.trim();
-    final cleanName = (fallbackName != null && fallbackName.trim().isNotEmpty)
+
+    // Verify if this UID belongs to a registered lawyer in Firestore
+    if (effectiveRole != 'lawyer' && cleanUid.isNotEmpty) {
+      try {
+        final lawyerDoc = await FirebaseFirestore.instance
+            .collection('lawyers')
+            .doc(cleanUid)
+            .get()
+            .timeout(const Duration(seconds: 2));
+        if (lawyerDoc.exists && lawyerDoc.data() != null) {
+          effectiveRole = 'lawyer';
+          final data = lawyerDoc.data()!;
+          if (fallbackName == null || fallbackName.isEmpty || fallbackName == 'عميل' || fallbackName == 'مستخدم المنصة') {
+            fallbackName = data['name']?.toString() ?? fallbackName;
+          }
+          if (fallbackPhone == null || fallbackPhone.isEmpty) {
+            fallbackPhone = data['phone']?.toString() ?? data['whatsapp']?.toString() ?? fallbackPhone;
+          }
+          if (fallbackAccountId == null || fallbackAccountId.isEmpty) {
+            fallbackAccountId = data['accountId']?.toString() ?? fallbackAccountId;
+          }
+          fallbackPhoto = fallbackPhoto ?? data['photoUrl']?.toString();
+          fallbackPhotoBase64 = fallbackPhotoBase64 ?? data['photoBase64']?.toString();
+        }
+      } catch (_) {}
+    }
+
+    // Verify if data exists in 'users' collection for client or user
+    if (cleanUid.isNotEmpty &&
+        (effectiveRole != 'lawyer' ||
+            fallbackName == null ||
+            fallbackName.isEmpty ||
+            fallbackName == 'عميل' ||
+            fallbackName == 'مستخدم المنصة' ||
+            fallbackPhone == null ||
+            fallbackPhone.isEmpty ||
+            fallbackAccountId == null ||
+            fallbackAccountId.isEmpty)) {
+      try {
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(cleanUid)
+            .get()
+            .timeout(const Duration(seconds: 2));
+        if (userDoc.exists && userDoc.data() != null) {
+          final data = userDoc.data()!;
+          final uRole = data['role']?.toString().toLowerCase().trim() ?? '';
+          if (uRole == 'lawyer') {
+            effectiveRole = 'lawyer';
+          }
+          if (fallbackName == null || fallbackName.isEmpty || fallbackName == 'عميل' || fallbackName == 'مستخدم المنصة') {
+            fallbackName = data['name']?.toString() ?? fallbackName;
+          }
+          if (fallbackPhone == null || fallbackPhone.isEmpty) {
+            fallbackPhone = data['phone']?.toString() ?? fallbackPhone;
+          }
+          if (fallbackAccountId == null || fallbackAccountId.isEmpty) {
+            fallbackAccountId = data['accountId']?.toString() ?? fallbackAccountId;
+          }
+          fallbackPhoto = fallbackPhoto ?? data['photoUrl']?.toString();
+          fallbackPhotoBase64 = fallbackPhotoBase64 ?? data['photoBase64']?.toString();
+        }
+      } catch (_) {}
+    }
+
+    if (!context.mounted) return;
+
+    final cleanName = (fallbackName != null &&
+            fallbackName.trim().isNotEmpty &&
+            fallbackName.trim() != 'عميل' &&
+            fallbackName.trim() != 'محامٍ')
         ? fallbackName.trim()
-        : (effectiveRole == 'lawyer' ? 'محامي - موثق العقود' : 'مستخدم المنصة');
+        : (effectiveRole == 'lawyer' ? 'محامي - موثق العقود' : 'عميل المنصة');
 
     if (effectiveRole == 'lawyer') {
       final initialLawyer = LawyerModel(
@@ -384,6 +454,11 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
     super.initState();
     _lawyer = widget.lawyer;
     if (_lawyer.city.isEmpty ||
+        _lawyer.name.isEmpty ||
+        _lawyer.name == 'محامٍ' ||
+        _lawyer.name == 'عميل' ||
+        _lawyer.name == 'محامي - موثق العقود' ||
+        _lawyer.accountId.isEmpty ||
         _lawyer.photoBase64 == null ||
         _lawyer.photoBase64!.trim().isEmpty ||
         _lawyer.photoUrl == null ||
@@ -1453,6 +1528,9 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
     super.initState();
     _client = widget.client;
     if (_client.accountId.isEmpty ||
+        _client.name.isEmpty ||
+        _client.name == 'عميل' ||
+        _client.name == 'مستخدم المنصة' ||
         _client.photoBase64 == null ||
         _client.photoBase64!.trim().isEmpty ||
         _client.photoUrl == null ||
