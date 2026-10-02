@@ -55,30 +55,32 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
       Widget targetScreen;
       if (isLoggedIn) {
-        // Live verification of account suspension status
-        try {
-          final col = role == 'lawyer' ? 'lawyers' : 'users';
-          final doc = await FirebaseFirestore.instance.collection(col).doc(user.uid).get();
-          if (doc.exists && doc.data()?['status'] == 'suspended') {
-            await AuthService().signOut();
-            if (mounted) {
-              setState(() => _isStarting = false);
-              await showAccountSuspendedDialog(context);
-            }
-            return;
-          }
-        } catch (_) {}
-
-        if (role == 'admin') {
+        if (role == 'admin' || role == 'subadmin') {
           targetScreen = const AdminDashboard();
-        } else if (role == 'lawyer') {
-          if (status == 'pending') {
-            targetScreen = LawyerPendingScreen(lawyerName: name);
-          } else {
-            targetScreen = const MainNavigationScreen(role: 'lawyer');
-          }
         } else {
-          targetScreen = const MainNavigationScreen(role: 'client');
+          // Live verification of account suspension status for clients & lawyers
+          try {
+            final col = role == 'lawyer' ? 'lawyers' : 'users';
+            final doc = await FirebaseFirestore.instance.collection(col).doc(user.uid).get();
+            if (doc.exists && doc.data()?['status'] == 'suspended') {
+              await AuthService().signOut();
+              if (mounted) {
+                setState(() => _isStarting = false);
+                await showAccountSuspendedDialog(context);
+              }
+              return;
+            }
+          } catch (_) {}
+
+          if (role == 'lawyer') {
+            if (status == 'pending') {
+              targetScreen = LawyerPendingScreen(lawyerName: name);
+            } else {
+              targetScreen = const MainNavigationScreen(role: 'lawyer');
+            }
+          } else {
+            targetScreen = const MainNavigationScreen(role: 'client');
+          }
         }
       } else {
         targetScreen = const AuthGatewayScreen();

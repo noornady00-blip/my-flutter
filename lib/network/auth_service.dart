@@ -119,7 +119,7 @@ class AuthService implements AuthContract {
             final uid = data['uid']?.toString() ?? dirDoc.id;
 
             // Verify the user document actually exists if authenticated to prevent orphan ghosts
-            if (_auth.currentUser != null) {
+            if (_auth.currentUser != null && role != 'admin' && role != 'subadmin') {
               final col = role == 'lawyer' ? 'lawyers' : 'users';
               try {
                 final userCheck = await _db.collection(col).doc(uid).get().timeout(const Duration(seconds: 2));
@@ -159,7 +159,25 @@ class AuthService implements AuthContract {
           }
         } catch (_) {}
 
-        // 3. If authenticated, check users collection
+        // 3. Check admins collection
+        try {
+          final adminSnap = await _db
+              .collection('admins')
+              .where('phone', isEqualTo: q)
+              .limit(1)
+              .get()
+              .timeout(const Duration(seconds: 2));
+          if (adminSnap.docs.isNotEmpty) {
+            final doc = adminSnap.docs.first;
+            return {
+              'uid': doc.id,
+              'role': 'admin',
+              'data': doc.data(),
+            };
+          }
+        } catch (_) {}
+
+        // 4. If authenticated, check users collection
         if (_auth.currentUser != null) {
           try {
             final userSnap = await _db
@@ -818,8 +836,16 @@ class AuthService implements AuthContract {
         } catch (_) {}
       }
 
-      // If user is not found anywhere
+      // If user is not found in phone_directory or checkPhoneRegistration, check admins collection directly
       if (dirSnap == null && registered == null) {
+        for (final c in candidatesList) {
+          try {
+            final aSnap = await _db.collection('admins').where('phone', isEqualTo: c).limit(1).get().timeout(const Duration(milliseconds: 1500));
+            if (aSnap.docs.isNotEmpty) {
+              return await adminLogin(emailOrPhone: phone, password: password);
+            }
+          } catch (_) {}
+        }
         return {
           'success': false,
           'error': 'رقم الموبايل غير مسجل في التطبيق، يرجى إنشاء حساب جديد أولاً.',
@@ -2343,6 +2369,7 @@ class AuthService implements AuthContract {
         'name': adminName,
         'phone': adminPhone,
         'accountId': adminAccountId,
+        'status': 'active',
         'passwordHash': newHash,
         'adminResetPassword': FieldValue.delete(),
         'passwordUpdatedAt': FieldValue.serverTimestamp(),
@@ -2355,6 +2382,14 @@ class AuthService implements AuthContract {
       }
       if (adminPhone.isNotEmpty) {
         await _db.collection('phone_directory').doc(adminPhone).set(syncData, SetOptions(merge: true)).catchError((_) {});
+        final raw9 = PhoneUtils.convertArabicDigits(adminPhone).replaceAll(RegExp(r'[^0-9]'), '');
+        final clean9 = raw9.length >= 9 ? raw9.substring(raw9.length - 9) : raw9;
+        if (clean9.isNotEmpty) {
+          await _db.collection('phone_directory').doc(clean9).set(syncData, SetOptions(merge: true)).catchError((_) {});
+          await _db.collection('phone_directory').doc('0$clean9').set(syncData, SetOptions(merge: true)).catchError((_) {});
+          await _db.collection('phone_directory').doc('+249$clean9').set(syncData, SetOptions(merge: true)).catchError((_) {});
+          await _db.collection('phone_directory').doc('249$clean9').set(syncData, SetOptions(merge: true)).catchError((_) {});
+        }
       }
 
       await _saveSession(
@@ -2363,6 +2398,7 @@ class AuthService implements AuthContract {
         name: adminName,
         phone: adminPhone,
         accountId: adminAccountId,
+        status: 'active',
       );
 
       unawaited(NotificationService().registerAdminDevice(adminUid: uid));

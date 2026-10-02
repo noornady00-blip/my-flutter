@@ -246,7 +246,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       final session = await _authService.getSavedSession();
-      if (session['role'] != 'admin' && mounted && !_isLoggingOut) {
+      final r = session['role']?.toString().toLowerCase();
+      if (r != 'admin' && r != 'subadmin' && mounted && !_isLoggingOut) {
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (_) => const LoginScreen(role: 'admin')),

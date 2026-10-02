@@ -160,7 +160,14 @@ void main() async {
               .get()
               .timeout(const Duration(seconds: 2));
           if (!lDoc.exists && !aDoc.exists) {
-            accountStillExists = false;
+            final email = currentUser.email?.toLowerCase() ?? '';
+            final isAdm = effectiveRole == 'admin' ||
+                effectiveRole == 'subadmin' ||
+                email.endsWith('@mahameek.admin.com') ||
+                email.startsWith('admin_');
+            if (!isAdm) {
+              accountStillExists = false;
+            }
           }
         }
       } catch (_) {

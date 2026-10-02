@@ -80,6 +80,22 @@ class _GlobalAccountStatusBarrierState
   Future<void> _checkIfAccountDeleted(String uid) async {
     if (uid.isEmpty || _isLoggingOut) return;
     try {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      final email = currentUser?.email?.toLowerCase() ?? '';
+      if (email.endsWith('@mahameek.admin.com') || email.startsWith('admin_')) {
+        return; // Admins are never deleted by this barrier
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      final role = prefs.getString('role')?.toLowerCase().trim();
+      if (role == 'admin' || role == 'subadmin') {
+        return; // Admins are never deleted by this barrier
+      }
+
+      // Grace period to ensure ongoing auth/creation sync completes
+      await Future.delayed(const Duration(milliseconds: 2500));
+      if (!mounted || _isLoggingOut) return;
+
       final db = FirebaseFirestore.instance;
       final uDoc = await db.collection('users').doc(uid).get();
       if (uDoc.exists) return;
@@ -88,11 +104,17 @@ class _GlobalAccountStatusBarrierState
       final aDoc = await db.collection('admins').doc(uid).get();
       if (aDoc.exists) return;
 
+      // Double check in phone_directory before deleting
+      final phone = prefs.getString('phone');
+      if (phone != null && phone.isNotEmpty) {
+        final pDoc = await db.collection('phone_directory').doc(phone).get();
+        if (pDoc.exists) return;
+      }
+
       // Account was deleted permanently by administrator
       _isLoggingOut = true;
       _cancelDocSubscriptions();
 
-      final prefs = await SharedPreferences.getInstance();
       await prefs.clear();
       try {
         await FirebaseAuth.instance.signOut();
@@ -122,6 +144,10 @@ class _GlobalAccountStatusBarrierState
   Future<void> _subscribeToUserStatus(String uid) async {
     _cancelDocSubscriptions();
 
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final email = currentUser?.email?.toLowerCase() ?? '';
+    final bool isAdminEmail = email.endsWith('@mahameek.admin.com') || email.startsWith('admin_');
+
     // Read cached session first
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -133,6 +159,14 @@ class _GlobalAccountStatusBarrierState
         if (mounted) setState(() => _isSuspended = true);
       }
     } catch (_) {}
+
+    // Admins and subadmins are never monitored for client account suspension
+    if (_userRole == 'admin' || _userRole == 'subadmin' || isAdminEmail) {
+      if (mounted && _isSuspended) {
+        setState(() => _isSuspended = false);
+      }
+      return;
+    }
 
     final db = FirebaseFirestore.instance;
 
