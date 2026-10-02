@@ -20,6 +20,7 @@ class LawyerModel {
   final String? photoBase64;
   final String? photoUrl;
   final DateTime createdAt;
+  final DateTime? approvedAt;
 
   LawyerModel({
     required this.uid,
@@ -33,7 +34,11 @@ class LawyerModel {
     this.photoBase64,
     this.photoUrl,
     DateTime? createdAt,
+    this.approvedAt,
   }) : createdAt = createdAt ?? DateTime.now();
+
+  /// Effective joined or approved date for chronological ordering
+  DateTime get effectiveJoinedAt => approvedAt ?? createdAt;
 
   // ---------------------------------------------------------------------------
   // Status Flags
@@ -53,6 +58,14 @@ class LawyerModel {
       parsedDate = rawDate.toDate();
     } else if (rawDate is String) {
       parsedDate = DateTime.tryParse(rawDate) ?? DateTime.now();
+    }
+
+    DateTime? parsedApprovedAt;
+    final rawApprovedAt = map['approvedAt'];
+    if (rawApprovedAt is Timestamp) {
+      parsedApprovedAt = rawApprovedAt.toDate();
+    } else if (rawApprovedAt is String) {
+      parsedApprovedAt = DateTime.tryParse(rawApprovedAt);
     }
 
     final cityVal = (map['city'] ??
@@ -85,6 +98,7 @@ class LawyerModel {
           map['avatar']?.toString(),
       photoUrl: map['photoUrl']?.toString() ?? map['imageUrl']?.toString(),
       createdAt: parsedDate,
+      approvedAt: parsedApprovedAt,
     );
   }
 
@@ -105,6 +119,7 @@ class LawyerModel {
       if (photoBase64 != null) 'photoBase64': photoBase64,
       if (photoUrl != null) 'photoUrl': photoUrl,
       'createdAt': Timestamp.fromDate(createdAt),
+      if (approvedAt != null) 'approvedAt': Timestamp.fromDate(approvedAt!),
     };
   }
 
@@ -122,6 +137,7 @@ class LawyerModel {
       if (photoBase64 != null) 'photoBase64': photoBase64,
       if (photoUrl != null) 'photoUrl': photoUrl,
       'createdAt': createdAt.toIso8601String(),
+      if (approvedAt != null) 'approvedAt': approvedAt!.toIso8601String(),
     };
   }
 
@@ -156,6 +172,9 @@ class LawyerModel {
       createdAt: map['createdAt'] != null
           ? (DateTime.tryParse(map['createdAt'].toString()) ?? DateTime.now())
           : DateTime.now(),
+      approvedAt: map['approvedAt'] != null
+          ? DateTime.tryParse(map['approvedAt'].toString())
+          : null,
     );
   }
 
@@ -174,6 +193,7 @@ class LawyerModel {
     String? photoBase64,
     String? photoUrl,
     DateTime? createdAt,
+    DateTime? approvedAt,
   }) {
     return LawyerModel(
       uid: uid ?? this.uid,
@@ -187,6 +207,7 @@ class LawyerModel {
       photoBase64: photoBase64 ?? this.photoBase64,
       photoUrl: photoUrl ?? this.photoUrl,
       createdAt: createdAt ?? this.createdAt,
+      approvedAt: approvedAt ?? this.approvedAt,
     );
   }
 }

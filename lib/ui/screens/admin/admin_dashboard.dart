@@ -25,6 +25,7 @@ import 'admin_pending_lawyers_screen.dart';
 import 'admin_password_resets_screen.dart';
 import 'admin_recent_lawyers_screen.dart';
 import 'admin_chat_management_screen.dart';
+import '../../../core/utils/recent_lawyers_tracker.dart';
 import '../../../core/utils/search_utils.dart';
 import '../../../core/utils/navigation_utils.dart';
 import '../../../core/utils/phone_utils.dart';
@@ -103,6 +104,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
   @override
   void initState() {
     super.initState();
+    RecentLawyersTracker.load();
     _loadPinnedDepartments();
     _firestoreService.ensurePrimaryAdminsSeeded();
     _statsFuture = _firestoreService.getStats();
@@ -619,34 +621,40 @@ class _AdminDashboardState extends State<AdminDashboard> {
       ),
 
       // 4. آخر المحامين المنضمين
-      'recent_lawyers': _buildDepartmentNavCard(
-        keyName: 'recent_lawyers',
-        title: 'آخر المحامين المنضمين',
-        subtitle: 'سجل المحامين المعتمدين والمفعلين بالمنصة',
-        icon: Icons.verified_user_rounded,
-        iconColor: const Color(0xFF059669),
-        iconBg: const Color(0xFFECFDF5),
-        isPinned: _pinnedDepartmentKeys.contains('recent_lawyers'),
-        onTogglePin: () => _togglePinDepartment('recent_lawyers', 'آخر المحامين المنضمين'),
-        bellWidget: StreamBuilder<List<LawyerModel>>(
-          stream: _firestoreService.getAllLawyers(),
-          builder: (context, snap) {
-            final lawyers = snap.data ?? [];
-            final now = DateTime.now();
-            final sevenDaysAgo = now.subtract(const Duration(days: 7));
-            final recentApproved = lawyers.where((l) {
-              if (l.status != 'approved') return false;
-              if (l.createdAt.isAfter(sevenDaysAgo)) return true;
-              return false;
-            }).length;
-            return _buildNotificationBellBadge(
-              count: recentApproved,
-              bellColor: const Color(0xFF059669),
-              containerBg: const Color(0xFFECFDF5),
-            );
-          },
-        ),
-        onTap: () => _pushSmoothRoute(const AdminRecentLawyersScreen()),
+      'recent_lawyers': StreamBuilder<List<LawyerModel>>(
+        stream: _firestoreService.getAllLawyers(),
+        builder: (context, snap) {
+          final lawyers = snap.data ?? [];
+          final approved = lawyers.where((l) => l.isApproved).toList();
+          if (!RecentLawyersTracker.isInitialized && approved.isNotEmpty) {
+            RecentLawyersTracker.ensureInitialized(approved);
+          }
+          return ValueListenableBuilder<Set<String>>(
+            valueListenable: RecentLawyersTracker.seenLawyerIdsNotifier,
+            builder: (context, seenIds, _) {
+              final unreadCount = RecentLawyersTracker.calculateUnreadCount(approved);
+              return _buildDepartmentNavCard(
+                keyName: 'recent_lawyers',
+                title: 'آخر المحامين المنضمين',
+                subtitle: 'سجل المحامين المعتمدين والمفعلين بالمنصة',
+                icon: Icons.verified_user_rounded,
+                iconColor: const Color(0xFF059669),
+                iconBg: const Color(0xFFECFDF5),
+                isPinned: _pinnedDepartmentKeys.contains('recent_lawyers'),
+                onTogglePin: () => _togglePinDepartment('recent_lawyers', 'آخر المحامين المنضمين'),
+                bellWidget: _buildNotificationBellBadge(
+                  count: unreadCount,
+                  bellColor: const Color(0xFF059669),
+                  containerBg: const Color(0xFFECFDF5),
+                ),
+                onTap: () {
+                  RecentLawyersTracker.markAllApprovedAsSeen(approved);
+                  _pushSmoothRoute(const AdminRecentLawyersScreen());
+                },
+              );
+            },
+          );
+        },
       ),
 
       // 5. إدارة المحادثات المباشرة

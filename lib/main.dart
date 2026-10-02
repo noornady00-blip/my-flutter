@@ -19,6 +19,7 @@ import 'ui/screens/auth/lawyer_pending_screen.dart';
 import 'ui/custom_widgets/global_network_banner.dart';
 import 'ui/custom_widgets/global_account_status_barrier.dart';
 import 'network/firestore_service.dart';
+import 'core/utils/recent_lawyers_tracker.dart';
 
 import 'package:intl/date_symbol_data_local.dart';
 
@@ -93,7 +94,10 @@ void main() async {
     }),
   );
 
-  // 6. Resolve Initial Screen dynamically from local session
+  // 6. Preload Recent Lawyers Tracker seen state
+  unawaited(RecentLawyersTracker.load());
+
+  // 7. Resolve Initial Screen dynamically from local session
   Widget initialScreen = const OnboardingScreen();
 
   try {

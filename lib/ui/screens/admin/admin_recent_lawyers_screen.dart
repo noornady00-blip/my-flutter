@@ -7,6 +7,7 @@ import '../../../core/utils/image_utils.dart';
 import '../../../core/utils/account_id_utils.dart';
 import '../../../data/models/lawyer.dart';
 import '../../../network/firestore_service.dart';
+import '../../../core/utils/recent_lawyers_tracker.dart';
 import '../../custom_widgets/profile_details_modal.dart';
 
 // ============================================================================
@@ -25,6 +26,13 @@ class _AdminRecentLawyersScreenState extends State<AdminRecentLawyersScreen> {
   final FirestoreService _firestoreService = FirestoreService();
   final TextEditingController _searchCtrl = TextEditingController();
   String _searchQuery = '';
+  late Set<String> _initialSeenIds;
+
+  @override
+  void initState() {
+    super.initState();
+    _initialSeenIds = Set<String>.from(RecentLawyersTracker.seenLawyerIdsNotifier.value);
+  }
 
   @override
   void dispose() {
@@ -217,6 +225,11 @@ class _AdminRecentLawyersScreenState extends State<AdminRecentLawyersScreen> {
                 }
 
                 final allApproved = snapshot.data ?? [];
+                if (allApproved.isNotEmpty) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    RecentLawyersTracker.markAllApprovedAsSeen(allApproved);
+                  });
+                }
                 final filtered = allApproved.where((l) {
                   return AppSearchUtils.matchesAny(_searchQuery, [
                     l.name,
@@ -289,6 +302,10 @@ class _AdminRecentLawyersScreenState extends State<AdminRecentLawyersScreen> {
   }
 
   Widget _buildLawyerItem(LawyerModel lawyer) {
+    final bool isUnreadBefore = !_initialSeenIds.contains(lawyer.uid);
+    final bool isNewlyJoined = isUnreadBefore ||
+        DateTime.now().difference(lawyer.effectiveJoinedAt).inHours < 48;
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -337,6 +354,32 @@ class _AdminRecentLawyersScreenState extends State<AdminRecentLawyersScreen> {
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
+                          if (isNewlyJoined) ...[
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFEF3C7),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: const Color(0xFFFDE68A)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.star_rounded, size: 12, color: Color(0xFFD97706)),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    'منضم حديثاً',
+                                    style: GoogleFonts.cairo(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w800,
+                                      color: const Color(0xFFB45309),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                          ],
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                             decoration: BoxDecoration(

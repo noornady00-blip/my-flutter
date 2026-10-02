@@ -174,18 +174,20 @@ class FirestoreService implements DatabaseContract {
 
   /// Get recently approved lawyers (for admin dashboard)
   @override
-  Stream<List<LawyerModel>> getRecentApprovedLawyers({int limit = 5}) {
+  Stream<List<LawyerModel>> getRecentApprovedLawyers({int limit = 50}) {
     return _db
         .collection('lawyers')
         .where('status', isEqualTo: 'approved')
-        .limit(limit)
         .snapshots()
         .map((snapshot) {
       final list = snapshot.docs
           .map((doc) => LawyerModel.fromMap(doc.data(), doc.id))
           .where((l) => l.name.trim().isNotEmpty && l.phone.trim().isNotEmpty)
           .toList();
-      list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      list.sort((a, b) => b.effectiveJoinedAt.compareTo(a.effectiveJoinedAt));
+      if (limit > 0 && list.length > limit) {
+        return list.take(limit).toList();
+      }
       return list;
     });
   }
@@ -217,7 +219,7 @@ class FirestoreService implements DatabaseContract {
               l.name.trim().isNotEmpty &&
               l.phone.trim().isNotEmpty)
           .toList();
-      list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      list.sort((a, b) => b.effectiveJoinedAt.compareTo(a.effectiveJoinedAt));
       return list;
     });
   }
@@ -240,11 +242,17 @@ class FirestoreService implements DatabaseContract {
   /// Approve / Activate a lawyer
   @override
   Future<void> approveLawyer(String uid) async {
-    await _db.collection('lawyers').doc(uid).update({'status': 'approved'});
+    await _db.collection('lawyers').doc(uid).update({
+      'status': 'approved',
+      'approvedAt': FieldValue.serverTimestamp(),
+    });
     await _db
         .collection('users')
         .doc(uid)
-        .set({'status': 'approved'}, SetOptions(merge: true));
+        .set({
+          'status': 'approved',
+          'approvedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
     await _updatePhoneDirectoryStatus(uid, 'approved');
   }
 
