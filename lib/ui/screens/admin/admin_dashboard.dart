@@ -4960,6 +4960,26 @@ class _AdminDashboardState extends State<AdminDashboard> {
                               return;
                             }
 
+                            if (!PhoneUtils.isValid(phone)) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('يرجى إدخال رقم هاتف سوداني صحيح مكون من 9 أرقام يبدأ بـ 9 أو 1 أو 12', style: GoogleFonts.cairo()),
+                                  backgroundColor: const Color(0xFFDC2626),
+                                ),
+                              );
+                              return;
+                            }
+
+                            if (pass.length < 6) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('كلمة المرور يجب ألا تقل عن 6 أحرف', style: GoogleFonts.cairo()),
+                                  backgroundColor: const Color(0xFFDC2626),
+                                ),
+                              );
+                              return;
+                            }
+
                             setState(() => _isCreatingAdmin = true);
 
                             final res = await _authService.createAdminAccount(

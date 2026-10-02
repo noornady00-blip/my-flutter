@@ -8,7 +8,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'package:crypto/crypto.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -1635,15 +1637,25 @@ class AuthService implements AuthContract {
       if (cleanPhone.isEmpty) {
         return {'success': false, 'error': 'يرجى إدخال رقم هاتف المشرف'};
       }
-      if (cleanPass.isEmpty) {
-        return {'success': false, 'error': 'يرجى إدخال كلمة المرور للمشرف'};
+      if (!PhoneUtils.isValid(cleanPhone)) {
+        return {
+          'success': false,
+          'error': 'رقم الهاتف غير صالح، يجب أن يكون رقم سوداني يبدأ بـ 9 أو 1 أو 12 ويتكون من 9 أرقام.',
+        };
+      }
+      if (cleanPass.isEmpty || cleanPass.length < 6) {
+        return {'success': false, 'error': 'كلمة المرور يجب ألا تقل عن 6 أحرف'};
       }
 
       final normPhone = PhoneUtils.normalize(cleanPhone);
+      final rawDigits = normPhone.replaceAll('+249', '');
+      final adminEmail = 'admin_$rawDigits@mahameek.admin.com';
+      final pwdHash = hashPassword(cleanPass);
+      final paddedPw = cleanPass.length < 6 ? cleanPass.padRight(6, '0') : cleanPass;
 
       // Check if this phone number is registered as client or lawyer
       final reg = await checkPhoneRegistration(cleanPhone);
-      if (reg != null && reg['role'] != 'admin') {
+      if (reg != null && reg['role'] != 'admin' && reg['role'] != 'subadmin') {
         final roleName = reg['role'] == 'lawyer' ? 'محامي' : 'عميل';
         return {
           'success': false,
@@ -1651,32 +1663,107 @@ class AuthService implements AuthContract {
         };
       }
 
-      final callable = FirebaseFunctions.instance.httpsCallable('adminCreateAdminAccount');
-      final res = await callable.call({
+      // Check if already registered as an admin
+      final existingSnap = await _db.collection('phone_directory').doc(normPhone).get();
+      if (existingSnap.exists && existingSnap.data() != null) {
+        final exData = existingSnap.data()!;
+        if (exData['role'] == 'admin' || exData['role'] == 'subadmin') {
+          return {
+            'success': false,
+            'error': 'هذا الرقم مسجل مسبقاً كمشرف في النظام.',
+          };
+        }
+      }
+
+      // 1. Create subadmin in Firebase Auth using a temporary secondary app
+      // This preserves the current admin's session without signing out!
+      String uid;
+      FirebaseApp? tempApp;
+      try {
+        final appName = 'AdminCreator_${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(9999)}';
+        tempApp = await Firebase.initializeApp(
+          name: appName,
+          options: Firebase.app().options,
+        );
+        final tempAuth = FirebaseAuth.instanceFor(app: tempApp);
+        final cred = await tempAuth.createUserWithEmailAndPassword(
+          email: adminEmail,
+          password: paddedPw,
+        );
+        uid = cred.user!.uid;
+      } on FirebaseAuthException catch (authErr) {
+        if (authErr.code == 'email-already-in-use') {
+          try {
+            final tempAuth = FirebaseAuth.instanceFor(app: tempApp!);
+            final cred = await tempAuth.signInWithEmailAndPassword(
+              email: adminEmail,
+              password: paddedPw,
+            );
+            uid = cred.user!.uid;
+          } catch (_) {
+            final dirDoc = await _db.collection('phone_directory').doc(normPhone).get();
+            uid = dirDoc.data()?['uid']?.toString() ?? 'admin_$rawDigits';
+          }
+        } else {
+          return {
+            'success': false,
+            'error': _authError(authErr.code),
+          };
+        }
+      } finally {
+        if (tempApp != null) {
+          try {
+            await tempApp.delete();
+          } catch (_) {}
+        }
+      }
+
+      // 2. Generate unique 12-digit account ID
+      final accountId = await AccountIdUtils.generateUnique12DigitId(_db);
+
+      // 3. Atomically write subadmin profile to users, admins, phone_directory, and account_ids
+      final adminData = {
+        'uid': uid,
         'name': cleanName,
         'phone': normPhone,
-        'password': cleanPass,
-      });
+        'role': 'admin',
+        'adminType': 'subadmin',
+        'isPrimary': false,
+        'status': 'active',
+        'accountId': accountId,
+        'email': adminEmail,
+        'passwordHash': pwdHash,
+        'adminResetPassword': cleanPass,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      final batch = _db.batch();
+      batch.set(_db.collection('users').doc(uid), adminData, SetOptions(merge: true));
+      batch.set(_db.collection('admins').doc(uid), adminData, SetOptions(merge: true));
+      batch.set(_db.collection('phone_directory').doc(normPhone), adminData, SetOptions(merge: true));
+      batch.set(_db.collection('account_ids').doc(accountId.replaceAll(' ', '')), {
+        'uid': uid,
+        'role': 'admin',
+        'createdAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      await batch.commit();
 
       return {
         'success': true,
-        'uid': res.data['uid'],
-        'email': '',
+        'uid': uid,
+        'email': adminEmail,
         'name': cleanName,
         'phone': normPhone,
-        'message': 'تم إنشاء حساب المشرف بنجاح عبر النظام',
+        'accountId': accountId,
+        'message': 'تم إنشاء واعتماد حساب المشرف بنجاح عبر النظام',
       };
-    } on FirebaseFunctionsException catch (e) {
-      debugPrint('createAdminAccount functions error: ${e.code} - ${e.message}');
-      if (e.code == 'already-exists') {
-        return {'success': false, 'error': 'هذا الرقم مسجل مسبقاً في النظام.'};
-      }
-      return {'success': false, 'error': e.message ?? 'فشل إنشاء حساب المشرف'};
     } catch (e) {
       debugPrint('createAdminAccount error: $e');
       return {
         'success': false,
-        'error': 'حدث خطأ غير متوقع أثناء إنشاء حساب المشرف: $e',
+        'error': 'حدث خطأ أثناء إنشاء حساب المشرف: $e',
       };
     }
   }
@@ -1797,12 +1884,13 @@ class AuthService implements AuthContract {
         }
 
         bool validAdminPass = false;
-        if (cleanPassword == '123456' || cleanPassword == '123' || cleanPassword == '123000') {
-          validAdminPass = true;
-        } else {
+        if (storedReset != null || storedHash != null) {
           final inHash = hashPassword(cleanPassword);
-          validAdminPass = (storedReset != null && storedReset == cleanPassword) ||
-              (storedHash != null && (storedHash == inHash || storedHash == cleanPassword));
+          final rawSha256 = sha256.convert(utf8.encode(cleanPassword)).toString();
+          validAdminPass = (storedReset != null && (storedReset == cleanPassword || storedReset == cleanPassword.trim())) ||
+              (storedHash != null && (storedHash == inHash || storedHash == rawSha256 || storedHash == cleanPassword));
+        } else {
+          validAdminPass = (cleanPassword == '123456' || cleanPassword == '123' || cleanPassword == '123000');
         }
 
         if (!validAdminPass) {
@@ -1815,14 +1903,33 @@ class AuthService implements AuthContract {
 
         // Legitimate admin verified! Direct single sign-in to Firebase Auth
         final paddedPw = cleanPassword.length < 6 ? cleanPassword.padRight(6, '0') : cleanPassword;
+        final normDigits = cleanDigits.length >= 9 ? cleanDigits.substring(cleanDigits.length - 9) : cleanDigits;
+        final authKey = internalAuthKey(normDigits);
         UserCredential? cred;
 
-        try {
-          cred = await _auth.signInWithEmailAndPassword(
-            email: adminEmail,
-            password: paddedPw,
-          );
-        } catch (_) {
+        final tryPasswords = <String>{
+          paddedPw,
+          cleanPassword,
+          if (authKey.isNotEmpty) authKey,
+          if (storedReset != null && storedReset.isNotEmpty) storedReset,
+          '123456',
+          '123000',
+        }.toList();
+
+        for (final pw in tryPasswords) {
+          for (final em in emailCandidates) {
+            try {
+              cred = await _auth.signInWithEmailAndPassword(
+                email: em,
+                password: pw,
+              );
+              if (cred.user != null) break;
+            } catch (_) {}
+          }
+          if (cred?.user != null) break;
+        }
+
+        if (cred == null || cred.user == null) {
           // If not in Auth, create it once with the exact admin email
           try {
             cred = await _auth.createUserWithEmailAndPassword(
@@ -1832,24 +1939,31 @@ class AuthService implements AuthContract {
           } catch (_) {}
         }
 
+        // Critical: Never allow an unauthenticated phantom session!
+        if (cred == null || cred.user == null) {
+          await _recordFailedLogin();
+          return {
+            'success': false,
+            'error': 'كلمة المرور غير صحيحة أو تعذر التحقق من جلسة الإدارة في خادم المصادقة.',
+          };
+        }
+
         // Auto-heal / update Firebase Auth password to match the valid new password
-        if (cred?.user != null) {
+        try {
+          await cred.user!.updatePassword(paddedPw);
+        } catch (_) {}
+        
+        // Forcefully update email to ensure Firestore rule bypass (@mahameek.admin.com)
+        if (!(cred.user!.email ?? '').endsWith('@mahameek.admin.com')) {
           try {
-            await cred!.user!.updatePassword(paddedPw);
+            // ignore: deprecated_member_use
+            await cred.user!.updateEmail(adminEmail);
+            await cred.user!.getIdToken(true);
           } catch (_) {}
-          
-          // Forcefully update email to ensure Firestore rule bypass (@mahameek.admin.com)
-          if (!(cred!.user!.email ?? '').endsWith('@mahameek.admin.com')) {
-            try {
-              // ignore: deprecated_member_use
-              await cred.user!.updateEmail(adminEmail);
-              await cred.user!.getIdToken(true);
-            } catch (_) {}
-          }
         }
 
         await _resetFailedLogin();
-        final uid = cred?.user?.uid ?? primaryUid;
+        final uid = cred.user!.uid;
         final defaultAccountId = isPrimary1 ? '111111111111' : '222222222222';
         final adminAccountId = defaultAccountId;
 
@@ -1861,7 +1975,7 @@ class AuthService implements AuthContract {
           'role': 'admin',
           'status': 'active',
           'accountId': adminAccountId,
-          'email': cred?.user?.email ?? adminEmail,
+          'email': cred.user?.email ?? adminEmail,
           'isPrimary': true,
           'passwordHash': newHash,
           'adminResetPassword': FieldValue.delete(),
@@ -1928,8 +2042,8 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
         } catch (_) {}
       }
 
-      // If secUid was not resolved or role != admin, check admins collection directly
-      if (secUid == null || regData['role'] != 'admin') {
+      // If secUid was not resolved or role is neither admin nor subadmin, check admins collection directly
+      if (secUid == null || (regData['role'] != 'admin' && regData['role'] != 'subadmin')) {
         try {
           for (final cand in nonPrimaryCandidates) {
             final q = await _db.collection('admins').where('phone', isEqualTo: cand).limit(1).get();
@@ -1957,7 +2071,7 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
       if (secUid == null && regData.isEmpty && !input.contains('@')) {
         reg = await checkPhoneRegistration(input);
         if (reg != null) {
-          if (reg['role'] != 'admin') {
+          if (reg['role'] != 'admin' && reg['role'] != 'subadmin') {
             final roleName = reg['role'] == 'lawyer' ? 'محامي' : 'عميل';
             return {
               'success': false,
@@ -1988,10 +2102,17 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
 
       if (storedHash != null || adminReset != null) {
         final inputHash = hashPassword(cleanPassword);
-        final bool isMatch = (adminReset != null && (adminReset == cleanPassword)) ||
-            (storedHash != null && (storedHash == inputHash || storedHash == cleanPassword)) ||
-            (cleanPassword == '123456' || cleanPassword == '123000' || cleanPassword == '123');
+        final rawSha256 = sha256.convert(utf8.encode(cleanPassword)).toString();
+        final bool isMatch = (adminReset != null && (adminReset == cleanPassword || adminReset == cleanPassword.trim())) ||
+            (storedHash != null && (storedHash == inputHash || storedHash == rawSha256 || storedHash == cleanPassword));
         if (!isMatch) {
+          return {
+            'success': false,
+            'error': 'كلمة المرور غير صحيحة، يرجى التأكد من كلمة المرور والمحاولة مجدداً.',
+          };
+        }
+      } else {
+        if (cleanPassword != '123456' && cleanPassword != '123000' && cleanPassword != '123') {
           return {
             'success': false,
             'error': 'كلمة المرور غير صحيحة، يرجى التأكد من كلمة المرور والمحاولة مجدداً.',
@@ -2582,10 +2703,33 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
       }.toList();
 
       final effectiveNewPassword = cleanNew.length < 6 ? cleanNew.padRight(6, '0') : cleanNew;
+      final bool isAdminRole = isPrimaryAdmin || docData['role'] == 'admin' || docData['role'] == 'subadmin' || spRole == 'admin' || spRole == 'subadmin';
 
+      // 1. Ensure user is authenticated in Firebase Auth before writing to Firestore
+      if (_auth.currentUser == null) {
+        final emailCandidates = [
+          if (userEmail.isNotEmpty) userEmail,
+          if (isPrimary1) 'admin_01146979833@mahameek.admin.com',
+          if (isPrimary2) 'admin_912209596@mahameek.admin.com',
+          if (cleanDigits.isNotEmpty) 'admin_$cleanDigits@mahameek.admin.com',
+          if (norm9Digits.isNotEmpty) 'admin_$norm9Digits@mahameek.admin.com',
+        ];
+        for (final em in emailCandidates) {
+          for (final pw in pwCandidates) {
+            try {
+              final c = await _auth.signInWithEmailAndPassword(email: em, password: pw);
+              if (c.user != null) break;
+            } catch (_) {}
+          }
+          if (_auth.currentUser != null) break;
+        }
+      }
+
+      // 2. Update password in Firebase Auth
       if (_auth.currentUser != null) {
+        final targetAuthPassword = isAdminRole ? effectiveNewPassword : (authKey.isNotEmpty ? authKey : effectiveNewPassword);
         try {
-          await _auth.currentUser!.updatePassword(authKey.isNotEmpty ? authKey : effectiveNewPassword);
+          await _auth.currentUser!.updatePassword(targetAuthPassword);
         } catch (_) {
           for (final pw in pwCandidates) {
             try {
@@ -2595,7 +2739,7 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
                   password: pw,
                 );
                 await _auth.currentUser!.reauthenticateWithCredential(cred);
-                await _auth.currentUser!.updatePassword(authKey.isNotEmpty ? authKey : effectiveNewPassword);
+                await _auth.currentUser!.updatePassword(targetAuthPassword);
                 break;
               }
             } catch (_) {}
@@ -2621,7 +2765,7 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
       await _db.collection('users').doc(uid).set(userUpdate, SetOptions(merge: true));
 
       // 2. Update admins collection if admin
-      if (adminDoc?.exists == true || isPrimaryAdmin || docData['role'] == 'admin' || spRole == 'admin') {
+      if (adminDoc?.exists == true || isAdminRole) {
         try {
           await _db.collection('admins').doc(uid).set(userUpdate, SetOptions(merge: true));
         } catch (_) {}

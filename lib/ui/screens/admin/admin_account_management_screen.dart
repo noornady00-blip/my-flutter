@@ -17,6 +17,7 @@ import '../../custom_widgets/app_logo_badge.dart';
 import '../../custom_widgets/app_dialog.dart';
 import '../../custom_widgets/profile_details_modal.dart';
 import '../../custom_widgets/account_role_badge.dart';
+import '../../custom_widgets/sudan_phone_field.dart';
 
 // ============================================================================
 // AdminAccountManagementScreen
@@ -1775,21 +1776,11 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                   ),
                   const SizedBox(height: 12),
 
-                  // Phone Field
-                  TextField(
+                  // Phone Field (Unified Sudanese phone field)
+                  SudanPhoneFormField(
                     controller: phoneCtrl,
-                    keyboardType: TextInputType.phone,
-                    textDirection: TextDirection.ltr,
-                    decoration: InputDecoration(
-                      labelText: 'رقم هاتف المشرف (11 رقم)',
-                      hintText: '011XXXXXXXX',
-                      labelStyle: GoogleFonts.cairo(fontSize: 13, color: const Color(0xFF64748B)),
-                      prefixIcon: const Icon(Icons.phone_rounded, color: Color(0xFF0B2A5B)),
-                      filled: true,
-                      fillColor: const Color(0xFFF8FAFC),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
-                    ),
+                    hintText: '9XXXXXXXX',
+                    borderRadius: 14,
                   ),
                   const SizedBox(height: 12),
 
@@ -1802,7 +1793,7 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                     autocorrect: false,
                     keyboardType: TextInputType.visiblePassword,
                     decoration: InputDecoration(
-                      labelText: 'كلمة المرور',
+                      labelText: 'كلمة المرور (6 أحرف أو أكثر)',
                       labelStyle: GoogleFonts.cairo(fontSize: 13, color: const Color(0xFF64748B)),
                       prefixIcon: const Icon(Icons.lock_rounded, color: Color(0xFF0B2A5B)),
                       suffixIcon: IconButton(
@@ -1849,6 +1840,16 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
                                         content: Text('يرجى ملء جميع الحقول المطلوبة', style: GoogleFonts.cairo()),
+                                        backgroundColor: const Color(0xFFDC2626),
+                                      ),
+                                    );
+                                    return;
+                                  }
+
+                                  if (!PhoneUtils.isValid(phone)) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('يرجى إدخال رقم هاتف سوداني صحيح مكون من 9 أرقام يبدأ بـ 9 أو 1 أو 12', style: GoogleFonts.cairo()),
                                         backgroundColor: const Color(0xFFDC2626),
                                       ),
                                     );
