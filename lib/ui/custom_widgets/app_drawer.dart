@@ -356,10 +356,12 @@ class _AppDrawerState extends State<AppDrawer> {
             color: Colors.white,
             borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
               Center(
                 child: Container(
                   width: 40,
@@ -545,7 +547,8 @@ class _AppDrawerState extends State<AppDrawer> {
           ),
         ),
       ),
-    );
+    ),
+  );
   }
 
   void _showNotificationSettingsSheet() {
@@ -688,12 +691,14 @@ class _AppDrawerState extends State<AppDrawer> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(28),
           ),
-          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(22, 24, 22, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
+            padding: const EdgeInsets.fromLTRB(22, 20, 22, 18),
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                 // Warning Icon Badge
                 Container(
                   width: 58,
@@ -901,7 +906,8 @@ class _AppDrawerState extends State<AppDrawer> {
           ),
         ),
       ),
-    );
+    ),
+  );
   }
 
   Widget _buildDrawerItem({

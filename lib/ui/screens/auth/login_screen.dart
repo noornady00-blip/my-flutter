@@ -312,10 +312,12 @@ class _LoginScreenState extends State<LoginScreen> {
               top: 14,
               bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
                 // Drag Handle
                 Center(
                   child: Container(
@@ -530,7 +532,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ],
             ),
-          );
+          ),
+        );
         },
       ),
     );

@@ -105,10 +105,12 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
             ),
             child: Form(
               key: formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                   Center(
                     child: Container(
                       width: 42,
@@ -231,6 +233,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
                 ],
               ),
             ),
+          ),
           ),
         ),
       ),

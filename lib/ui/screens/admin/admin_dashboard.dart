@@ -1769,13 +1769,15 @@ class _AdminDashboardState extends State<AdminDashboard> {
           backgroundColor: Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           elevation: 16,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
                 // 1. Glowing Key Icon Badge
                 Center(
                   child: Container(
@@ -1965,7 +1967,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
           ),
         ),
       ),
-    );
+    ),
+  );
   }
 
   /// نافذة منبثقة فاخرة تظهر عند نجاح تغيير كلمة السر وتوفر زر واتساب فوري
@@ -1989,13 +1992,15 @@ class _AdminDashboardState extends State<AdminDashboard> {
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         elevation: 12,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 22, 16, 18),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
               // Top Icon Badge
               Center(
                 child: Container(
@@ -2211,7 +2216,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
           ),
         ),
       ),
-    );
+    ),
+  );
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -3282,10 +3288,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
             borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
           ),
           padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(mCtx).viewInsets.bottom + 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
               Center(
                 child: Container(
                   width: 44,
@@ -3399,7 +3407,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
           ),
         ),
       ),
-    );
+    ),
+  );
   }
 
   // ─────────────────────────────────────────────────────────────

@@ -52,13 +52,15 @@ class AppDialog {
               backgroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
               elevation: 16,
-              insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+              insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
                     // 1. Glowing Danger Icon Badge
                     Center(
                       child: Container(
@@ -160,7 +162,8 @@ class AppDialog {
                   ],
                 ),
               ),
-            );
+            ),
+          );
           },
         );
       },
@@ -186,13 +189,15 @@ class AppDialog {
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         elevation: 16,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
               // 1. Glowing Primary Icon Badge
               Center(
                 child: Container(
@@ -295,7 +300,8 @@ class AppDialog {
           ),
         ),
       ),
-    );
+    ),
+  );
   }
 
   /// نافذة النجاح الفاخرة (Success Dialog)
@@ -312,13 +318,15 @@ class AppDialog {
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         elevation: 16,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
               // 1. Success Icon Badge
               Center(
                 child: Container(
@@ -397,6 +405,7 @@ class AppDialog {
           ),
         ),
       ),
-    );
+    ),
+  );
   }
 }

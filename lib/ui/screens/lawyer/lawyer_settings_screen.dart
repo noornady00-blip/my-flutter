@@ -686,12 +686,14 @@ class _LawyerSettingsScreenState extends State<LawyerSettingsScreen> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(28),
           ),
-          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(22, 24, 22, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
+            padding: const EdgeInsets.fromLTRB(22, 20, 22, 18),
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                 // Warning Icon Badge
                 Container(
                   width: 58,
@@ -900,7 +902,8 @@ class _LawyerSettingsScreenState extends State<LawyerSettingsScreen> {
           ),
         ),
       ),
-    );
+    ),
+  );
   }
 
   Future<void> _logout() async {
