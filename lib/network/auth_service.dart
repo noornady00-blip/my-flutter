@@ -1776,9 +1776,6 @@ class AuthService implements AuthContract {
       batch.set(_db.collection('users').doc(uid), adminData, SetOptions(merge: true));
       batch.set(_db.collection('admins').doc(uid), adminData, SetOptions(merge: true));
       batch.set(_db.collection('phone_directory').doc(normPhone), adminData, SetOptions(merge: true));
-      batch.set(_db.collection('phone_directory').doc(rawDigits), adminData, SetOptions(merge: true));
-      batch.set(_db.collection('phone_directory').doc('0$rawDigits'), adminData, SetOptions(merge: true));
-      batch.set(_db.collection('phone_directory').doc('249$rawDigits'), adminData, SetOptions(merge: true));
       batch.set(_db.collection('account_ids').doc(accountId.replaceAll(' ', '')), {
         'uid': uid,
         'role': 'admin',
