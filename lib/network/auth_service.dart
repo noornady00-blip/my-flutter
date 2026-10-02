@@ -2113,16 +2113,13 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
         }
       }
 
-      final targetEmails = <String>[
-        if (input.contains('@')) input.toLowerCase(),
-        if (regData['email'] != null && regData['email'].toString().isNotEmpty)
-          regData['email'].toString().toLowerCase(),
+      final targetEmails = <String>{
+        if (regData['email'] != null && regData['email'].toString().trim().isNotEmpty)
+          regData['email'].toString().trim().toLowerCase(),
+        if (cleanDigits.length >= 9) 'admin_${cleanDigits.substring(cleanDigits.length - 9)}@mahameek.admin.com',
         'admin_$cleanDigits@mahameek.admin.com',
-        if (digits.isNotEmpty) 'admin_$digits@mahameek.admin.com',
-        '$cleanDigits@mahameek.admin.com',
-        if (digits.isNotEmpty) '$digits@mahameek.admin.com',
-        'admin_$cleanDigits@mahameek.com',
-      ];
+        if (input.contains('@')) input.trim().toLowerCase(),
+      }.toList();
 
       final storedHash = regData['passwordHash']?.toString();
       final adminReset = regData['adminResetPassword']?.toString();
@@ -2150,19 +2147,16 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
       final paddedPw = cleanPassword.length < 6 ? cleanPassword.padRight(6, '0') : cleanPassword;
       UserCredential? cred;
 
-      final fbCandidates = <String>[
+      final fbCandidates = <String>{
         paddedPw,
+        cleanPassword,
         if (adminReset != null && adminReset.isNotEmpty) adminReset,
-        if (cleanDigits.isNotEmpty) cleanDigits,
-        if (digits.isNotEmpty) digits,
-        if (cleanDigits.isNotEmpty) internalAuthKey(cleanDigits),
-        if (digits.isNotEmpty) internalAuthKey(digits),
         '123456',
         '123000',
         '123',
-        '12345678',
-      ];
+      }.toList();
 
+      String? lastAuthError;
       // Try signing into Firebase Auth across candidate emails and candidate passwords
       for (final email in targetEmails) {
         for (final pw in fbCandidates) {
@@ -2172,6 +2166,10 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
               password: pw,
             );
             if (cred.user != null) break;
+          } on FirebaseAuthException catch (e) {
+            if (e.code == 'too-many-requests') {
+              lastAuthError = 'محاولات دخول متكررة، يرجى الانتظار بضع دقائق والمحاولة مجدداً.';
+            }
           } catch (_) {}
         }
         if (cred?.user != null) break;
@@ -2179,19 +2177,21 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
 
       if (cred == null || cred.user == null) {
         // If account doesn't exist yet in Firebase Auth, create it
-        final primaryEmail = targetEmails.first;
-        try {
-          cred = await _auth.createUserWithEmailAndPassword(
-            email: primaryEmail,
-            password: paddedPw,
-          );
-        } catch (_) {}
+        for (final primaryEmail in targetEmails) {
+          try {
+            cred = await _auth.createUserWithEmailAndPassword(
+              email: primaryEmail,
+              password: paddedPw,
+            );
+            if (cred.user != null) break;
+          } catch (_) {}
+        }
       }
 
       if (cred == null || cred.user == null) {
         return {
           'success': false,
-          'error': 'بيانات الاعتماد غير صحيحة أو تعذر تسجيل دخول المشرف في Firebase Auth.',
+          'error': lastAuthError ?? 'بيانات الاعتماد غير صحيحة أو تعذر تسجيل دخول المشرف في Firebase Auth.',
         };
       }
 
@@ -2204,13 +2204,13 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
       DocumentSnapshot<Map<String, dynamic>>? adminDoc;
       try {
         final d = await _db.collection('admins').doc(uid).get();
-        if (d.exists && d.data()?['role'] == 'admin') adminDoc = d;
+        if (d.exists && (d.data()?['role'] == 'admin' || d.data()?['role'] == 'subadmin')) adminDoc = d;
       } catch (_) {}
 
       if (adminDoc == null) {
         try {
           final uDoc = await _db.collection('users').doc(uid).get();
-          if (uDoc.exists && uDoc.data()?['role'] == 'admin') {
+          if (uDoc.exists && (uDoc.data()?['role'] == 'admin' || uDoc.data()?['role'] == 'subadmin')) {
             await _db.collection('admins').doc(uid).set(uDoc.data()!, SetOptions(merge: true));
             adminDoc = await _db.collection('admins').doc(uid).get();
           }
@@ -2223,7 +2223,7 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
         if (secUid != null && secUid != uid) {
           try {
             final s = await _db.collection('admins').doc(secUid).get();
-            if (s.exists && s.data()?['role'] == 'admin') sourceDoc = s;
+            if (s.exists && (s.data()?['role'] == 'admin' || s.data()?['role'] == 'subadmin')) sourceDoc = s;
           } catch (_) {}
         }
         if (sourceDoc == null) {
