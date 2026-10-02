@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/utils/search_utils.dart';
 import '../../../core/utils/phone_utils.dart';
 import '../../../core/utils/image_utils.dart';
+import '../../../core/utils/account_id_utils.dart';
 import '../../../data/models/lawyer.dart';
 import '../../../network/firestore_service.dart';
 import '../../custom_widgets/profile_details_modal.dart';
@@ -55,7 +56,7 @@ class _AdminRecentLawyersScreenState extends State<AdminRecentLawyersScreen> {
             name: lawyer.name,
             photoBase64: lawyer.photoBase64,
             photoUrl: lawyer.photoUrl,
-            subtitle: 'محامٍ ومستشار قانوني',
+            subtitle: 'محامي - موثق العقود',
           );
         }
       },
@@ -369,7 +370,7 @@ class _AdminRecentLawyersScreenState extends State<AdminRecentLawyersScreen> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'محامٍ ومستشار قانوني${lawyer.accountId.isNotEmpty ? " • معرّف: ${lawyer.accountId}" : ""}',
+                        'محامي - موثق العقود${lawyer.accountId.isNotEmpty ? " • معرّف: ${AccountIdUtils.formatForDisplay(lawyer.accountId)}" : ""}',
                         style: GoogleFonts.cairo(fontSize: 12, color: const Color(0xFF64748B)),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,

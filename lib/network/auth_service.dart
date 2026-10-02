@@ -9,7 +9,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -342,7 +341,7 @@ class AuthService implements AuthContract {
       userMap['email'] = effectiveEmail;
 
       final batch = _db.batch();
-      batch.set(_db.collection('users').doc(uid), userMap);
+      batch.set(_db.collection('users').doc(uid), userMap, SetOptions(merge: true));
 
       final dirData = {
         'uid': uid,
@@ -354,10 +353,8 @@ class AuthService implements AuthContract {
         'passwordHash': pwdHash,
         'createdAt': FieldValue.serverTimestamp(),
       };
-      batch.set(_db.collection('phone_directory').doc(cleanDigits), dirData);
-      if (localDigits.isNotEmpty && localDigits != cleanDigits) {
-        batch.set(_db.collection('phone_directory').doc(localDigits), dirData);
-      }
+      // Store ONLY the canonical normalized key (+249xxxxxxxxx)
+      batch.set(_db.collection('phone_directory').doc(normPhone), dirData, SetOptions(merge: true));
       await batch.commit();
 
       // Register in global account_ids collection independently for resilience
@@ -599,8 +596,8 @@ class AuthService implements AuthContract {
       lawyerMap['email'] = effectiveEmail;
 
       final batch = _db.batch();
-      batch.set(_db.collection('users').doc(uid), userMap);
-      batch.set(_db.collection('lawyers').doc(uid), lawyerMap);
+      batch.set(_db.collection('users').doc(uid), userMap, SetOptions(merge: true));
+      batch.set(_db.collection('lawyers').doc(uid), lawyerMap, SetOptions(merge: true));
 
       final dirData = {
         'uid': uid,
@@ -615,10 +612,8 @@ class AuthService implements AuthContract {
         'passwordHash': pwdHash,
         'createdAt': FieldValue.serverTimestamp(),
       };
-      batch.set(_db.collection('phone_directory').doc(cleanDigits), dirData);
-      if (localDigits.isNotEmpty && localDigits != cleanDigits) {
-        batch.set(_db.collection('phone_directory').doc(localDigits), dirData);
-      }
+      // Store ONLY the canonical normalized key (+249xxxxxxxxx)
+      batch.set(_db.collection('phone_directory').doc(normPhone), dirData, SetOptions(merge: true));
       await batch.commit();
 
       // Register in global account_ids collection independently for resilience
@@ -1364,7 +1359,7 @@ class AuthService implements AuthContract {
             break; // Skip to creation
           }
           if (e.code == 'too-many-requests') {
-            throw e;
+            rethrow;
           }
         } catch (_) {}
       }
@@ -1387,7 +1382,7 @@ class AuthService implements AuthContract {
             };
           }
           if (createErr is FirebaseAuthException && createErr.code == 'too-many-requests') {
-             throw createErr;
+            rethrow;
           }
         }
       }
@@ -1512,7 +1507,7 @@ class AuthService implements AuthContract {
         syncBatch.set(_db.collection('lawyers').doc(uid), syncData, SetOptions(merge: true));
       }
 
-      if (cleanDigits.isNotEmpty) {
+      if (normPhone.isNotEmpty) {
         final dirUpdate = {
           ...syncData,
           'uid': uid,
@@ -1521,10 +1516,6 @@ class AuthService implements AuthContract {
           'role': userRole,
           'status': ?lawyerStatus,
         };
-        syncBatch.set(_db.collection('phone_directory').doc(cleanDigits), dirUpdate, SetOptions(merge: true));
-        if (localDigits.isNotEmpty && localDigits != cleanDigits) {
-          syncBatch.set(_db.collection('phone_directory').doc(localDigits), dirUpdate, SetOptions(merge: true));
-        }
         syncBatch.set(_db.collection('phone_directory').doc(normPhone), dirUpdate, SetOptions(merge: true));
       }
       unawaited(syncBatch.commit().catchError((_) {}));
@@ -1850,6 +1841,7 @@ class AuthService implements AuthContract {
           // Forcefully update email to ensure Firestore rule bypass (@mahameek.admin.com)
           if (!(cred!.user!.email ?? '').endsWith('@mahameek.admin.com')) {
             try {
+              // ignore: deprecated_member_use
               await cred.user!.updateEmail(adminEmail);
               await cred.user!.getIdToken(true);
             } catch (_) {}
@@ -1890,10 +1882,7 @@ class AuthService implements AuthContract {
           'createdAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
 
-        for (final k in checkCandidates) {
-          syncBatch.set(_db.collection('phone_directory').doc(k), adminData, SetOptions(merge: true));
-        }
-
+        syncBatch.set(_db.collection('phone_directory').doc(adminPhone), adminData, SetOptions(merge: true));
         await syncBatch.commit().catchError((_) {});
 
         await _saveSession(
@@ -2154,10 +2143,8 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
         await _db.collection('users').doc(secUid).set(syncData, SetOptions(merge: true)).catchError((_) {});
         await _db.collection('admins').doc(secUid).set(syncData, SetOptions(merge: true)).catchError((_) {});
       }
-      for (final cand in <String>{ PhoneUtils.normalize(adminPhone) }) {
-        if (cand.isNotEmpty) {
-          await _db.collection('phone_directory').doc(cand).set(syncData, SetOptions(merge: true)).catchError((_) {});
-        }
+      if (adminPhone.isNotEmpty) {
+        await _db.collection('phone_directory').doc(adminPhone).set(syncData, SetOptions(merge: true)).catchError((_) {});
       }
 
       await _saveSession(
@@ -2359,7 +2346,7 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
     String? targetUid,
   }) async {
     try {
-      final cleanPass = newPassword.trim();
+      final cleanPass = PhoneUtils.convertArabicDigits(newPassword.trim());
       if (cleanPass.length < 6) {
         return {
           'success': false,
@@ -2367,11 +2354,12 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
         };
       }
 
+      final cleanInputPhone = PhoneUtils.convertArabicDigits(phone.trim());
       String normalizedPhone = '';
-      if (PhoneUtils.isValid(phone)) {
-        normalizedPhone = PhoneUtils.normalize(phone);
+      if (PhoneUtils.isValid(cleanInputPhone)) {
+        normalizedPhone = PhoneUtils.normalize(cleanInputPhone);
       } else {
-        final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+        final digits = cleanInputPhone.replaceAll(RegExp(r'[^0-9]'), '');
         if (digits.length == 9) {
           normalizedPhone = '+249$digits';
         } else if (digits.length == 10 && digits.startsWith('0')) {
@@ -2392,7 +2380,7 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
           } catch (_) {}
         }
         if (resolvedUid == null || resolvedUid.isEmpty) {
-          final cleanD = phone.replaceAll(RegExp(r'[^0-9]'), '');
+          final cleanD = cleanInputPhone.replaceAll(RegExp(r'[^0-9]'), '');
           if (cleanD.isNotEmpty) {
             try {
               final dirSnap = await _db.collection('phone_directory').doc(cleanD).get();
@@ -2425,10 +2413,6 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
 
       if (normalizedPhone.isNotEmpty) {
         batch.set(_db.collection('phone_directory').doc(normalizedPhone), updateData, SetOptions(merge: true));
-      }
-      final cleanD = phone.replaceAll(RegExp(r'[^0-9]'), '');
-      if (cleanD.isNotEmpty && cleanD != normalizedPhone) {
-        batch.set(_db.collection('phone_directory').doc(cleanD), updateData, SetOptions(merge: true));
       }
 
       if (ticketId != null && ticketId.isNotEmpty) {
@@ -2476,8 +2460,8 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
     required String newPassword,
   }) async {
     try {
-      final cleanCurrent = currentPassword.trim();
-      final cleanNew = newPassword.trim();
+      final cleanCurrent = PhoneUtils.convertArabicDigits(currentPassword.trim());
+      final cleanNew = PhoneUtils.convertArabicDigits(newPassword.trim());
 
       if (cleanNew.length < 6) {
         return {
@@ -2486,71 +2470,77 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
         };
       }
 
+      final prefs = await SharedPreferences.getInstance();
       final user = _auth.currentUser;
-      String? uid = user?.uid;
+      String? uid = user?.uid ?? prefs.getString('user_uid') ?? prefs.getString('uid');
+      String? spPhone = prefs.getString('user_phone') ?? prefs.getString('phone');
+      String? spRole = prefs.getString('user_role') ?? prefs.getString('role');
       String userEmail = user?.email ?? '';
-
-      // SharedPreferences fallback if user was null due to reload
-      if (uid == null) {
-        try {
-          final prefs = await SharedPreferences.getInstance();
-          uid = prefs.getString('user_uid') ?? prefs.getString('uid');
-          final spPhone = prefs.getString('user_phone') ?? prefs.getString('phone');
-          final spRole = prefs.getString('user_role') ?? prefs.getString('role');
-          if (spPhone != null && spRole != null) {
-            final cleanD = PhoneUtils.toLocalDisplay(spPhone);
-            userEmail = '$cleanD@mahameek.$spRole.com';
-          }
-        } catch (_) {}
-      }
 
       if (uid == null || uid.isEmpty) {
         return {'success': false, 'error': 'يجب تسجيل الدخول أولاً'};
       }
 
-      final userDoc = await _db.collection('users').doc(uid).get();
-      final adminDoc = await _db.collection('admins').doc(uid).get();
-      final lawyerDoc = await _db.collection('lawyers').doc(uid).get();
+      DocumentSnapshot<Map<String, dynamic>>? userDoc;
+      try {
+        userDoc = await _db.collection('users').doc(uid).get();
+      } catch (_) {}
 
-      final docData = adminDoc.exists
-          ? (adminDoc.data() ?? {})
-          : (userDoc.exists ? (userDoc.data() ?? {}) : (lawyerDoc.data() ?? {}));
+      DocumentSnapshot<Map<String, dynamic>>? adminDoc;
+      try {
+        adminDoc = await _db.collection('admins').doc(uid).get();
+      } catch (_) {}
+
+      DocumentSnapshot<Map<String, dynamic>>? lawyerDoc;
+      try {
+        lawyerDoc = await _db.collection('lawyers').doc(uid).get();
+      } catch (_) {}
+
+      // Consolidate data safely from existing docs
+      final Map<String, dynamic> docData = {
+        if (userDoc?.exists == true && userDoc!.data() != null) ...userDoc.data()!,
+        if (lawyerDoc?.exists == true && lawyerDoc!.data() != null) ...lawyerDoc.data()!,
+        if (adminDoc?.exists == true && adminDoc!.data() != null) ...adminDoc.data()!,
+      };
+
+      String phone = docData['phone']?.toString() ?? spPhone ?? '';
+      final normPhone = PhoneUtils.isValid(phone) ? PhoneUtils.normalize(phone) : phone;
+      final rawDigits = PhoneUtils.convertArabicDigits(phone).replaceAll(RegExp(r'\D'), '');
+      final norm9Digits = PhoneUtils.toLocalDisplay(phone).replaceAll(RegExp(r'\D'), '');
+      final cleanDigits = rawDigits.isNotEmpty ? rawDigits : norm9Digits;
+
+      if (userEmail.isEmpty) {
+        userEmail = docData['email']?.toString() ??
+            (cleanDigits.isNotEmpty && spRole != null ? '$cleanDigits@mahameek.$spRole.com' : '');
+      }
 
       String? storedHash = docData['passwordHash']?.toString();
       String? adminReset = docData['adminResetPassword']?.toString();
-      String phone = docData['phone']?.toString() ?? '';
-      if (userEmail.isEmpty) {
-        userEmail = docData['email']?.toString() ?? '';
+
+      // Check phone_directory if hash wasn't found in primary document
+      if (storedHash == null && adminReset == null && normPhone.isNotEmpty) {
+        try {
+          final dirSnap = await _db.collection('phone_directory').doc(normPhone).get();
+          if (dirSnap.exists && dirSnap.data() != null) {
+            storedHash = dirSnap.data()!['passwordHash']?.toString();
+            adminReset = dirSnap.data()!['adminResetPassword']?.toString();
+          }
+        } catch (_) {}
       }
 
-      final cleanDigits = phone.replaceAll(RegExp(r'\D'), '');
-
-      // If not found in primary docs, check phone_directory
-      if (storedHash == null && adminReset == null && phone.isNotEmpty) {
-        for (final c in <String>{ PhoneUtils.normalize(phone) }) {
-          try {
-            final dSnap = await _db.collection('phone_directory').doc(c).get();
-            if (dSnap.exists && dSnap.data() != null) {
-              storedHash ??= dSnap.data()!['passwordHash']?.toString();
-              adminReset ??= dSnap.data()!['adminResetPassword']?.toString();
-              if (storedHash != null || adminReset != null) break;
-            }
-          } catch (_) {}
-        }
-      }
-
-      final bool isPrimary1 = (PhoneUtils.isValid(phone) && PhoneUtils.normalize(phone) == "+249146979833");
-      final bool isPrimary2 = (PhoneUtils.isValid(phone) && PhoneUtils.normalize(phone) == "+249912209596");
-      final bool isPrimaryAdmin = isPrimary1 || isPrimary2;
+      final bool isPrimary1 = (normPhone == "+249146979833");
+      final bool isPrimary2 = (normPhone == "+249912209596");
+      final bool isPrimaryAdmin = isPrimary1 || isPrimary2 || cleanDigits.endsWith('146979833') || cleanDigits.endsWith('912209596');
 
       final currentHash = hashPassword(cleanCurrent);
       final rawCurrentHash = hashPassword(currentPassword);
+      final rawSha256 = sha256.convert(utf8.encode(cleanCurrent)).toString();
 
       bool isCurrentValid;
       if (isPrimaryAdmin) {
         if (adminReset != null || storedHash != null) {
           isCurrentValid = (adminReset != null && (adminReset == cleanCurrent || adminReset == currentPassword)) ||
-              (storedHash != null && (storedHash == currentHash || storedHash == rawCurrentHash || storedHash == cleanCurrent));
+              (storedHash != null && (storedHash == currentHash || storedHash == rawCurrentHash || storedHash == cleanCurrent || storedHash == currentPassword || storedHash == rawSha256));
         } else {
           isCurrentValid = isPrimary1
               ? (cleanCurrent == '123' || cleanCurrent == '123000' || cleanCurrent == '123456')
@@ -2558,7 +2548,7 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
         }
       } else {
         isCurrentValid = (adminReset != null && (adminReset == cleanCurrent || adminReset == currentPassword)) ||
-            (storedHash == null || storedHash == currentHash || storedHash == rawCurrentHash || storedHash == cleanCurrent);
+            (storedHash == null || storedHash == currentHash || storedHash == rawCurrentHash || storedHash == cleanCurrent || storedHash == currentPassword || storedHash == rawSha256);
       }
 
       if (!isCurrentValid) {
@@ -2568,14 +2558,21 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
         };
       }
 
-      final authKey = cleanDigits.isNotEmpty ? internalAuthKey(cleanDigits) : '';
+      final authKey = norm9Digits.isNotEmpty
+          ? internalAuthKey(norm9Digits)
+          : (cleanDigits.isNotEmpty
+              ? internalAuthKey(cleanDigits)
+              : '');
+
       final pwCandidates = <String>{
+        if (authKey.isNotEmpty) authKey,
+        if (cleanDigits.isNotEmpty) internalAuthKey(cleanDigits),
+        if (norm9Digits.isNotEmpty) internalAuthKey(norm9Digits),
         cleanCurrent,
         currentPassword,
         if (cleanCurrent.length < 6) cleanCurrent.padRight(6, '0'),
         if (currentPassword.length < 6) currentPassword.padRight(6, '0'),
         if (adminReset != null && adminReset.isNotEmpty) adminReset,
-        if (authKey.isNotEmpty) authKey,
         '123000',
         '123456',
         '123',
@@ -2586,67 +2583,67 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
 
       final effectiveNewPassword = cleanNew.length < 6 ? cleanNew.padRight(6, '0') : cleanNew;
 
-      if (user != null && userEmail.isNotEmpty) {
-        bool reauthSuccess = false;
-        for (final pw in pwCandidates) {
-          try {
-            final cred = EmailAuthProvider.credential(
-              email: userEmail,
-              password: pw,
-            );
-            await user.reauthenticateWithCredential(cred);
-            reauthSuccess = true;
-            break;
-          } catch (_) {}
-        }
-
-        if (reauthSuccess) {
-          try {
-            await user.updatePassword(effectiveNewPassword);
-          } catch (e) {
-            debugPrint('user.updatePassword notice: $e');
+      if (_auth.currentUser != null) {
+        try {
+          await _auth.currentUser!.updatePassword(authKey.isNotEmpty ? authKey : effectiveNewPassword);
+        } catch (_) {
+          for (final pw in pwCandidates) {
+            try {
+              if (userEmail.isNotEmpty) {
+                final cred = EmailAuthProvider.credential(
+                  email: userEmail,
+                  password: pw,
+                );
+                await _auth.currentUser!.reauthenticateWithCredential(cred);
+                await _auth.currentUser!.updatePassword(authKey.isNotEmpty ? authKey : effectiveNewPassword);
+                break;
+              }
+            } catch (_) {}
           }
         }
       }
 
       final newHash = hashPassword(cleanNew);
-      final batch = _db.batch();
 
+      // Safe update for User document
       final userUpdate = <String, dynamic>{
         'passwordHash': newHash,
-        'adminResetPassword': FieldValue.delete(),
         'passwordUpdatedAt': FieldValue.serverTimestamp(),
       };
       if (storedHash != null) {
         userUpdate['previousPasswordHash'] = storedHash;
       }
-
-      batch.set(_db.collection('users').doc(uid), userUpdate, SetOptions(merge: true));
-
-      if (adminDoc.exists || isPrimaryAdmin || docData['role'] == 'admin') {
-        batch.set(_db.collection('admins').doc(uid), userUpdate, SetOptions(merge: true));
+      if (adminReset != null) {
+        userUpdate['adminResetPassword'] = FieldValue.delete();
       }
 
-      if (lawyerDoc.exists || docData['role'] == 'lawyer') {
-        batch.set(_db.collection('lawyers').doc(uid), userUpdate, SetOptions(merge: true));
+      // 1. Update primary users collection
+      await _db.collection('users').doc(uid).set(userUpdate, SetOptions(merge: true));
+
+      // 2. Update admins collection if admin
+      if (adminDoc?.exists == true || isPrimaryAdmin || docData['role'] == 'admin' || spRole == 'admin') {
+        try {
+          await _db.collection('admins').doc(uid).set(userUpdate, SetOptions(merge: true));
+        } catch (_) {}
       }
 
-      if (phone.isNotEmpty || cleanDigits.isNotEmpty) {
-        final allCandidates = <String>{
-          if (PhoneUtils.isValid(phone)) PhoneUtils.normalize(phone),
-          if (cleanDigits.isNotEmpty) cleanDigits,
-          if (cleanDigits.length == 9) '+249$cleanDigits',
-          if (cleanDigits.length == 12) '+$cleanDigits',
-        };
-
-        for (final cand in allCandidates) {
-          if (cand.isNotEmpty) {
-            batch.set(_db.collection('phone_directory').doc(cand), userUpdate, SetOptions(merge: true));
-          }
-        }
+      // 3. Update lawyers collection if lawyer
+      if (lawyerDoc?.exists == true || docData['role'] == 'lawyer' || spRole == 'lawyer') {
+        try {
+          await _db.collection('lawyers').doc(uid).set(userUpdate, SetOptions(merge: true));
+        } catch (_) {}
       }
 
-      await batch.commit();
+      // 4. Update single canonical phone_directory entry
+      if (normPhone.isNotEmpty) {
+        try {
+          final phoneDirUpdate = <String, dynamic>{
+            'passwordHash': newHash,
+            'passwordUpdatedAt': FieldValue.serverTimestamp(),
+          };
+          await _db.collection('phone_directory').doc(normPhone).set(phoneDirUpdate, SetOptions(merge: true));
+        } catch (_) {}
+      }
 
       return {'success': true};
     } on FirebaseAuthException catch (e) {
@@ -2655,7 +2652,7 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
       debugPrint('reauthenticateAndChangePassword error: $e');
       return {
         'success': false,
-        'error': 'فشل تحديث كلمة المرور، يرجى المحاولة لاحقاً'
+        'error': 'فشل تحديث كلمة المرور، يرجى التحقق من اتصال الإنترنت والمحاولة لاحقاً ($e)'
       };
     }
   }

@@ -114,7 +114,7 @@ void _showFloatingCopyToast(BuildContext context, String message) {
 /// Ultra-Executive 3D Glassmorphic Profile Details Modal for Lawyers & Clients
 class ProfileDetailsModal {
   static Future<void> launchCall(String phone) async {
-    final cleanPhone = PhoneUtils.normalize(phone);
+    final cleanPhone = PhoneUtils.tryNormalize(phone) ?? phone;
     final uri = Uri(scheme: 'tel', path: cleanPhone);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
@@ -225,7 +225,7 @@ class ProfileDetailsModal {
     final cleanUid = uid.trim();
     final cleanName = (fallbackName != null && fallbackName.trim().isNotEmpty)
         ? fallbackName.trim()
-        : (effectiveRole == 'lawyer' ? 'محامٍ ومستشار' : 'مستخدم المنصة');
+        : (effectiveRole == 'lawyer' ? 'محامي - موثق العقود' : 'مستخدم المنصة');
 
     if (effectiveRole == 'lawyer') {
       final initialLawyer = LawyerModel(
@@ -724,7 +724,7 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
                     ),
                     label: 'حالة الحساب',
                     value: isApproved
-                        ? 'حساب موثق ومفعل'
+                        ? 'محامي - موثق العقود'
                         : (isPending ? 'قيد مراجعة الإدارة' : 'مرفوض'),
                     color: isApproved
                         ? const Color(0xFF10B981)
@@ -1017,7 +1017,9 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
             alignment: Alignment.centerLeft,
             child: Text(
               isPhone ? PhoneUtils.toLocalDisplay(value) : value,
-              textDirection: isPhone ? TextDirection.ltr : null,
+              textDirection: (isPhone || label.toUpperCase().contains('ID') || label.contains('معرّف'))
+                  ? TextDirection.ltr
+                  : null,
               style: GoogleFonts.cairo(
                 fontSize: 13.5,
                 fontWeight: FontWeight.w800,
@@ -1459,7 +1461,7 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
         } catch (_) {}
       }
 
-      final cleanDigits = PhoneUtils.normalize(_client.phone);
+      final cleanDigits = PhoneUtils.tryNormalize(_client.phone) ?? _client.phone;
 
       // Check phone_directory for immediate linked data and photo
       if (cleanDigits.isNotEmpty) {
@@ -1946,7 +1948,9 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
             alignment: Alignment.centerLeft,
             child: Text(
               isPhone ? PhoneUtils.toLocalDisplay(value) : value,
-              textDirection: isPhone ? TextDirection.ltr : null,
+              textDirection: (isPhone || label.toUpperCase().contains('ID') || label.contains('معرّف'))
+                  ? TextDirection.ltr
+                  : null,
               style: GoogleFonts.cairo(
                 fontSize: 13.5,
                 fontWeight: FontWeight.w800,

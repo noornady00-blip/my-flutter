@@ -14,6 +14,7 @@ import '../main_navigation_screen.dart';
 import '../../../network/auth_service.dart';
 import '../../custom_widgets/app_drawer.dart';
 import '../../../core/utils/search_utils.dart';
+import '../../../core/utils/phone_utils.dart';
 
 class CitiesScreen extends StatefulWidget {
   final String? initialCity;
@@ -59,7 +60,7 @@ class _CitiesScreenState extends State<CitiesScreen> {
     {'name': 'الفاشر', 'state': 'ولاية شمال دارفور', 'desc': 'حاضرة دارفور التاريخية'},
     {'name': 'نيالا', 'state': 'ولاية جنوب دارفور', 'desc': 'لؤلؤة جنوب دارفور'},
     {'name': 'دنقلا', 'state': 'الولاية الشمالية', 'desc': 'أرض الحضارة النوبية والتاريخ'},
-    {'name': 'جميع المدن', 'state': 'كافة ولايات ومدن السودان', 'desc': 'استعراض كافة المحامين المعتمدين'},
+    {'name': 'جميع المدن', 'state': 'كافة ولايات ومدن السودان', 'desc': 'استعراض كافة المحامين المعتمدين وباقي المدن'},
   ];
 
   // Filtered cities based on search query
@@ -983,7 +984,9 @@ class _CitiesScreenState extends State<CitiesScreen> {
                   child: TextField(
                     controller: oldPassCtrl,
                     obscureText: obscureOld,
-                    textDirection: TextDirection.rtl,
+                    enableSuggestions: false,
+                    autocorrect: false,
+                    keyboardType: TextInputType.visiblePassword,
                     style: GoogleFonts.cairo(fontSize: 14),
                     decoration: InputDecoration(
                       hintText: 'كلمة المرور الحالية',
@@ -1014,7 +1017,9 @@ class _CitiesScreenState extends State<CitiesScreen> {
                   child: TextField(
                     controller: newPassCtrl,
                     obscureText: obscureNew,
-                    textDirection: TextDirection.rtl,
+                    enableSuggestions: false,
+                    autocorrect: false,
+                    keyboardType: TextInputType.visiblePassword,
                     style: GoogleFonts.cairo(fontSize: 14),
                     decoration: InputDecoration(
                       hintText: 'كلمة المرور الجديدة (6 خانات على الأقل)',
@@ -1045,7 +1050,9 @@ class _CitiesScreenState extends State<CitiesScreen> {
                   child: TextField(
                     controller: confirmPassCtrl,
                     obscureText: obscureConfirm,
-                    textDirection: TextDirection.rtl,
+                    enableSuggestions: false,
+                    autocorrect: false,
+                    keyboardType: TextInputType.visiblePassword,
                     style: GoogleFonts.cairo(fontSize: 14),
                     decoration: InputDecoration(
                       hintText: 'تأكيد كلمة المرور الجديدة',
@@ -1077,15 +1084,19 @@ class _CitiesScreenState extends State<CitiesScreen> {
                   onPressed: loading
                       ? null
                       : () async {
-                          if (oldPassCtrl.text.trim().isEmpty) {
+                          final oldP = PhoneUtils.convertArabicDigits(oldPassCtrl.text.trim());
+                          final newP = PhoneUtils.convertArabicDigits(newPassCtrl.text.trim());
+                          final confP = PhoneUtils.convertArabicDigits(confirmPassCtrl.text.trim());
+
+                          if (oldP.isEmpty) {
                             setModalState(() => error = 'يرجى إدخال كلمة المرور الحالية');
                             return;
                           }
-                          if (newPassCtrl.text.trim().length < 6) {
+                          if (newP.length < 6) {
                             setModalState(() => error = 'كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل');
                             return;
                           }
-                          if (newPassCtrl.text.trim() != confirmPassCtrl.text.trim()) {
+                          if (newP != confP) {
                             setModalState(() => error = 'كلمة المرور وتأكيدها غير متطابقين');
                             return;
                           }
@@ -1098,8 +1109,8 @@ class _CitiesScreenState extends State<CitiesScreen> {
                           Map<String, dynamic> res;
                           try {
                             res = await AuthService().reauthenticateAndChangePassword(
-                              currentPassword: oldPassCtrl.text.trim(),
-                              newPassword: newPassCtrl.text.trim(),
+                              currentPassword: oldP,
+                              newPassword: newP,
                             );
                           } catch (e) {
                             res = {'success': false, 'error': 'حدث خطأ غير متوقع، يرجى المحاولة مجدداً'};

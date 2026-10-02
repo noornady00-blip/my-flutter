@@ -666,15 +666,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onPressed: loading
                       ? null
                       : () async {
-                          if (oldPassCtrl.text.trim().isEmpty) {
+                          final curP = PhoneUtils.convertArabicDigits(oldPassCtrl.text.trim());
+                          final newP = PhoneUtils.convertArabicDigits(newPassCtrl.text.trim());
+                          final confP = PhoneUtils.convertArabicDigits(confirmPassCtrl.text.trim());
+
+                          if (curP.isEmpty) {
                             setModalState(() => error = 'يرجى إدخال كلمة المرور الحالية');
                             return;
                           }
-                          if (newPassCtrl.text.trim().length < 6) {
+                          if (newP.length < 6) {
                             setModalState(() => error = 'كلمة المرور يجب أن تكون 6 أحرف على الأقل');
                             return;
                           }
-                          if (newPassCtrl.text.trim() != confirmPassCtrl.text.trim()) {
+                          if (newP != confP) {
                             setModalState(() => error = 'كلمة المرور غير متطابقة');
                             return;
                           }
@@ -687,8 +691,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           Map<String, dynamic> res;
                           try {
                             res = await _authService.reauthenticateAndChangePassword(
-                              currentPassword: PhoneUtils.convertArabicDigits(oldPassCtrl.text.trim()),
-                              newPassword: PhoneUtils.convertArabicDigits(newPassCtrl.text.trim()),
+                              currentPassword: curP,
+                              newPassword: newP,
                             );
                           } catch (e) {
                             res = {'success': false, 'error': 'حدث خطأ غير متوقع، يرجى المحاولة مجدداً'};
@@ -857,7 +861,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              'منصة متطورة تربط المواطنين والمؤسسات بأكفأ المحامين والمستشارين القانونيين في كافة ولايات ومدن السودان.',
+              'منصة متطورة تربط المواطنين والمؤسسات بأكفأ المحامين وموثقي العقود في كافة ولايات ومدن السودان.',
               style: GoogleFonts.cairo(fontSize: 13, color: const Color(0xFF64748B), height: 1.5),
               textAlign: TextAlign.center,
             ),
@@ -1575,7 +1579,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             icon: Icons.shield_rounded,
                             iconColor: const Color(0xFF10B981),
                             title: 'حالة العضوية',
-                            value: _userRole == 'lawyer' ? 'نشطة وموثقة' : 'حساب نشط',
+                            value: _userRole == 'lawyer' ? 'محامي - موثق العقود' : 'حساب نشط',
                             valueColor: const Color(0xFF059669),
                           ),
                         ),
@@ -1913,7 +1917,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 TextField(
                   controller: passCtrl,
                   obscureText: obscurePass,
-                  textDirection: TextDirection.rtl,
+                  enableSuggestions: false,
+                  autocorrect: false,
+                  keyboardType: TextInputType.visiblePassword,
                   style: GoogleFonts.cairo(fontSize: 14, color: const Color(0xFF0B2A5B), fontWeight: FontWeight.w600),
                   decoration: InputDecoration(
                     hintText: 'أدخل كلمة المرور لتأكيد الحذف',
@@ -2007,7 +2013,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                                 final nav = Navigator.of(context);
                                 final dlgNav = Navigator.of(ctx);
-                                final res = await _authService.deleteAccount(currentPassword: passCtrl.text);
+                                final res = await _authService.deleteAccount(
+                                  currentPassword: PhoneUtils.convertArabicDigits(passCtrl.text.trim()),
+                                );
 
                                 if (!mounted) return;
                                 if (res['success'] == true) {
@@ -2083,7 +2091,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return TextField(
       controller: controller,
       obscureText: obscure,
-      textDirection: TextDirection.rtl,
+      enableSuggestions: false,
+      autocorrect: false,
+      keyboardType: TextInputType.visiblePassword,
       style: GoogleFonts.cairo(color: const Color(0xFF0B2A5B), fontSize: 14),
       decoration: InputDecoration(
         hintText: hint,

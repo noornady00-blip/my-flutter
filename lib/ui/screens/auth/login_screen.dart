@@ -124,7 +124,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     final res = await _authService.signInWithRole(
       phone: _identifierController.text.trim(),
-      password: _passController.text,
+      password: PhoneUtils.convertArabicDigits(_passController.text.trim()),
       expectedPortal: _selectedRole, // 'client' or 'lawyer'
     );
 
@@ -456,7 +456,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       ? null
                       : () async {
                           setModalState(() => modalError = null);
-                          final phone = resetCtrl.text.trim();
+                          final rawPhone = resetCtrl.text.trim();
+                          final phone = PhoneUtils.convertArabicDigits(rawPhone);
                           final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
                           if (digits.length < 9 || digits.length > 15) {
                             setModalState(() {
@@ -764,7 +765,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       TextFormField(
                         controller: _passController,
                         obscureText: _obscure,
-                        textDirection: TextDirection.rtl,
+                        keyboardType: TextInputType.visiblePassword,
+                        autocorrect: false,
+                        enableSuggestions: false,
                         style: GoogleFonts.cairo(fontSize: 14, color: const Color(0xFF0B2A5B), fontWeight: FontWeight.w600),
                         decoration: InputDecoration(
                           hintText: 'أدخل كلمة المرور',
@@ -803,7 +806,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                         validator: (v) {
-                          if (v == null || v.length < 3) {
+                          final pass = PhoneUtils.convertArabicDigits(v?.trim() ?? '');
+                          if (pass.length < 3) {
                             return 'يرجى إدخال كلمة المرور';
                           }
                           return null;

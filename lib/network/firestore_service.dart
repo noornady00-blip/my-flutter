@@ -227,14 +227,8 @@ class FirestoreService implements DatabaseContract {
           lDoc.data()?['phone']?.toString() ??
           aDoc.data()?['phone']?.toString();
       if (phone != null && phone.isNotEmpty) {
-        if (PhoneUtils.isValid(phone)) {
-          final norm = PhoneUtils.normalize(phone);
-          await _db.collection('phone_directory').doc(norm).set({'status': status}, SetOptions(merge: true));
-        }
-        final clean = phone.replaceAll(RegExp(r'[^0-9]'), '');
-        if (clean.isNotEmpty) {
-          await _db.collection('phone_directory').doc(clean).set({'status': status}, SetOptions(merge: true));
-        }
+        final norm = PhoneUtils.isValid(phone) ? PhoneUtils.normalize(phone) : (phone.startsWith('+') ? phone : '+249$phone');
+        await _db.collection('phone_directory').doc(norm).set({'status': status}, SetOptions(merge: true));
       }
     } catch (_) {}
   }
@@ -285,14 +279,18 @@ class FirestoreService implements DatabaseContract {
       batch.delete(_db.collection('users').doc(uid));
       batch.delete(_db.collection('lawyer_requests').doc(uid));
 
-      // 2. Free up phone_directory
+      // 2. Free up ALL phone_directory variants
       if (effectivePhone != null && effectivePhone.isNotEmpty) {
-        final unified = PhoneUtils.normalize(effectivePhone);
-        batch.delete(_db.collection('phone_directory').doc(unified));
-
-
-
-
+        final allDigits = effectivePhone.replaceAll(RegExp(r'[^0-9]'), '');
+        final raw9 = allDigits.length >= 9 ? allDigits.substring(allDigits.length - 9) : allDigits;
+        final candidates = <String>{
+          if (raw9.length == 9) ...['+249$raw9', '249$raw9', '0$raw9', raw9],
+          if (allDigits.isNotEmpty) allDigits,
+          effectivePhone.trim(),
+        };
+        for (final c in candidates) {
+          if (c.isNotEmpty) batch.delete(_db.collection('phone_directory').doc(c));
+        }
       }
 
       await batch.commit();
@@ -327,21 +325,25 @@ class FirestoreService implements DatabaseContract {
       final accountId = lawyerDoc.data()?['accountId']?.toString() ?? userDoc.data()?['accountId']?.toString();
 
       final batch = _db.batch();
-      batch.delete(_db.collection('lawyers').doc(uid));
-      batch.delete(_db.collection('users').doc(uid));
-      batch.delete(_db.collection('lawyer_requests').doc(uid));
+      for (final col in ['lawyers', 'users', 'lawyer_requests',
+          'admin_fcm_tokens', 'admin_tokens', 'admin_notifications']) {
+        batch.delete(_db.collection(col).doc(uid));
+      }
       if (accountId != null && accountId.isNotEmpty) {
         batch.delete(_db.collection('account_ids').doc(accountId));
       }
 
+      // Delete ALL phone_directory variants
       if (effectivePhone != null && effectivePhone.isNotEmpty) {
-        if (PhoneUtils.isValid(effectivePhone)) {
-          final unified = PhoneUtils.normalize(effectivePhone);
-          batch.delete(_db.collection('phone_directory').doc(unified));
-        }
-        final clean = effectivePhone.replaceAll(RegExp(r'[^0-9]'), '');
-        if (clean.isNotEmpty) {
-          batch.delete(_db.collection('phone_directory').doc(clean));
+        final allDigits = effectivePhone.replaceAll(RegExp(r'[^0-9]'), '');
+        final raw9 = allDigits.length >= 9 ? allDigits.substring(allDigits.length - 9) : allDigits;
+        final candidates = <String>{
+          if (raw9.length == 9) ...['+249$raw9', '249$raw9', '0$raw9', raw9],
+          if (allDigits.isNotEmpty) allDigits,
+          effectivePhone.trim(),
+        };
+        for (final c in candidates) {
+          if (c.isNotEmpty) batch.delete(_db.collection('phone_directory').doc(c));
         }
       }
 
@@ -358,16 +360,14 @@ class FirestoreService implements DatabaseContract {
       } catch (_) {}
 
       // Delete user account permanently from Firebase Authentication
-      if (effectivePhone != null && effectivePhone.isNotEmpty) {
-        try {
-          await AuthService().deleteUserAuthAccount(
-            phone: effectivePhone,
-            role: 'lawyer',
-            uid: uid,
-          );
-        } catch (authErr) {
-          debugPrint('[FirestoreService] deleteUserAuthAccount notice: $authErr');
-        }
+      try {
+        await AuthService().deleteUserAuthAccount(
+          phone: effectivePhone ?? '',
+          role: 'lawyer',
+          uid: uid,
+        );
+      } catch (authErr) {
+        debugPrint('[FirestoreService] deleteUserAuthAccount notice: $authErr');
       }
 
       inMemoryApprovedLawyers = null;
@@ -539,30 +539,48 @@ class FirestoreService implements DatabaseContract {
       final phone = userDoc.data()?['phone']?.toString();
       final lawyerDoc = await _db.collection('lawyers').doc(uid).get();
       final lawyerPhone = lawyerDoc.data()?['phone']?.toString();
-      final effectivePhone = phone ?? lawyerPhone;
-      final accountId = userDoc.data()?['accountId']?.toString() ?? lawyerDoc.data()?['accountId']?.toString();
+      final adminsDoc = await _db.collection('admins').doc(uid).get();
+      final adminPhone = adminsDoc.data()?['phone']?.toString();
+      final effectivePhone = phone ?? lawyerPhone ?? adminPhone;
+      final accountId = userDoc.data()?['accountId']?.toString()
+          ?? lawyerDoc.data()?['accountId']?.toString()
+          ?? adminsDoc.data()?['accountId']?.toString();
 
       final batch = _db.batch();
-      batch.delete(_db.collection('users').doc(uid));
-      batch.delete(_db.collection('lawyers').doc(uid));
-      batch.delete(_db.collection('lawyer_requests').doc(uid));
+      // Delete from all primary collections
+      for (final col in ['users', 'lawyers', 'lawyer_requests', 'admins',
+          'admin_fcm_tokens', 'admin_tokens', 'admin_notifications']) {
+        batch.delete(_db.collection(col).doc(uid));
+      }
       if (accountId != null && accountId.isNotEmpty) {
         batch.delete(_db.collection('account_ids').doc(accountId));
       }
 
+      // Delete ALL phone_directory variants to prevent orphaned records
       if (effectivePhone != null && effectivePhone.isNotEmpty) {
-        if (PhoneUtils.isValid(effectivePhone)) {
-          final unified = PhoneUtils.normalize(effectivePhone);
-          batch.delete(_db.collection('phone_directory').doc(unified));
-        }
-        final clean = effectivePhone.replaceAll(RegExp(r'[^0-9]'), '');
-        if (clean.isNotEmpty) {
-          batch.delete(_db.collection('phone_directory').doc(clean));
+        final allDigits = effectivePhone.replaceAll(RegExp(r'[^0-9]'), '');
+        final raw9 = allDigits.length >= 9 ? allDigits.substring(allDigits.length - 9) : allDigits;
+        // All known storage formats:
+        final phoneCandidates = <String>{
+          if (raw9.length == 9) ...[
+            '+249$raw9',   // normalized form
+            '249$raw9',   // without plus
+            '0$raw9',     // local with zero prefix
+            raw9,         // bare 9 digits
+          ],
+          if (allDigits.isNotEmpty) allDigits, // whatever was stored
+          effectivePhone.trim(),
+        };
+        for (final candidate in phoneCandidates) {
+          if (candidate.isNotEmpty) {
+            batch.delete(_db.collection('phone_directory').doc(candidate));
+          }
         }
       }
 
       await batch.commit();
 
+      // Final safety net: query by uid to catch any remaining entries
       try {
         final dirSnap = await _db
             .collection('phone_directory')
@@ -574,16 +592,14 @@ class FirestoreService implements DatabaseContract {
       } catch (_) {}
 
       // Delete user account permanently from Firebase Authentication
-      if (effectivePhone != null && effectivePhone.isNotEmpty) {
-        try {
-          await AuthService().deleteUserAuthAccount(
-            phone: effectivePhone,
-            role: 'client',
-            uid: uid,
-          );
-        } catch (authErr) {
-          debugPrint('[FirestoreService] deleteUserAuthAccount notice: $authErr');
-        }
+      try {
+        await AuthService().deleteUserAuthAccount(
+          phone: effectivePhone ?? '',
+          role: 'client',
+          uid: uid,
+        );
+      } catch (authErr) {
+        debugPrint('[FirestoreService] deleteUserAuthAccount notice: $authErr');
       }
 
       inMemoryApprovedLawyers = null;

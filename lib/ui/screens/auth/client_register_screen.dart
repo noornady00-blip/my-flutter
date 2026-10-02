@@ -76,7 +76,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
     final res = await _authService.registerClient(
       name: _nameController.text.trim(),
       phone: normalizedPhone,
-      password: _passController.text,
+      password: PhoneUtils.convertArabicDigits(_passController.text.trim()),
     );
     if (!mounted) return;
     setState(() => _loading = false);
@@ -234,6 +234,9 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
                           TextFormField(
                             controller: _passController,
                             obscureText: _obscure,
+                            enableSuggestions: false,
+                            autocorrect: false,
+                            keyboardType: TextInputType.visiblePassword,
                             style: GoogleFonts.cairo(
                               fontSize: 14.5,
                               color: const Color(0xFF0B2A5B),
@@ -250,7 +253,10 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
                                 onPressed: () => setState(() => _obscure = !_obscure),
                               ),
                             ),
-                            validator: (v) => (v == null || v.length < 6) ? 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' : null,
+                            validator: (v) {
+                              final val = PhoneUtils.convertArabicDigits((v ?? '').trim());
+                              return val.length < 6 ? 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' : null;
+                            },
                           ),
                           const SizedBox(height: 18),
 
@@ -260,6 +266,9 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
                           TextFormField(
                             controller: _confirmPassController,
                             obscureText: _obscureConfirm,
+                            enableSuggestions: false,
+                            autocorrect: false,
+                            keyboardType: TextInputType.visiblePassword,
                             style: GoogleFonts.cairo(
                               fontSize: 14.5,
                               color: const Color(0xFF0B2A5B),
@@ -276,7 +285,11 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
                                 onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
                               ),
                             ),
-                            validator: (v) => v != _passController.text ? 'كلمتا المرور غير متطابقتين' : null,
+                            validator: (v) {
+                              final nP = PhoneUtils.convertArabicDigits(_passController.text.trim());
+                              final cP = PhoneUtils.convertArabicDigits((v ?? '').trim());
+                              return cP != nP ? 'كلمتا المرور غير متطابقتين' : null;
+                            },
                           ),
                           if (_error != null) ...[
                             const SizedBox(height: 16),

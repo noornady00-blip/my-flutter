@@ -879,7 +879,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _callOtherParty(String phone) async {
     if (phone.trim().isEmpty) return;
-    final normalized = PhoneUtils.normalize(phone);
+    final normalized = PhoneUtils.tryNormalize(phone) ?? phone;
     final uri = Uri.parse('tel:$normalized');
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);

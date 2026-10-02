@@ -159,6 +159,9 @@ class _AdminPasswordResetsScreenState extends State<AdminPasswordResetsScreen> {
                 TextField(
                   controller: passCtrl,
                   textDirection: TextDirection.ltr,
+                  enableSuggestions: false,
+                  autocorrect: false,
+                  keyboardType: TextInputType.visiblePassword,
                   decoration: InputDecoration(
                     labelText: 'كلمة المرور الجديدة',
                     labelStyle: GoogleFonts.cairo(color: const Color(0xFF64748B), fontSize: 13),
@@ -201,7 +204,7 @@ class _AdminPasswordResetsScreenState extends State<AdminPasswordResetsScreen> {
                         onPressed: isSaving
                             ? null
                             : () async {
-                                final newPass = passCtrl.text.trim();
+                                final newPass = PhoneUtils.convertArabicDigits(passCtrl.text.trim());
                                 if (newPass.length < 6) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(content: Text('كلمة المرور يجب ألا تقل عن 6 أحرف', style: GoogleFonts.cairo()), backgroundColor: const Color(0xFFDC2626)),

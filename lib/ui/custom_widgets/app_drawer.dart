@@ -404,7 +404,9 @@ class _AppDrawerState extends State<AppDrawer> {
               TextField(
                 controller: oldPassCtrl,
                 obscureText: obscureOld,
-                textDirection: TextDirection.rtl,
+                enableSuggestions: false,
+                autocorrect: false,
+                keyboardType: TextInputType.visiblePassword,
                 style: GoogleFonts.cairo(fontSize: 14),
                 decoration: InputDecoration(
                   labelText: 'كلمة المرور الحالية',
@@ -426,7 +428,9 @@ class _AppDrawerState extends State<AppDrawer> {
               TextField(
                 controller: newPassCtrl,
                 obscureText: obscureNew,
-                textDirection: TextDirection.rtl,
+                enableSuggestions: false,
+                autocorrect: false,
+                keyboardType: TextInputType.visiblePassword,
                 style: GoogleFonts.cairo(fontSize: 14),
                 decoration: InputDecoration(
                   labelText: 'كلمة المرور الجديدة (6 أحرف على الأقل)',
@@ -448,7 +452,9 @@ class _AppDrawerState extends State<AppDrawer> {
               TextField(
                 controller: confirmPassCtrl,
                 obscureText: obscureConfirm,
-                textDirection: TextDirection.rtl,
+                enableSuggestions: false,
+                autocorrect: false,
+                keyboardType: TextInputType.visiblePassword,
                 style: GoogleFonts.cairo(fontSize: 14),
                 decoration: InputDecoration(
                   labelText: 'تأكيد كلمة المرور الجديدة',
@@ -756,7 +762,9 @@ class _AppDrawerState extends State<AppDrawer> {
                 TextField(
                   controller: passCtrl,
                   obscureText: obscurePass,
-                  textDirection: TextDirection.rtl,
+                  enableSuggestions: false,
+                  autocorrect: false,
+                  keyboardType: TextInputType.visiblePassword,
                   style: GoogleFonts.cairo(fontSize: 14, color: const Color(0xFF0B2A5B), fontWeight: FontWeight.w600),
                   decoration: InputDecoration(
                     hintText: 'أدخل كلمة المرور لتأكيد الحذف',
@@ -848,7 +856,9 @@ class _AppDrawerState extends State<AppDrawer> {
                                   error = null;
                                 });
 
-                                final res = await AuthService().deleteAccount(currentPassword: passCtrl.text);
+                                final res = await AuthService().deleteAccount(
+                                  currentPassword: PhoneUtils.convertArabicDigits(passCtrl.text.trim()),
+                                );
 
                                 if (!mounted) return;
                                 if (res['success'] == true) {

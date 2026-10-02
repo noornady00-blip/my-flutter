@@ -247,7 +247,6 @@ export const adminCreateAdminAccount = functions.https.onCall(async (data, conte
   const batch = admin.firestore().batch();
   batch.set(admin.firestore().collection("users").doc(uid), adminData);
   batch.set(admin.firestore().collection("phone_directory").doc(normPhone), adminData);
-  batch.set(admin.firestore().collection("phone_directory").doc(digits), adminData);
   await batch.commit();
 
   return { success: true, uid };

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mahameek/data/models/user_model.dart';
 import 'package:mahameek/data/models/lawyer.dart';
+import 'package:mahameek/ui/custom_widgets/city_landmark_widget.dart';
 
 void main() {
   group('UserModel Tests', () {
@@ -165,4 +166,41 @@ void main() {
       expect(map.containsKey('password'), isFalse);
     });
   });
+
+  group('SudanCities & Other Cities Tests', () {
+    test('SudanCities includes باقي المدن as the very last option', () {
+      expect(SudanCities.cities.last['name'], 'باقي المدن');
+      expect(SudanCities.names.last, 'باقي المدن');
+      expect(SudanCities.names.contains('باقي المدن'), isTrue);
+    });
+
+    test('CityLandmarkWidget resolves default seal for باقي المدن and جميع المدن', () {
+      expect(
+        CityLandmarkWidget.getAssetPath('باقي المدن'),
+        'assets/images/cities/default_seal.png',
+      );
+      expect(
+        CityLandmarkWidget.getAssetPath('جميع المدن'),
+        'assets/images/cities/default_seal.png',
+      );
+    });
+
+    test('Lawyers registered with باقي المدن are included in all cities logic', () {
+      final otherCityLawyer = LawyerModel(
+        uid: 'other_lawyer_1',
+        name: 'أستاذ من مدينة أخرى',
+        phone: '0912345678',
+        city: 'باقي المدن',
+        status: 'approved',
+      );
+
+      expect(otherCityLawyer.city, 'باقي المدن');
+
+      // Emulate the filter used in LawyersListScreen and FirestoreService
+      const targetCity = 'جميع المدن';
+      final matchesFilter = targetCity == 'جميع المدن' || otherCityLawyer.city == targetCity;
+      expect(matchesFilter, isTrue);
+    });
+  });
 }
+

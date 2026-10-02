@@ -199,7 +199,7 @@ class _SudanPhoneFormFieldState extends State<SudanPhoneFormField> {
           return 'يرجى إدخال رقم الموبايل';
         }
         if (val.isNotEmpty && val.length != 9) {
-          return 'يجب أن يتكون رقم الموبايل من 9 أرقام بعد الصفر';
+          return 'الرقم يجب أن يكون 9 أرقام فقط بعد الصفر المعروض';
         }
         return null;
       },
@@ -347,9 +347,9 @@ class _SudanPhoneFormFieldState extends State<SudanPhoneFormField> {
                                 const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
                           ),
                           onChanged: (val) {
-                            var cleaned = val;
-                            if (cleaned.startsWith('0')) {
-                              cleaned = cleaned.replaceFirst(RegExp(r'^0+'), '');
+                            // Strip any leading zeros or Arabic zero (٠) the user types
+                            var cleaned = val.replaceFirst(RegExp(r'^[0٠]+'), '');
+                            if (cleaned != val) {
                               widget.controller?.value = TextEditingValue(
                                 text: cleaned,
                                 selection: TextSelection.collapsed(offset: cleaned.length),

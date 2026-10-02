@@ -202,7 +202,7 @@ class _LawyerRegisterScreenState extends State<LawyerRegisterScreen> {
       whatsapp: normalizedWhatsapp,
       city: _selectedCity!,
       specialization: '',
-      password: _passController.text,
+      password: PhoneUtils.convertArabicDigits(_passController.text.trim()),
       photoBase64: _photoBase64,
     );
     if (!mounted) return;
@@ -389,6 +389,9 @@ class _LawyerRegisterScreenState extends State<LawyerRegisterScreen> {
                           TextFormField(
                             controller: _passController,
                             obscureText: _obscure,
+                            keyboardType: TextInputType.visiblePassword,
+                            autocorrect: false,
+                            enableSuggestions: false,
                             style: GoogleFonts.cairo(
                               fontSize: 14.5,
                               color: const Color(0xFF0B2A5B),
@@ -405,7 +408,10 @@ class _LawyerRegisterScreenState extends State<LawyerRegisterScreen> {
                                 onPressed: () => setState(() => _obscure = !_obscure),
                               ),
                             ),
-                            validator: (v) => (v == null || v.length < 6) ? 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' : null,
+                            validator: (v) {
+                              final pass = PhoneUtils.convertArabicDigits(v?.trim() ?? '');
+                              return pass.length < 6 ? 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' : null;
+                            },
                           ),
                           const SizedBox(height: 18),
 
@@ -415,6 +421,9 @@ class _LawyerRegisterScreenState extends State<LawyerRegisterScreen> {
                           TextFormField(
                             controller: _confirmPassController,
                             obscureText: _obscureConfirm,
+                            keyboardType: TextInputType.visiblePassword,
+                            autocorrect: false,
+                            enableSuggestions: false,
                             style: GoogleFonts.cairo(
                               fontSize: 14.5,
                               color: const Color(0xFF0B2A5B),
@@ -431,7 +440,11 @@ class _LawyerRegisterScreenState extends State<LawyerRegisterScreen> {
                                 onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
                               ),
                             ),
-                            validator: (v) => v != _passController.text ? 'كلمتا المرور غير متطابقتين' : null,
+                            validator: (v) {
+                              final pass = PhoneUtils.convertArabicDigits(_passController.text.trim());
+                              final confirm = PhoneUtils.convertArabicDigits(v?.trim() ?? '');
+                              return confirm != pass ? 'كلمتا المرور غير متطابقتين' : null;
+                            },
                           ),
                           if (_error != null) ...[
                             const SizedBox(height: 16),

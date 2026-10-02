@@ -16,6 +16,7 @@ class PhoneUtils {
   }
 
   /// الخطوة 1: الدالة الوحيدة في المشروع لتطبيع الهواتف
+  /// ⚠️ تطرح FormatException إذا كان الرقم غير صالح — استخدم tryNormalize() في واجهة المستخدم
   static String normalize(String input) {
     var res = convertArabicDigits(input.trim());
     res = res.replaceAll(RegExp(r'[^0-9]'), '');
@@ -35,6 +36,32 @@ class PhoneUtils {
     }
 
     return '+249$res';
+  }
+
+  /// نسخة آمنة من normalize() لا تطرح استثناءً أبداً — تُرجع null عند فشل التطبيع
+  /// استخدمها في واجهة المستخدم (build, itemBuilder, إلخ) لتجنب الأعطال
+  static String? tryNormalize(String? input) {
+    if (input == null || input.trim().isEmpty) return null;
+    try {
+      return normalize(input);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// مقارنة آمنة بين رقمين هاتف — لا تطرح استثناءً حتى لو كان أحدهما غير صالح
+  static bool safeMatch(String? a, String? b) {
+    if (a == null || b == null) return false;
+    final na = tryNormalize(a);
+    final nb = tryNormalize(b);
+    if (na != null && nb != null) return na == nb;
+    // Fallback: compare raw digits if normalization fails
+    final ra = convertArabicDigits(a).replaceAll(RegExp(r'[^0-9]'), '');
+    final rb = convertArabicDigits(b).replaceAll(RegExp(r'[^0-9]'), '');
+    if (ra.length >= 9 && rb.length >= 9) {
+      return ra.substring(ra.length - 9) == rb.substring(rb.length - 9);
+    }
+    return ra == rb;
   }
 
   static bool isValid(String input) {

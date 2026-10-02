@@ -667,7 +667,7 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                       name: l.name,
                       photoBase64: l.photoBase64,
                       photoUrl: l.photoUrl,
-                      subtitle: 'محامٍ ومستشار قانوني',
+                      subtitle: 'محامي - موثق العقود',
                     );
                   }
                 },
@@ -705,7 +705,7 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                       ),
                     ),
                     Text(
-                      'محامٍ ومستشار قانوني • ${l.city}',
+                      'محامي - موثق العقود • ${l.city}',
                       style: GoogleFonts.cairo(
                         fontSize: 12,
                         color: const Color(0xFF64748B),
@@ -739,6 +739,7 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                           ),
                           Text(
                             AccountIdUtils.format12Digits(l.accountId),
+                            textDirection: TextDirection.ltr,
                             style: GoogleFonts.sourceCodePro(
                               fontSize: 11.5,
                               fontWeight: FontWeight.w700,
@@ -976,6 +977,7 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                           ),
                           Text(
                             AccountIdUtils.format12Digits(c.accountId),
+                            textDirection: TextDirection.ltr,
                             style: GoogleFonts.sourceCodePro(
                               fontSize: 11.5,
                               fontWeight: FontWeight.w700,
@@ -1071,7 +1073,7 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
   Widget _buildAdminAccountCard(UserModel a) {
     final bool isSuspended = a.isSuspended;
     final bool isPrimary = PhoneUtils.isSuperAdminPhone(a.phone) || a.isPrimary;
-    final bool isSelf = PhoneUtils.normalize(_currentAdminPhone) == PhoneUtils.normalize(a.phone);
+    final bool isSelf = PhoneUtils.safeMatch(_currentAdminPhone, a.phone);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1199,6 +1201,7 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                           ),
                           Text(
                             AccountIdUtils.format12Digits(a.accountId),
+                            textDirection: TextDirection.ltr,
                             style: GoogleFonts.sourceCodePro(
                               fontSize: 11.5,
                               fontWeight: FontWeight.w700,
@@ -1451,6 +1454,9 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                 TextField(
                   controller: passCtrl,
                   textDirection: TextDirection.ltr,
+                  enableSuggestions: false,
+                  autocorrect: false,
+                  keyboardType: TextInputType.visiblePassword,
                   decoration: InputDecoration(
                     labelText: 'كلمة المرور الجديدة',
                     labelStyle: GoogleFonts.cairo(color: const Color(0xFF64748B), fontSize: 13),
@@ -1493,7 +1499,7 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                         onPressed: isSaving
                             ? null
                             : () async {
-                                final newPass = passCtrl.text.trim();
+                                final newPass = PhoneUtils.convertArabicDigits(passCtrl.text.trim());
                                 if (newPass.length < 6) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
@@ -1792,6 +1798,9 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                     controller: passCtrl,
                     obscureText: obscurePass,
                     textDirection: TextDirection.ltr,
+                    enableSuggestions: false,
+                    autocorrect: false,
+                    keyboardType: TextInputType.visiblePassword,
                     decoration: InputDecoration(
                       labelText: 'كلمة المرور',
                       labelStyle: GoogleFonts.cairo(fontSize: 13, color: const Color(0xFF64748B)),
@@ -1833,8 +1842,8 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                               ? null
                               : () async {
                                   final name = nameCtrl.text.trim();
-                                  final phone = phoneCtrl.text.trim();
-                                  final pass = passCtrl.text.trim();
+                                  final phone = PhoneUtils.convertArabicDigits(phoneCtrl.text.trim());
+                                  final pass = PhoneUtils.convertArabicDigits(passCtrl.text.trim());
 
                                   if (name.isEmpty || phone.isEmpty || pass.isEmpty) {
                                     ScaffoldMessenger.of(context).showSnackBar(

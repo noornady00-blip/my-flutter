@@ -55,6 +55,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
     'الضعين',
     'الجنينة',
     'كادقلي',
+    'باقي المدن',
   ];
 
   @override
@@ -593,7 +594,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
                       name: name,
                       photoUrl: photoUrl,
                       photoBase64: photoBase64,
-                      subtitle: city.isNotEmpty ? 'محامٍ ومستشار قانوني - $city' : 'محامٍ ومستشار قانوني',
+                      subtitle: city.isNotEmpty ? 'محامي - موثق العقود - $city' : 'محامي - موثق العقود',
                     );
                   }
                 },
@@ -605,7 +606,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
                       name: name,
                       photoUrl: photoUrl,
                       photoBase64: photoBase64,
-                      subtitle: city.isNotEmpty ? 'محامٍ ومستشار قانوني - $city' : 'محامٍ ومستشار قانوني',
+                      subtitle: city.isNotEmpty ? 'محامي - موثق العقود - $city' : 'محامي - موثق العقود',
                     );
                   }
                 },
@@ -664,7 +665,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
                         border: Border.all(color: const Color(0xFFD49B1A).withValues(alpha: 0.35)),
                       ),
                       child: Text(
-                        'محامٍ ومستشار قانوني',
+                        'محامي - موثق العقود',
                         style: GoogleFonts.cairo(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w700,
@@ -902,7 +903,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
               Expanded(
                 child: InkWell(
                   onTap: () async {
-                    final cleanPhone = PhoneUtils.normalize(phone);
+                    final cleanPhone = PhoneUtils.tryNormalize(phone) ?? phone;
                     final uri = Uri(scheme: 'tel', path: cleanPhone);
                     if (await canLaunchUrl(uri)) launchUrl(uri);
                   },
@@ -1105,7 +1106,9 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
                   ),
                   Text(
                     displayValue,
-                    textDirection: isPhone ? TextDirection.ltr : TextDirection.rtl,
+                    textDirection: (isPhone || label.contains('المعرّف') || label.toUpperCase().contains('ID'))
+                        ? TextDirection.ltr
+                        : TextDirection.rtl,
                     style: GoogleFonts.cairo(
                       fontSize: 13.5,
                       fontWeight: FontWeight.w800,

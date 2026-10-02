@@ -49,6 +49,7 @@ class CityLandmarkWidget extends StatelessWidget {
         return 'assets/images/cities/kosti.png';
       case 'جميع المدن':
       case 'كافة المدن':
+      case 'باقي المدن':
         return 'assets/images/cities/default_seal.png';
 
       // Regional Sudanese city affinities
@@ -293,6 +294,7 @@ class _LuxuryEmbossedMedallionPainter extends CustomPainter {
         break;
       case 'جميع المدن':
       case 'كافة المدن':
+      case 'باقي المدن':
       default:
         _drawLegalJusticeSeal(canvas, size, bodyPaint, strokePaint, shadowPaint);
         break;

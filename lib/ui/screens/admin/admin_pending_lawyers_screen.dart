@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/utils/search_utils.dart';
 import '../../../core/utils/phone_utils.dart';
 import '../../../core/utils/image_utils.dart';
+import '../../../core/utils/account_id_utils.dart';
 import '../../../data/models/lawyer.dart';
 import '../../../network/firestore_service.dart';
 import '../../../network/notification_service.dart';
@@ -115,7 +116,7 @@ class _AdminPendingLawyersScreenState extends State<AdminPendingLawyersScreen> {
             name: lawyer.name,
             photoBase64: lawyer.photoBase64,
             photoUrl: lawyer.photoUrl,
-            subtitle: 'محامٍ ومستشار قانوني',
+            subtitle: 'محامي - موثق العقود',
           );
         }
       },
@@ -420,7 +421,7 @@ class _AdminPendingLawyersScreenState extends State<AdminPendingLawyersScreen> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        '⚖️ محامٍ ومستشار قانوني',
+                        '⚖️ محامي - موثق العقود',
                         style: GoogleFonts.cairo(
                           fontSize: 12.5,
                           fontWeight: FontWeight.w700,
@@ -430,7 +431,7 @@ class _AdminPendingLawyersScreenState extends State<AdminPendingLawyersScreen> {
                         overflow: TextOverflow.ellipsis,
                       ),
                       Text(
-                        '📍 ${lawyer.city}${lawyer.accountId.isNotEmpty ? " • معرّف: ${lawyer.accountId}" : ""}',
+                        '📍 ${lawyer.city}${lawyer.accountId.isNotEmpty ? " • معرّف: ${AccountIdUtils.formatForDisplay(lawyer.accountId)}" : ""}',
                         style: GoogleFonts.cairo(
                           fontSize: 11.5,
                           color: const Color(0xFF64748B),

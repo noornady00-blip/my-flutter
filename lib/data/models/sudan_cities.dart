@@ -19,6 +19,7 @@ class SudanCities {
     {'name': 'الفاشر', 'icon': '🏜️'},
     {'name': 'نيالا', 'icon': '🌿'},
     {'name': 'دنقلا', 'icon': '🏺'},
+    {'name': 'باقي المدن', 'icon': '🗺️'},
   ];
 
   /// Returns a simple list of city names.

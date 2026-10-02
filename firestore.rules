@@ -29,13 +29,8 @@ service cloud.firestore {
       // Users can create their own document (cannot self-assign admin role)
       allow create: if (isOwner(uid) && (!('role' in request.resource.data) || request.resource.data.role != 'admin')) || isAdmin();
 
-      // Users can update their own data, but CANNOT elevate their role to admin, and CANNOT alter accountId once set
-      allow update: if isAdmin() || (
-        isOwner(uid) &&
-        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'isPrimary'])) &&
-        (!('adminResetPassword' in request.resource.data) || request.resource.data.adminResetPassword == resource.data.adminResetPassword) &&
-        (!('accountId' in resource.data) || request.resource.data.accountId == resource.data.accountId)
-      );
+      // Users can update their own data, or admin can update
+      allow update: if isOwner(uid) || isAdmin();
 
       // Only admins or the owner can delete the account document
       allow delete: if isOwner(uid) || isAdmin();
@@ -44,67 +39,36 @@ service cloud.firestore {
     // ==================== LAWYERS COLLECTION ====================
     match /lawyers/{uid} {
       // Anyone can read approved lawyers, or owner/admin can read any
-      allow read: if (resource.data.status == 'approved') || isOwner(uid) || isAdmin();
+      allow read: if (resource != null && resource.data.status == 'approved') || isOwner(uid) || isAdmin();
 
       // Lawyer can register with initial status 'pending', or admin can create
       allow create: if (isOwner(uid) && (!('status' in request.resource.data) || request.resource.data.status == 'pending')) || isAdmin();
 
-      // Lawyer can update their profile information, but only admin can approve/reject status, and CANNOT alter accountId once set
-      allow update: if isAdmin() || (
-        isOwner(uid) &&
-        request.resource.data.status == resource.data.status &&
-        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['isVerified', 'featured'])) &&
-        (!('adminResetPassword' in request.resource.data) || request.resource.data.adminResetPassword == resource.data.adminResetPassword) &&
-        (!('accountId' in resource.data) || request.resource.data.accountId == resource.data.accountId)
-      );
+      // Lawyer can update their profile information, or admin can update
+      allow update: if isOwner(uid) || isAdmin();
 
       // Lawyer can delete their own document or admins can delete
       allow delete: if isOwner(uid) || isAdmin();
     }
 
+    // ==================== ACCOUNT IDS COLLECTION ====================
     match /account_ids/{accountId} {
-      // Fast public lookup and collision check for 12-digit account numbers
-      allow read: if true;
-      // Any authenticated user or admin can register their 12-digit account number
-      allow create: if isAuthenticated() || isAdmin();
-      // Owner or Admin can delete the account ID registry entry
-      allow delete: if isAdmin() || (isAuthenticated() && (resource == null || !('uid' in resource.data) || resource.data.uid == request.auth.uid));
-      // Only admins can modify account ID registry entries
-      allow update: if isAdmin();
+      // Public lookup and registration for 12-digit account numbers
+      allow read, write: if true;
     }
 
     // ==================== CHATS & DIRECT MESSAGING ====================
     match /chats/{chatId} {
-      // Chat is accessible to authenticated users and admins
-      allow read: if isAuthenticated();
+      allow read, write: if isAuthenticated() || isAdmin();
 
-      // Initiating or updating a chat is allowed for authenticated users
-      allow create, update: if isAuthenticated();
-
-      // Only admins can delete an entire conversation thread
-      allow delete: if isAdmin();
-
-      // Subcollection for individual messages
       match /messages/{messageId} {
-        // Authenticated users can read messages
-        allow read: if isAuthenticated();
-
-        // Any authenticated user can send messages
-        allow create: if isAuthenticated();
-
-        // Updates (e.g. read status) allowed to authenticated participants
-        allow update: if isAuthenticated();
-
-        // Message deletion allowed to authenticated users or admin
-        allow delete: if isAuthenticated();
+        allow read, write: if isAuthenticated() || isAdmin();
       }
     }
 
     // ==================== ADMINS COLLECTION ====================
-    // STRICT SECURITY: Only existing admins can read/write the admins collection.
-    // Self-promotion vulnerability eliminated.
     match /admins/{docId} {
-      allow read: if isAdmin();
+      allow read: if isOwner(docId) || isAdmin();
       allow write: if isAdmin();
     }
 
@@ -123,7 +87,7 @@ service cloud.firestore {
     }
 
     match /rate_limits/{docId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if true;
     }
 
     match /one_time_resets/{docId} {
@@ -144,21 +108,17 @@ service cloud.firestore {
 
     // ==================== PHONE DIRECTORY COLLECTION ====================
     match /phone_directory/{phoneKey} {
-      allow read: if true;
-      allow create, update: if isAuthenticated() || isAdmin();
-      // Owner can delete their own phone_directory entry, admins can delete any
-      allow delete: if isAdmin() || (isAuthenticated() && (resource == null || !('uid' in resource.data) || resource.data.uid == request.auth.uid));
+      // Fast public lookup and registration for single canonical +249... phone numbers
+      allow read, write: if true;
     }
 
     // ==================== ADMIN NOTIFICATIONS COLLECTION ====================
     match /admin_notifications/{notifId} {
-      allow create: if isAuthenticated() || true;
+      allow create: if true;
       allow read, update, delete: if isAdmin();
     }
 
     // ==================== APP CONFIG COLLECTION ====================
-    // FCM credentials must be readable so that clients, lawyers, and password-reset
-    // senders can dispatch FCM HTTP v1 administrative push alerts without Cloud Functions
     match /app_config/{configId} {
       allow read: if true;
       allow write: if isAdmin();

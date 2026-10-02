@@ -186,13 +186,15 @@ class AccountIdUtils {
     }
   }
 
-  /// Formats ID into readable chunks: 1234 5678 9012 or 1111 1111 111
+  /// Formats ID into readable chunks: 1234 5678 9012
   static String formatDisplay(String id) {
     final clean = clean12Digits(id);
     if (clean.length == 12) {
       return '${clean.substring(0, 4)} ${clean.substring(4, 8)} ${clean.substring(8, 12)}';
     } else if (clean.length == 11) {
       return '${clean.substring(0, 4)} ${clean.substring(4, 8)} ${clean.substring(8, 11)}';
+    } else if (clean.length == 8) {
+      return '${clean.substring(0, 4)} ${clean.substring(4, 8)}';
     }
     return clean.isNotEmpty ? clean : id;
   }

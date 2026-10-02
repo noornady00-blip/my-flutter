@@ -34,7 +34,7 @@ class ExecutiveLawyerCard extends StatelessWidget {
   });
 
   Future<void> _callPhone(String phone) async {
-    final cleanPhone = PhoneUtils.normalize(phone);
+    final cleanPhone = PhoneUtils.tryNormalize(phone) ?? phone;
     final uri = Uri(scheme: 'tel', path: cleanPhone);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
@@ -168,6 +168,7 @@ class ExecutiveLawyerCard extends StatelessWidget {
                                       const SizedBox(width: 3),
                                       Text(
                                         AccountIdUtils.format(lawyer.accountId),
+                                        textDirection: TextDirection.ltr,
                                         style: GoogleFonts.cairo(
                                           fontSize: 11,
                                           fontWeight: FontWeight.w700,

@@ -416,7 +416,9 @@ class _LawyerSettingsScreenState extends State<LawyerSettingsScreen> {
                     TextFormField(
                       controller: currentPassController,
                       obscureText: obscureCurrent,
-                      textDirection: TextDirection.rtl,
+                      enableSuggestions: false,
+                      autocorrect: false,
+                      keyboardType: TextInputType.visiblePassword,
                       style: GoogleFonts.cairo(fontSize: 14),
                       decoration: InputDecoration(
                         labelText: 'كلمة المرور الحالية',
@@ -437,7 +439,8 @@ class _LawyerSettingsScreenState extends State<LawyerSettingsScreen> {
                         ),
                       ),
                       validator: (v) {
-                        if (v == null || v.isEmpty) return 'يرجى إدخال كلمة المرور الحالية';
+                        final val = PhoneUtils.convertArabicDigits((v ?? '').trim());
+                        if (val.isEmpty) return 'يرجى إدخال كلمة المرور الحالية';
                         return null;
                       },
                     ),
@@ -446,7 +449,9 @@ class _LawyerSettingsScreenState extends State<LawyerSettingsScreen> {
                     TextFormField(
                       controller: newPassController,
                       obscureText: obscureNew,
-                      textDirection: TextDirection.rtl,
+                      enableSuggestions: false,
+                      autocorrect: false,
+                      keyboardType: TextInputType.visiblePassword,
                       style: GoogleFonts.cairo(fontSize: 14),
                       decoration: InputDecoration(
                         labelText: 'كلمة المرور الجديدة',
@@ -467,7 +472,8 @@ class _LawyerSettingsScreenState extends State<LawyerSettingsScreen> {
                         ),
                       ),
                       validator: (v) {
-                        if (v == null || v.length < 6) return 'كلمة المرور يجب أن تكون 6 أحرف على الأقل';
+                        final val = PhoneUtils.convertArabicDigits((v ?? '').trim());
+                        if (val.length < 6) return 'كلمة المرور يجب أن تكون 6 أحرف على الأقل';
                         return null;
                       },
                     ),
@@ -476,7 +482,9 @@ class _LawyerSettingsScreenState extends State<LawyerSettingsScreen> {
                     TextFormField(
                       controller: confirmPassController,
                       obscureText: obscureConfirm,
-                      textDirection: TextDirection.rtl,
+                      enableSuggestions: false,
+                      autocorrect: false,
+                      keyboardType: TextInputType.visiblePassword,
                       style: GoogleFonts.cairo(fontSize: 14),
                       decoration: InputDecoration(
                         labelText: 'تأكيد كلمة المرور الجديدة',
@@ -497,7 +505,9 @@ class _LawyerSettingsScreenState extends State<LawyerSettingsScreen> {
                         ),
                       ),
                       validator: (v) {
-                        if (v != newPassController.text) return 'كلمتا المرور غير متطابقتين';
+                        final nP = PhoneUtils.convertArabicDigits(newPassController.text.trim());
+                        final cP = PhoneUtils.convertArabicDigits((v ?? '').trim());
+                        if (cP != nP) return 'كلمتا المرور غير متطابقتين';
                         return null;
                       },
                     ),
@@ -512,11 +522,14 @@ class _LawyerSettingsScreenState extends State<LawyerSettingsScreen> {
                                 if (!formKey.currentState!.validate()) return;
                                 setModalState(() => saving = true);
 
+                                final curP = PhoneUtils.convertArabicDigits(currentPassController.text.trim());
+                                final newP = PhoneUtils.convertArabicDigits(newPassController.text.trim());
+
                                 Map<String, dynamic> res;
                                 try {
                                   res = await _authService.reauthenticateAndChangePassword(
-                                    currentPassword: PhoneUtils.convertArabicDigits(currentPassController.text.trim()),
-                                    newPassword: PhoneUtils.convertArabicDigits(newPassController.text.trim()),
+                                    currentPassword: curP,
+                                    newPassword: newP,
                                   );
                                 } catch (e) {
                                   res = {'success': false, 'error': 'حدث خطأ غير متوقع، يرجى المحاولة مجدداً'};
@@ -747,7 +760,9 @@ class _LawyerSettingsScreenState extends State<LawyerSettingsScreen> {
                 TextField(
                   controller: passCtrl,
                   obscureText: obscurePass,
-                  textDirection: TextDirection.rtl,
+                  enableSuggestions: false,
+                  autocorrect: false,
+                  keyboardType: TextInputType.visiblePassword,
                   style: GoogleFonts.cairo(fontSize: 14, color: const Color(0xFF0B2A5B), fontWeight: FontWeight.w600),
                   decoration: InputDecoration(
                     hintText: 'أدخل كلمة المرور لتأكيد الحذف',
@@ -841,7 +856,9 @@ class _LawyerSettingsScreenState extends State<LawyerSettingsScreen> {
 
                                 final nav = Navigator.of(context);
                                 final dlgNav = Navigator.of(ctx);
-                                final res = await _authService.deleteAccount(currentPassword: passCtrl.text);
+                                final res = await _authService.deleteAccount(
+                                  currentPassword: PhoneUtils.convertArabicDigits(passCtrl.text.trim()),
+                                );
 
                                 if (!mounted) return;
                                 if (res['success'] == true) {

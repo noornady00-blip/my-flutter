@@ -1868,6 +1868,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 TextField(
                   controller: passCtrl,
                   textDirection: TextDirection.ltr,
+                  enableSuggestions: false,
+                  autocorrect: false,
+                  keyboardType: TextInputType.visiblePassword,
                   decoration: InputDecoration(
                     labelText: 'كلمة المرور الجديدة',
                     labelStyle: GoogleFonts.cairo(color: const Color(0xFF64748B), fontSize: 13),
@@ -1910,7 +1913,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         onPressed: isSaving
                             ? null
                             : () async {
-                                final newPass = passCtrl.text.trim();
+                                final newPass = PhoneUtils.convertArabicDigits(passCtrl.text.trim());
                                 if (newPass.length < 6) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(content: Text('كلمة المرور يجب ألا تقل عن 6 أحرف', style: GoogleFonts.cairo()), backgroundColor: const Color(0xFFDC2626)),
@@ -2560,7 +2563,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                               ),
                               const SizedBox(height: 3),
                               Text(
-                                'محامٍ ومستشار قانوني • ${l.city}',
+                                'محامي - موثق العقود • ${l.city}',
                                 style: GoogleFonts.cairo(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w600,
@@ -2634,6 +2637,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                             const SizedBox(width: 4),
                                             Text(
                                               AccountIdUtils.format12Digits(l.accountId),
+                                              textDirection: TextDirection.ltr,
                                               style: GoogleFonts.sourceCodePro(
                                                 fontSize: 11,
                                                 fontWeight: FontWeight.w700,
@@ -2872,6 +2876,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                             const SizedBox(width: 4),
                                             Text(
                                               AccountIdUtils.format12Digits(c.accountId),
+                                              textDirection: TextDirection.ltr,
                                               style: GoogleFonts.sourceCodePro(
                                                 fontSize: 11,
                                                 fontWeight: FontWeight.w700,
@@ -2973,7 +2978,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   final a = admins[index];
                   final bool isSuspended = a.isSuspended;
                   final bool isPrimary = PhoneUtils.isSuperAdminPhone(a.phone) || a.isPrimary;
-                  final bool isSelf = PhoneUtils.normalize(_displayAdminPhone) == PhoneUtils.normalize(a.phone);
+                  final bool isSelf = PhoneUtils.safeMatch(_displayAdminPhone, a.phone);
 
                   return Container(
                     decoration: BoxDecoration(
@@ -3077,6 +3082,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                           ),
                                           Text(
                                             AccountIdUtils.format12Digits(a.accountId),
+                                            textDirection: TextDirection.ltr,
                                             style: GoogleFonts.sourceCodePro(
                                               fontSize: 11,
                                               fontWeight: FontWeight.w700,
@@ -3330,6 +3336,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
               const SizedBox(height: 10),
               TextField(
                 controller: passCtrl,
+                keyboardType: TextInputType.visiblePassword,
+                autocorrect: false,
+                enableSuggestions: false,
                 textDirection: TextDirection.ltr,
                 decoration: InputDecoration(
                   labelText: 'كلمة المرور (6 أحرف أو أكثر)',
@@ -3346,8 +3355,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     ? null
                     : () async {
                         final name = nameCtrl.text.trim();
-                        final phone = phoneCtrl.text.trim();
-                        final pass = passCtrl.text.trim();
+                        final phone = PhoneUtils.convertArabicDigits(phoneCtrl.text.trim());
+                        final pass = PhoneUtils.convertArabicDigits(passCtrl.text.trim());
 
                         if (name.isEmpty || phone.isEmpty || pass.isEmpty) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -3719,7 +3728,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                 const SizedBox(width: 4),
                                 Expanded(
                                   child: Text(
-                                    'محامٍ ومستشار قانوني • ${l.city}',
+                                    'محامي - موثق العقود • ${l.city}',
                                     style: GoogleFonts.cairo(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFF475569)),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
@@ -4172,6 +4181,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                               ),
                               Text(
                                 AccountIdUtils.format12Digits(a.accountId),
+                                textDirection: TextDirection.ltr,
                                 style: GoogleFonts.sourceCodePro(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w700,
@@ -4344,7 +4354,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     final String? photoUrl = isLawyer ? lawyer.photoUrl : client?.photoUrl;
     final String? photoBase64 = isLawyer ? lawyer.photoBase64 : client?.photoBase64;
     final String subtitle = isLawyer
-        ? 'محامٍ ومستشار قانوني • ${lawyer.city}'
+        ? 'محامي - موثق العقود • ${lawyer.city}'
         : 'عميل مسجل بالمنصة';
 
     showModalBottomSheet(
@@ -4904,7 +4914,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 TextField(
                   controller: _adminPassCtrl,
                   obscureText: _obscureCreateAdminPass,
-                  textDirection: TextDirection.rtl,
+                  enableSuggestions: false,
+                  autocorrect: false,
+                  keyboardType: TextInputType.visiblePassword,
                   style: GoogleFonts.cairo(fontSize: 14, color: const Color(0xFF0B2A5B), fontWeight: FontWeight.w600),
                   decoration: InputDecoration(
                     hintText: 'كلمة المرور (6 أحرف أو أكثر)',
@@ -4935,8 +4947,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         ? null
                         : () async {
                             final name = _adminNameCtrl.text.trim();
-                            final phone = _adminPhoneCtrl.text.trim();
-                            final pass = _adminPassCtrl.text.trim();
+                            final phone = PhoneUtils.convertArabicDigits(_adminPhoneCtrl.text.trim());
+                            final pass = PhoneUtils.convertArabicDigits(_adminPassCtrl.text.trim());
 
                             if (name.isEmpty || phone.isEmpty || pass.isEmpty) {
                               ScaffoldMessenger.of(context).showSnackBar(
@@ -5148,6 +5160,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 TextField(
                   controller: oldPassCtrl,
                   obscureText: obscureOld,
+                  enableSuggestions: false,
+                  autocorrect: false,
+                  keyboardType: TextInputType.visiblePassword,
                   style: GoogleFonts.cairo(fontSize: 14),
                   decoration: InputDecoration(
                     labelText: 'كلمة المرور الحالية',
@@ -5172,6 +5187,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 TextField(
                   controller: newPassCtrl,
                   obscureText: obscureNew,
+                  enableSuggestions: false,
+                  autocorrect: false,
+                  keyboardType: TextInputType.visiblePassword,
                   style: GoogleFonts.cairo(fontSize: 14),
                   decoration: InputDecoration(
                     labelText: 'كلمة المرور الجديدة (6 أحرف أو أكثر)',
@@ -5196,6 +5214,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 TextField(
                   controller: confirmPassCtrl,
                   obscureText: obscureConfirm,
+                  enableSuggestions: false,
+                  autocorrect: false,
+                  keyboardType: TextInputType.visiblePassword,
                   style: GoogleFonts.cairo(fontSize: 14),
                   decoration: InputDecoration(
                     labelText: 'تأكيد كلمة المرور الجديدة',
@@ -5221,9 +5242,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   onPressed: loading
                       ? null
                       : () async {
-                          final oldP = oldPassCtrl.text.trim();
-                          final newP = newPassCtrl.text.trim();
-                          final confP = confirmPassCtrl.text.trim();
+                          final oldP = PhoneUtils.convertArabicDigits(oldPassCtrl.text.trim());
+                          final newP = PhoneUtils.convertArabicDigits(newPassCtrl.text.trim());
+                          final confP = PhoneUtils.convertArabicDigits(confirmPassCtrl.text.trim());
 
                           if (oldP.isEmpty || newP.isEmpty || confP.isEmpty) {
                             setModalState(() => error = 'يرجى ملء جميع الحقول المطلوبة');
