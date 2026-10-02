@@ -738,7 +738,7 @@ class FirestoreService implements DatabaseContract {
         'role': 'admin',
         'status': 'active',
         'accountId': '222222222222',
-        'email': 'admin_912209596@mahameek.admin.com',
+        'email': 'admin_249912209596@mahameek.admin.com',
         'isPrimary': true,
         'updatedAt': FieldValue.serverTimestamp(),
       };

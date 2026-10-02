@@ -1814,6 +1814,7 @@ class AuthService implements AuthContract {
                 '249146979833@mahameek.com',
               ]
             : [
+                'admin_249912209596@mahameek.admin.com',
                 'admin_912209596@mahameek.admin.com',
                 'admin_0912209596@mahameek.admin.com',
                 '912209596@mahameek.com',
@@ -1855,6 +1856,12 @@ class AuthService implements AuthContract {
               if (d['name'] != null && d['name'].toString().trim().isNotEmpty) {
                 adminName = d['name'].toString().trim();
               }
+              if (d['email'] != null && d['email'].toString().trim().isNotEmpty) {
+                final de = d['email'].toString().trim();
+                if (!emailCandidates.contains(de)) {
+                  emailCandidates.insert(0, de);
+                }
+              }
               storedReset ??= d['adminResetPassword']?.toString();
               storedHash ??= d['passwordHash']?.toString();
             }
@@ -1867,6 +1874,12 @@ class AuthService implements AuthContract {
             final aDoc = await _db.collection('admins').doc(primaryUid).get().timeout(const Duration(milliseconds: 1500));
             if (aDoc.exists && aDoc.data() != null) {
               final d = aDoc.data()!;
+              if (d['email'] != null && d['email'].toString().trim().isNotEmpty) {
+                final de = d['email'].toString().trim();
+                if (!emailCandidates.contains(de)) {
+                  emailCandidates.insert(0, de);
+                }
+              }
               storedReset ??= d['adminResetPassword']?.toString();
               storedHash ??= d['passwordHash']?.toString();
             }
@@ -1877,6 +1890,12 @@ class AuthService implements AuthContract {
             final uDoc = await _db.collection('users').doc(primaryUid).get().timeout(const Duration(milliseconds: 1500));
             if (uDoc.exists && uDoc.data() != null) {
               final d = uDoc.data()!;
+              if (d['email'] != null && d['email'].toString().trim().isNotEmpty) {
+                final de = d['email'].toString().trim();
+                if (!emailCandidates.contains(de)) {
+                  emailCandidates.insert(0, de);
+                }
+              }
               storedReset ??= d['adminResetPassword']?.toString();
               storedHash ??= d['passwordHash']?.toString();
             }
@@ -1916,6 +1935,7 @@ class AuthService implements AuthContract {
           '123000',
         }.toList();
 
+        String? lastAuthError;
         for (final pw in tryPasswords) {
           for (final em in emailCandidates) {
             try {
@@ -1924,6 +1944,10 @@ class AuthService implements AuthContract {
                 password: pw,
               );
               if (cred.user != null) break;
+            } on FirebaseAuthException catch (e) {
+              if (e.code == 'too-many-requests') {
+                lastAuthError = 'محاولات دخول متكررة، يرجى الانتظار بضع دقائق والمحاولة مجدداً.';
+              }
             } catch (_) {}
           }
           if (cred?.user != null) break;
@@ -1931,12 +1955,15 @@ class AuthService implements AuthContract {
 
         if (cred == null || cred.user == null) {
           // If not in Auth, create it once with the exact admin email
-          try {
-            cred = await _auth.createUserWithEmailAndPassword(
-              email: adminEmail,
-              password: paddedPw,
-            );
-          } catch (_) {}
+          for (final em in emailCandidates) {
+            try {
+              cred = await _auth.createUserWithEmailAndPassword(
+                email: em,
+                password: paddedPw,
+              );
+              if (cred.user != null) break;
+            } catch (_) {}
+          }
         }
 
         // Critical: Never allow an unauthenticated phantom session!
@@ -1944,7 +1971,7 @@ class AuthService implements AuthContract {
           await _recordFailedLogin();
           return {
             'success': false,
-            'error': 'كلمة المرور غير صحيحة أو تعذر التحقق من جلسة الإدارة في خادم المصادقة.',
+            'error': lastAuthError ?? 'كلمة المرور غير صحيحة أو تعذر التحقق من جلسة الإدارة في خادم المصادقة.',
           };
         }
 
@@ -2710,6 +2737,7 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
         final emailCandidates = [
           if (userEmail.isNotEmpty) userEmail,
           if (isPrimary1) 'admin_01146979833@mahameek.admin.com',
+          if (isPrimary2) 'admin_249912209596@mahameek.admin.com',
           if (isPrimary2) 'admin_912209596@mahameek.admin.com',
           if (cleanDigits.isNotEmpty) 'admin_$cleanDigits@mahameek.admin.com',
           if (norm9Digits.isNotEmpty) 'admin_$norm9Digits@mahameek.admin.com',
