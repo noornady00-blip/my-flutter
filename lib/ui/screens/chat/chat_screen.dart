@@ -550,6 +550,7 @@ class _ChatScreenState extends State<ChatScreen> {
       fallbackPhotoBase64: fallbackPhotoBase64,
       fallbackAccountId: fallbackAccountId,
       isAdmin: _currentUserRole == 'admin',
+      isAlreadyInChat: true,
     );
   }
 

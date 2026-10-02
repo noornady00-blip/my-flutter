@@ -158,6 +158,7 @@ class ProfileDetailsModal {
     bool isAdmin = false,
     Future<void> Function(String uid)? onApprove,
     Future<void> Function(String uid)? onReject,
+    bool isAlreadyInChat = false,
   }) {
     showModalBottomSheet(
       context: context,
@@ -174,6 +175,7 @@ class ProfileDetailsModal {
             isAdmin: isAdmin,
             onApprove: onApprove,
             onReject: onReject,
+            isAlreadyInChat: isAlreadyInChat,
           ),
         ),
       ),
@@ -188,6 +190,7 @@ class ProfileDetailsModal {
     required UserModel client,
     bool isAdmin = false,
     VoidCallback? onDelete,
+    bool isAlreadyInChat = false,
   }) {
     showModalBottomSheet(
       context: context,
@@ -203,6 +206,7 @@ class ProfileDetailsModal {
             client: client,
             isAdmin: isAdmin,
             onDelete: onDelete,
+            isAlreadyInChat: isAlreadyInChat,
           ),
         ),
       ),
@@ -220,6 +224,7 @@ class ProfileDetailsModal {
     String? fallbackPhotoBase64,
     String? fallbackAccountId,
     bool isAdmin = false,
+    bool isAlreadyInChat = false,
   }) async {
     final effectiveRole = role?.toLowerCase() ?? '';
     final cleanUid = uid.trim();
@@ -239,7 +244,7 @@ class ProfileDetailsModal {
         photoBase64: fallbackPhotoBase64,
         status: 'approved',
       );
-      showLawyerModal(context, lawyer: initialLawyer, isAdmin: isAdmin);
+      showLawyerModal(context, lawyer: initialLawyer, isAdmin: isAdmin, isAlreadyInChat: isAlreadyInChat);
     } else {
       final initialClient = UserModel(
         uid: cleanUid,
@@ -251,7 +256,7 @@ class ProfileDetailsModal {
         role: effectiveRole.isNotEmpty ? effectiveRole : 'client',
         createdAt: DateTime.now(),
       );
-      showClientModal(context, client: initialClient, isAdmin: isAdmin);
+      showClientModal(context, client: initialClient, isAdmin: isAdmin, isAlreadyInChat: isAlreadyInChat);
     }
   }
 }
@@ -356,12 +361,14 @@ class _LawyerModalSheet extends StatefulWidget {
   final bool isAdmin;
   final Future<void> Function(String uid)? onApprove;
   final Future<void> Function(String uid)? onReject;
+  final bool isAlreadyInChat;
 
   const _LawyerModalSheet({
     required this.lawyer,
     required this.isAdmin,
     this.onApprove,
     this.onReject,
+    this.isAlreadyInChat = false,
   });
 
   @override
@@ -936,7 +943,13 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
                 _showCopyToast(context, 'لا يمكنك بدء محادثة مع نفسك');
                 return;
               }
-              Navigator.of(context).push(
+              if (widget.isAlreadyInChat) {
+                Navigator.of(context).pop();
+                return;
+              }
+              final navigator = Navigator.of(context, rootNavigator: true);
+              Navigator.of(context).pop();
+              navigator.push(
                 MaterialPageRoute(
                   builder: (_) => ChatScreen(
                     lawyerUid: lawyer.uid,
@@ -1419,11 +1432,13 @@ class _ClientModalSheet extends StatefulWidget {
   final UserModel client;
   final bool isAdmin;
   final VoidCallback? onDelete;
+  final bool isAlreadyInChat;
 
   const _ClientModalSheet({
     required this.client,
     required this.isAdmin,
     this.onDelete,
+    this.isAlreadyInChat = false,
   });
 
   @override
@@ -1786,7 +1801,13 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
                               context, 'لا يمكنك بدء محادثة مع نفسك');
                           return;
                         }
-                        Navigator.of(context).push(
+                        if (widget.isAlreadyInChat) {
+                          Navigator.of(context).pop();
+                          return;
+                        }
+                        final navigator = Navigator.of(context, rootNavigator: true);
+                        Navigator.of(context).pop();
+                        navigator.push(
                           MaterialPageRoute(
                             builder: (_) => ChatScreen(
                               clientUid: client.uid,

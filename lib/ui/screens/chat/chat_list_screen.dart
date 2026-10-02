@@ -20,7 +20,7 @@ import '../../../core/utils/image_utils.dart';
 import '../../custom_widgets/app_logo_badge.dart';
 import '../../custom_widgets/awake_badge.dart';
 import '../auth/auth_gateway_screen.dart';
-import '../lawyers/all_lawyers_screen.dart';
+import '../main_navigation_screen.dart';
 import 'chat_screen.dart';
 
 class ChatListScreen extends StatefulWidget {
@@ -28,6 +28,7 @@ class ChatListScreen extends StatefulWidget {
   final String? initialRole;
   final bool isEmbeddedInNav;
   final VoidCallback? onOpenDrawer;
+  final ValueChanged<int>? onNavigateTab;
 
   const ChatListScreen({
     super.key,
@@ -35,6 +36,7 @@ class ChatListScreen extends StatefulWidget {
     this.initialRole,
     this.isEmbeddedInNav = false,
     this.onOpenDrawer,
+    this.onNavigateTab,
   });
 
   @override
@@ -434,10 +436,16 @@ class _ChatListScreenState extends State<ChatListScreen> {
                                       else if (_role != 'lawyer')
                                         ElevatedButton.icon(
                                           onPressed: () {
-                                            Navigator.push(
-                                              context,
-                                              MaterialPageRoute(builder: (_) => const AllLawyersScreen()),
-                                            );
+                                            if (widget.onNavigateTab != null) {
+                                              widget.onNavigateTab!(2);
+                                            } else {
+                                              Navigator.push(
+                                                context,
+                                                MaterialPageRoute(
+                                                  builder: (_) => MainNavigationScreen(initialIndex: 2, role: _role),
+                                                ),
+                                              );
+                                            }
                                           },
                                           icon: const Icon(Icons.people_alt_rounded, size: 16),
                                           label: Text(

@@ -159,6 +159,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               initialRole: 'lawyer',
               isEmbeddedInNav: true,
               onOpenDrawer: () => _scaffoldKey.currentState?.openDrawer(),
+              onNavigateTab: _onTabTapped,
             ),
             // Lawyer Tab 2: الإعدادات
             const LawyerSettingsScreen(),
@@ -177,6 +178,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               initialRole: _role,
               isEmbeddedInNav: true,
               onOpenDrawer: () => _scaffoldKey.currentState?.openDrawer(),
+              onNavigateTab: _onTabTapped,
             ),
             // Client Tab 2: بحث
             AllLawyersScreen(
