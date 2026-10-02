@@ -3410,22 +3410,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 ),
               ),
               const SizedBox(height: 10),
-              TextField(
+              SudanPhoneFormField(
                 controller: phoneCtrl,
-                keyboardType: TextInputType.phone,
-                textDirection: TextDirection.ltr,
+                hintText: '9XXXXXXXX',
+                borderRadius: 14,
                 onChanged: (_) {
                   if (modalError != null) setMState(() => modalError = null);
                 },
-                decoration: InputDecoration(
-                  labelText: 'رقم هاتف المشرف (11 رقم)',
-                  hintText: '011XXXXXXXX',
-                  labelStyle: GoogleFonts.cairo(fontSize: 13),
-                  prefixIcon: const Icon(Icons.phone_rounded, color: Color(0xFF0B2A5B)),
-                  filled: true,
-                  fillColor: const Color(0xFFF8FAFC),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
-                ),
               ),
               const SizedBox(height: 10),
               TextField(
@@ -3481,11 +3472,16 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     ? null
                     : () async {
                         final name = nameCtrl.text.trim();
-                        final phone = PhoneUtils.convertArabicDigits(phoneCtrl.text.trim());
+                        final phone = PhoneUtils.convertArabicDigits(phoneCtrl.text.trim()).replaceAll(RegExp(r'[^0-9]'), '');
                         final pass = PhoneUtils.convertArabicDigits(passCtrl.text.trim());
 
                         if (name.isEmpty || phone.isEmpty || pass.isEmpty) {
                           setMState(() => modalError = 'يرجى ملء جميع الحقول المطلوبة');
+                          return;
+                        }
+
+                        if (phone.length != 9) {
+                          setMState(() => modalError = 'يجب أن يتكون رقم الموبايل من 9 أرقام بعد الصفر');
                           return;
                         }
 

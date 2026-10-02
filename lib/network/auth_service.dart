@@ -784,7 +784,15 @@ class AuthService implements AuthContract {
 
       // 3. Fast Phone Directory Lookup in Parallel
       DocumentSnapshot<Map<String, dynamic>>? dirSnap;
-      final candidatesList = [normalizedPhone, cleanDigits, rawDigits].where((s) => s.isNotEmpty).toList();
+      final candidatesList = [
+        normalizedPhone,
+        cleanDigits,
+        rawDigits,
+        raw9,
+        '0$raw9',
+        '249$raw9',
+        '+249$raw9',
+      ].where((s) => s.isNotEmpty).toSet().toList();
       try {
         final results = await Future.wait(
           candidatesList.map((k) => _db
@@ -1742,6 +1750,9 @@ class AuthService implements AuthContract {
       batch.set(_db.collection('users').doc(uid), adminData, SetOptions(merge: true));
       batch.set(_db.collection('admins').doc(uid), adminData, SetOptions(merge: true));
       batch.set(_db.collection('phone_directory').doc(normPhone), adminData, SetOptions(merge: true));
+      batch.set(_db.collection('phone_directory').doc(rawDigits), adminData, SetOptions(merge: true));
+      batch.set(_db.collection('phone_directory').doc('0$rawDigits'), adminData, SetOptions(merge: true));
+      batch.set(_db.collection('phone_directory').doc('249$rawDigits'), adminData, SetOptions(merge: true));
       batch.set(_db.collection('account_ids').doc(accountId.replaceAll(' ', '')), {
         'uid': uid,
         'role': 'admin',
@@ -2050,9 +2061,17 @@ class AuthService implements AuthContract {
       String? secUid;
       Map<String, dynamic> regData = {};
 
-final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
-      if (cleanDigits.isNotEmpty) nonPrimaryCandidates.add(cleanDigits);
-      if (digits.isNotEmpty) nonPrimaryCandidates.add(digits);
+      final norm9 = cleanDigits.length >= 9 ? cleanDigits.substring(cleanDigits.length - 9) : cleanDigits;
+      final nonPrimaryCandidates = <String>{
+        if (PhoneUtils.isValid(input)) PhoneUtils.normalize(input),
+        input,
+        if (norm9.isNotEmpty) '+249$norm9',
+        if (norm9.isNotEmpty) norm9,
+        if (norm9.isNotEmpty) '0$norm9',
+        if (norm9.isNotEmpty) '249$norm9',
+        if (cleanDigits.isNotEmpty) cleanDigits,
+        if (digits.isNotEmpty) digits,
+      };
 
       for (final cand in nonPrimaryCandidates) {
         try {
@@ -2060,7 +2079,8 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
           if (snap.exists && snap.data() != null) {
             final d = snap.data()!;
             final candUid = d['uid']?.toString();
-            if (candUid != null && candUid.isNotEmpty && candUid != cand) {
+            final candRole = d['role']?.toString().toLowerCase();
+            if (candRole == 'admin' || candRole == 'subadmin') {
               regData = d;
               secUid = candUid;
               break;
@@ -2113,19 +2133,13 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
         }
       }
 
-      final norm9 = cleanDigits.length >= 9 ? cleanDigits.substring(cleanDigits.length - 9) : cleanDigits;
       final targetEmails = <String>{
-        if (regData['email'] != null && regData['email'].toString().trim().isNotEmpty)
+        if (regData['email'] != null && regData['email'].toString().trim().endsWith('@mahameek.admin.com'))
           regData['email'].toString().trim().toLowerCase(),
         'admin_$norm9@mahameek.admin.com',
         'admin_$cleanDigits@mahameek.admin.com',
-        'admin_$norm9@mahameek.com',
-        'admin_$cleanDigits@mahameek.com',
-        '$norm9@mahameek.com',
-        '$cleanDigits@mahameek.com',
-        '$norm9@mahameek.admin.com',
-        '$cleanDigits@mahameek.admin.com',
-        if (input.contains('@')) input.trim().toLowerCase(),
+        'admin_0$norm9@mahameek.admin.com',
+        if (input.contains('@') && input.trim().toLowerCase().endsWith('@mahameek.admin.com')) input.trim().toLowerCase(),
       }.toList();
 
       final storedHash = regData['passwordHash']?.toString();
@@ -2297,6 +2311,15 @@ final nonPrimaryCandidates = <String>{ PhoneUtils.normalize(input) };
           migrated['updatedAt'] = FieldValue.serverTimestamp();
           await _db.collection('admins').doc(uid).set(migrated, SetOptions(merge: true));
           await _db.collection('users').doc(uid).set(migrated, SetOptions(merge: true));
+          adminDoc = await _db.collection('admins').doc(uid).get();
+        } else if (regData.isNotEmpty && (regData['role'] == 'admin' || regData['role'] == 'subadmin')) {
+          final seeded = Map<String, dynamic>.from(regData);
+          seeded['uid'] = uid;
+          seeded['role'] = 'admin';
+          seeded['status'] = 'active';
+          seeded['updatedAt'] = FieldValue.serverTimestamp();
+          await _db.collection('admins').doc(uid).set(seeded, SetOptions(merge: true));
+          await _db.collection('users').doc(uid).set(seeded, SetOptions(merge: true));
           adminDoc = await _db.collection('admins').doc(uid).get();
         } else {
           await _auth.signOut();

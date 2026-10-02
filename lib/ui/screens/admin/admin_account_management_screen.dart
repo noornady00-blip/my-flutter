@@ -1882,7 +1882,7 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                               ? null
                               : () async {
                                   final name = nameCtrl.text.trim();
-                                  final phone = PhoneUtils.convertArabicDigits(phoneCtrl.text.trim());
+                                  final phone = PhoneUtils.convertArabicDigits(phoneCtrl.text.trim()).replaceAll(RegExp(r'[^0-9]'), '');
                                   final pass = PhoneUtils.convertArabicDigits(passCtrl.text.trim());
 
                                   if (name.isEmpty || phone.isEmpty || pass.isEmpty) {
@@ -1890,8 +1890,8 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                                     return;
                                   }
 
-                                  if (!PhoneUtils.isValid(phone)) {
-                                    setDlgState(() => dlgError = 'يرجى إدخال رقم هاتف سوداني صحيح مكون من 9 أرقام يبدأ بـ 9 أو 1 أو 12');
+                                  if (phone.length != 9) {
+                                    setDlgState(() => dlgError = 'يجب أن يتكون رقم الموبايل من 9 أرقام بعد الصفر');
                                     return;
                                   }
 
