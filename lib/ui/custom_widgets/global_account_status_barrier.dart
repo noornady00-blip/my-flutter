@@ -20,6 +20,8 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/utils/navigation_utils.dart';
+import '../screens/onboarding/onboarding_screen.dart';
+import '../../network/notification_service.dart';
 
 class GlobalAccountStatusBarrier extends StatefulWidget {
   final Widget child;
@@ -37,6 +39,7 @@ class _GlobalAccountStatusBarrierState
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _roleDocSub;
 
   bool _isSuspended = false;
+  bool _isLoggingOut = false;
   String _currentUid = '';
   String _userName = '';
   String _userPhone = '';
@@ -74,6 +77,48 @@ class _GlobalAccountStatusBarrierState
     _roleDocSub = null;
   }
 
+  Future<void> _checkIfAccountDeleted(String uid) async {
+    if (uid.isEmpty || _isLoggingOut) return;
+    try {
+      final db = FirebaseFirestore.instance;
+      final uDoc = await db.collection('users').doc(uid).get();
+      if (uDoc.exists) return;
+      final lDoc = await db.collection('lawyers').doc(uid).get();
+      if (lDoc.exists) return;
+      final aDoc = await db.collection('admins').doc(uid).get();
+      if (aDoc.exists) return;
+
+      // Account was deleted permanently by administrator
+      _isLoggingOut = true;
+      _cancelDocSubscriptions();
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear();
+      try {
+        await FirebaseAuth.instance.signOut();
+      } catch (_) {}
+
+      if (mounted) {
+        setState(() {
+          _isSuspended = false;
+          _currentUid = '';
+        });
+      }
+
+      final nav = NotificationService.navigatorKey.currentState;
+      if (nav != null) {
+        nav.pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+          (_) => false,
+        );
+      }
+    } catch (e) {
+      debugPrint('[GlobalAccountStatusBarrier] check deletion error: $e');
+    } finally {
+      _isLoggingOut = false;
+    }
+  }
+
   Future<void> _subscribeToUserStatus(String uid) async {
     _cancelDocSubscriptions();
 
@@ -93,7 +138,10 @@ class _GlobalAccountStatusBarrierState
 
     // 1. Listen to users/{uid} in real time
     _userDocSub = db.collection('users').doc(uid).snapshots().listen((snap) {
-      if (!snap.exists) return;
+      if (!snap.exists) {
+        _checkIfAccountDeleted(uid);
+        return;
+      }
       final data = snap.data() ?? {};
       final role = data['role']?.toString().toLowerCase().trim() ?? _userRole;
       final name = data['name']?.toString() ?? _userName;

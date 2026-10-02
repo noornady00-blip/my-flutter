@@ -38,6 +38,38 @@ class _AdminSupportMessagesScreenState extends State<AdminSupportMessagesScreen>
   void initState() {
     super.initState();
     NotificationService().markNotificationsReadForEntity(type: 'support_message');
+    _markAllUnreadAsRead();
+  }
+
+  Future<void> _markAllUnreadAsRead() async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('support_messages')
+          .limit(200)
+          .get();
+
+      final batch = FirebaseFirestore.instance.batch();
+      bool hasChanges = false;
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final status = data['status']?.toString().toLowerCase();
+        final read = data['read'];
+        final isRead = data['isRead'];
+        if (read != true && isRead != true && status != 'read') {
+          batch.update(doc.reference, {
+            'status': 'read',
+            'read': true,
+            'isRead': true,
+          });
+          hasChanges = true;
+        }
+      }
+      if (hasChanges) {
+        await batch.commit();
+      }
+    } catch (e) {
+      debugPrint('[AdminSupportMessages] _markAllUnreadAsRead error: $e');
+    }
   }
 
   @override
@@ -795,7 +827,7 @@ class _AdminSupportMessagesScreenState extends State<AdminSupportMessagesScreen>
             });
           } else {
             if (isUnread) {
-              ref.update({'status': 'read'});
+              ref.update({'status': 'read', 'read': true, 'isRead': true});
             }
           }
         },

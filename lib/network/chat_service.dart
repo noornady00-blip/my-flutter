@@ -163,9 +163,9 @@ class ChatService {
       lawyerPhoto: effectiveLawyerPhoto,
       lawyerPhotoBase64: lawyer.photoBase64,
       lawyerAccountId: lawyer.accountId,
-      lastMessage: 'مرحباً، تم بدء المحادثة',
-      lastSenderId: client.uid,
-      lastSenderName: client.name,
+      lastMessage: '',
+      lastSenderId: '',
+      lastSenderName: '',
       lastMessageTime: DateTime.now(),
       unreadByClient: 0,
       unreadByLawyer: 0,
@@ -219,7 +219,8 @@ class ChatService {
         return existing;
       }
 
-      await chatDocRef.set(fallbackChat.toMap(), SetOptions(merge: true));
+      // Do not write empty conversation to Firestore if no message has been sent yet.
+      // The chat document will be created atomically when the user sends their first message.
       return fallbackChat;
     } catch (e) {
       debugPrint('[ChatService] getOrCreateChat notice: $e');
@@ -340,6 +341,10 @@ class ChatService {
       }
     } catch (_) {}
 
+    final chatDoc = await _db.collection('chats').doc(chatId).get();
+    final bool chatExists = chatDoc.exists && chatDoc.data() != null;
+    final chatData = chatDoc.data() ?? {};
+
     final batch = _db.batch();
 
     // 1. Add message to subcollection
@@ -378,21 +383,53 @@ class ChatService {
       'isLastMessageRead': false,
     };
 
-    // Only increment unread count for recipient if NOT stopped by recipient
+    if (!chatExists) {
+      updateData['createdAt'] = FieldValue.serverTimestamp();
+      updateData['pinnedBy'] = <String>[];
+      updateData['mutedBy'] = <String>[];
+      updateData['stoppedBy'] = <String>[];
+
+      try {
+        final rDoc = await _db.collection('users').doc(recipientId).get();
+        final rData = rDoc.data() ?? {};
+        final rRole = rData['role']?.toString().toLowerCase() ?? '';
+        final isRecipientLawyer = (rRole == 'lawyer');
+
+        if (isRecipientLawyer) {
+          updateData['lawyerId'] = recipientId;
+          updateData['lawyerName'] = rData['name'] ?? 'محامٍ';
+          updateData['lawyerPhone'] = rData['phone'] ?? '';
+          updateData['lawyerPhoto'] = rData['photoUrl'] ?? rData['photo'];
+          updateData['lawyerAccountId'] = rData['accountId'] ?? '';
+
+          updateData['clientId'] = senderId;
+          updateData['clientName'] = senderName;
+          updateData['clientAccountId'] = senderAccountId;
+        } else {
+          updateData['clientId'] = recipientId;
+          updateData['clientName'] = rData['name'] ?? 'عميل';
+          updateData['clientPhone'] = rData['phone'] ?? '';
+          updateData['clientPhoto'] = rData['photoUrl'] ?? rData['photo'];
+          updateData['clientAccountId'] = rData['accountId'] ?? '';
+
+          updateData['lawyerId'] = senderId;
+          updateData['lawyerName'] = senderName;
+          updateData['lawyerAccountId'] = senderAccountId;
+        }
+      } catch (_) {}
+    }
+
+    // Only increment unread count for the actual recipient
     if (!isStoppedByRecipient) {
-      if (senderRole == 'lawyer') {
-        updateData['lawyerId'] = senderId;
-        updateData['clientId'] = recipientId;
-        updateData['unreadByClient'] = FieldValue.increment(1);
-        updateData['unreadByLawyer'] = 0;
-      } else if (senderRole == 'client') {
-        updateData['clientId'] = senderId;
-        updateData['lawyerId'] = recipientId;
+      final existingLawyerId = chatData['lawyerId']?.toString() ?? updateData['lawyerId']?.toString();
+      final isRecipientLawyer = (recipientId == existingLawyerId) || (senderRole == 'client');
+
+      if (isRecipientLawyer) {
         updateData['unreadByLawyer'] = FieldValue.increment(1);
         updateData['unreadByClient'] = 0;
-      } else if (senderRole == 'admin') {
+      } else {
         updateData['unreadByClient'] = FieldValue.increment(1);
-        updateData['unreadByLawyer'] = FieldValue.increment(1);
+        updateData['unreadByLawyer'] = 0;
       }
     }
 
@@ -629,34 +666,26 @@ class ChatService {
 
       final Map<String, dynamic> update = {};
       final lastSenderId = data['lastSenderId']?.toString() ?? '';
+      // Only mark the conversation's last message as read if current user is the recipient (not the sender)
       if (lastSenderId.isNotEmpty && lastSenderId != currentUserId) {
         update['isLastMessageRead'] = true;
       }
+
+      // Only clear the unread counter belonging to the current user.
+      // NEVER clear the other party's counter, otherwise messages falsely appear seen!
       if (currentUserId == clientId) {
         update['unreadByClient'] = 0;
-      }
-      if (currentUserId == lawyerId) {
+      } else if (currentUserId == lawyerId) {
         update['unreadByLawyer'] = 0;
-      }
-
-      final isLawyer = currentUserRole == 'lawyer' || currentUserRole == 'approved_lawyer';
-      if (isLawyer) {
+      } else if (currentUserRole == 'lawyer' || currentUserRole == 'approved_lawyer') {
         update['unreadByLawyer'] = 0;
       } else if (currentUserRole == 'client') {
         update['unreadByClient'] = 0;
-      } else if (currentUserRole == 'admin') {
-        // Admin chat: clear both counters or whichever is non-zero
-        update['unreadByClient'] = 0;
-        update['unreadByLawyer'] = 0;
       }
 
-      // If user matched neither clientId nor lawyerId explicitly, clear both for safety
-      if (!update.containsKey('unreadByClient') && !update.containsKey('unreadByLawyer')) {
-        update['unreadByClient'] = 0;
-        update['unreadByLawyer'] = 0;
+      if (update.isNotEmpty) {
+        await chatRef.update(update).catchError((_) {});
       }
-
-      await chatRef.update(update).catchError((_) {});
 
       // Also mark unread messages sent by the other party as read
       try {
@@ -673,7 +702,9 @@ class ChatService {
           bool hasChanges = false;
           for (final doc in unreadMsgsSnap.docs) {
             final mData = doc.data();
-            if (mData['senderId'] != currentUserId) {
+            // Only mark messages sent by others if current user is actually a participant
+            if (mData['senderId'] != currentUserId &&
+                (currentUserId == clientId || currentUserId == lawyerId || currentUserRole != 'admin')) {
               batch.update(doc.reference, {'isRead': true});
               hasChanges = true;
             }

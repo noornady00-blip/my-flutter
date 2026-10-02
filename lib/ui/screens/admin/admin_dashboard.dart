@@ -734,12 +734,21 @@ class _AdminDashboardState extends State<AdminDashboard> {
           builder: (context, snap) {
             final docs = snap.data?.docs ?? [];
             int count = 0;
+            final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
             for (final doc in docs) {
               final d = doc.data();
+              if (currentUid.isNotEmpty) {
+                final clientId = d['clientId']?.toString() ?? '';
+                final lawyerId = d['lawyerId']?.toString() ?? '';
+                if (currentUid == clientId) {
+                  count += (d['unreadByClient'] as num?)?.toInt() ?? 0;
+                } else if (currentUid == lawyerId) {
+                  count += (d['unreadByLawyer'] as num?)?.toInt() ?? 0;
+                }
+              }
               final unreadByAdmin = (d['unreadByAdmin'] as num?)?.toInt() ?? 0;
-              final unreadCount = (d['unreadCount'] as num?)?.toInt() ?? 0;
-              if (unreadByAdmin > 0 || unreadCount > 0) {
-                count++;
+              if (unreadByAdmin > 0) {
+                count += unreadByAdmin;
               }
             }
             return _buildNotificationBellBadge(

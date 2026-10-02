@@ -141,27 +141,61 @@ void main() async {
     }
 
     if (isLoggedIn) {
-      final String role = effectiveRole ?? 'client';
-      final currentUid = savedUid;
-      unawaited(
-        NotificationService().registerUserDevice(uid: currentUid, role: role),
-      );
-      if (role == 'admin' || role.toLowerCase() == 'subadmin') {
-        initialScreen = const AdminDashboard();
-        try {
-          unawaited(
-            NotificationService().enableAllNotifications(adminUid: currentUid),
-          );
-          unawaited(FirestoreService().ensurePrimaryAdminsSeeded());
-        } catch (_) {}
-      } else if (role == 'lawyer') {
-        if (savedStatus == 'pending') {
-          initialScreen = LawyerPendingScreen(lawyerName: savedName);
-        } else {
-          initialScreen = const MainNavigationScreen(role: 'lawyer');
+      bool accountStillExists = true;
+      try {
+        final uDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(savedUid)
+            .get()
+            .timeout(const Duration(seconds: 3));
+        if (!uDoc.exists) {
+          final lDoc = await FirebaseFirestore.instance
+              .collection('lawyers')
+              .doc(savedUid)
+              .get()
+              .timeout(const Duration(seconds: 2));
+          final aDoc = await FirebaseFirestore.instance
+              .collection('admins')
+              .doc(savedUid)
+              .get()
+              .timeout(const Duration(seconds: 2));
+          if (!lDoc.exists && !aDoc.exists) {
+            accountStillExists = false;
+          }
         }
+      } catch (_) {
+        // Network timeout / offline: allow cached session to continue
+      }
+
+      if (!accountStillExists) {
+        try {
+          await prefs.clear();
+          await FirebaseAuth.instance.signOut();
+        } catch (_) {}
+        initialScreen = const OnboardingScreen();
       } else {
-        initialScreen = const MainNavigationScreen(role: 'client');
+        final String role = effectiveRole ?? 'client';
+        final currentUid = savedUid;
+        unawaited(
+          NotificationService().registerUserDevice(uid: currentUid, role: role),
+        );
+        if (role == 'admin' || role.toLowerCase() == 'subadmin') {
+          initialScreen = const AdminDashboard();
+          try {
+            unawaited(
+              NotificationService().enableAllNotifications(adminUid: currentUid),
+            );
+            unawaited(FirestoreService().ensurePrimaryAdminsSeeded());
+          } catch (_) {}
+        } else if (role == 'lawyer') {
+          if (savedStatus == 'pending') {
+            initialScreen = LawyerPendingScreen(lawyerName: savedName);
+          } else {
+            initialScreen = const MainNavigationScreen(role: 'lawyer');
+          }
+        } else {
+          initialScreen = const MainNavigationScreen(role: 'client');
+        }
       }
     } else {
       initialScreen = const OnboardingScreen();
