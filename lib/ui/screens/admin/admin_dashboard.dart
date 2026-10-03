@@ -5245,6 +5245,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     bool obscureConfirm = true;
     bool loading = false;
     String? error;
+    bool success = false;
 
     showModalBottomSheet(
       context: context,
@@ -5428,9 +5429,67 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFD49B1A), width: 1.5)),
                   ),
                 ),
-                const SizedBox(height: 20),
+                if (error != null) ...[
+                  const SizedBox(height: 14),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF2F2),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFF87171)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.error_outline_rounded, color: Color(0xFFDC2626), size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            error!,
+                            style: GoogleFonts.cairo(
+                              color: const Color(0xFF991B1B),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
+                if (success) ...[
+                  const SizedBox(height: 14),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFECFDF5),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFF34D399)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.check_circle_rounded, color: Color(0xFF059669), size: 22),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'تم تغيير كلمة المرور لحساب المشرف بنجاح!',
+                            style: GoogleFonts.cairo(
+                              color: const Color(0xFF065F46),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
+                const SizedBox(height: 18),
                 GlassButton(
-                  onPressed: loading
+                  onPressed: (loading || success)
                       ? null
                       : () async {
                           final oldP = PhoneUtils.convertArabicDigits(oldPassCtrl.text.trim());
@@ -5461,25 +5520,19 @@ class _AdminDashboardState extends State<AdminDashboard> {
                           );
 
                           if (!mounted) return;
-                          setModalState(() => loading = false);
+                          setModalState(() {
+                            loading = false;
+                            if (res['success'] == true) {
+                              success = true;
+                              error = null;
+                            } else {
+                              error = res['error']?.toString() ?? 'تعذر تغيير كلمة المرور، يرجى التأكد من كلمة المرور الحالية';
+                            }
+                          });
 
                           if (res['success'] == true) {
+                            await Future.delayed(const Duration(milliseconds: 1100));
                             if (modalCtx.mounted) Navigator.pop(modalCtx);
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'تم تغيير كلمة المرور لحساب المشرف بنجاح!',
-                                    style: GoogleFonts.cairo(fontWeight: FontWeight.w700),
-                                  ),
-                                  backgroundColor: const Color(0xFF10B981),
-                                  behavior: SnackBarBehavior.floating,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                ),
-                              );
-                            }
-                          } else {
-                            setModalState(() => error = res['error'] ?? 'تعذر تغيير كلمة المرور');
                           }
                         },
                   text: 'حفظ كلمة المرور الجديدة',

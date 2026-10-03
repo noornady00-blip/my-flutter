@@ -782,20 +782,21 @@ class FirestoreService implements DatabaseContract {
         }
       } catch (_) {}
 
-      // 4. Ensure phone_directory ONLY contains the single canonical format (+249xxxxxxxxx)
+      // 4. Clean up any unnormalized redundant phone_directory documents in Firestore
       try {
-        final allPhoneDocs = await _db.collection('phone_directory').get();
+        final dirSnap = await _db.collection('phone_directory').get();
         final batch = _db.batch();
-        bool hasDeletions = false;
-        for (final doc in allPhoneDocs.docs) {
-          final id = doc.id;
-          final isValidCanonical = id.startsWith('+249') && id.length == 13;
-          if (!isValidCanonical) {
+        int deleteCount = 0;
+        for (final doc in dirSnap.docs) {
+          final docId = doc.id;
+          final norm = PhoneUtils.tryNormalize(docId);
+          // If the docId is not strictly the canonical format (+249xxxxxxxxx)
+          if (norm != docId) {
             batch.delete(doc.reference);
-            hasDeletions = true;
+            deleteCount++;
           }
         }
-        if (hasDeletions) {
+        if (deleteCount > 0) {
           await batch.commit();
         }
       } catch (_) {}

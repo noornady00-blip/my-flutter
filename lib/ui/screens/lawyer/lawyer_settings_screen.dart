@@ -371,6 +371,8 @@ class _LawyerSettingsScreenState extends State<LawyerSettingsScreen> {
     bool obscureNew = true;
     bool obscureConfirm = true;
     bool saving = false;
+    String? error;
+    bool success = false;
 
     showModalBottomSheet(
       context: context,
@@ -511,16 +513,78 @@ class _LawyerSettingsScreenState extends State<LawyerSettingsScreen> {
                         return null;
                       },
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 14),
+
+                    if (error != null) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEF2F2),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFF87171)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.error_outline_rounded, color: Color(0xFFDC2626), size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                error!,
+                                style: GoogleFonts.cairo(
+                                  color: const Color(0xFF991B1B),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                    ],
+
+                    if (success) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFECFDF5),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFF34D399)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.check_circle_rounded, color: Color(0xFF059669), size: 22),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'تم تغيير كلمة المرور بنجاح!',
+                                style: GoogleFonts.cairo(
+                                  color: const Color(0xFF065F46),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                    ],
+
                     SizedBox(
                       width: double.infinity,
                       height: 48,
                       child: ElevatedButton(
-                        onPressed: saving
+                        onPressed: (saving || success)
                             ? null
                             : () async {
                                 if (!formKey.currentState!.validate()) return;
-                                setModalState(() => saving = true);
+                                setModalState(() {
+                                  saving = true;
+                                  error = null;
+                                });
 
                                 final curP = PhoneUtils.convertArabicDigits(currentPassController.text.trim());
                                 final newP = PhoneUtils.convertArabicDigits(newPassController.text.trim());
@@ -535,38 +599,20 @@ class _LawyerSettingsScreenState extends State<LawyerSettingsScreen> {
                                   res = {'success': false, 'error': 'حدث خطأ غير متوقع، يرجى المحاولة مجدداً'};
                                 }
 
-                                // Always reset saving regardless of mount state
-                                setModalState(() => saving = false);
+                                setModalState(() {
+                                  saving = false;
+                                  if (res['success'] == true) {
+                                    success = true;
+                                    error = null;
+                                  } else {
+                                    error = res['error']?.toString() ?? 'تعذر تغيير كلمة المرور، يرجى التأكد من كلمة المرور الحالية';
+                                  }
+                                });
 
                                 if (res['success'] == true) {
-                                  if (context.mounted) {
-                                    Navigator.pop(context);
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          'تم تغيير كلمة المرور بنجاح',
-                                          style: GoogleFonts.cairo(fontWeight: FontWeight.w700),
-                                        ),
-                                        backgroundColor: const Color(0xFF10B981),
-                                        behavior: SnackBarBehavior.floating,
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                      ),
-                                    );
-                                  }
-                                } else {
-                                  // Show error inside the bottom sheet
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          res['error']?.toString() ?? 'تعذر تغيير كلمة المرور',
-                                          style: GoogleFonts.cairo(),
-                                        ),
-                                        backgroundColor: AppTheme.error,
-                                        behavior: SnackBarBehavior.floating,
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                      ),
-                                    );
+                                  await Future.delayed(const Duration(milliseconds: 1100));
+                                  if (ctx.mounted) {
+                                    Navigator.pop(ctx);
                                   }
                                 }
                               },

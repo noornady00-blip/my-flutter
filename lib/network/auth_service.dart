@@ -2441,18 +2441,16 @@ class AuthService implements AuthContract {
         await _db.collection('admins').doc(secUid).set(syncData, SetOptions(merge: true)).catchError((_) {});
       }
       if (adminPhone.isNotEmpty) {
-        final normAdminPhone = PhoneUtils.normalize(adminPhone);
+        final normAdminPhone = PhoneUtils.tryNormalize(adminPhone) ?? adminPhone;
         await _db.collection('phone_directory').doc(normAdminPhone).set(syncData, SetOptions(merge: true)).catchError((_) {});
         final raw9 = PhoneUtils.convertArabicDigits(adminPhone).replaceAll(RegExp(r'[^0-9]'), '');
         final clean9 = raw9.length >= 9 ? raw9.substring(raw9.length - 9) : raw9;
         if (clean9.isNotEmpty) {
-          _db.collection('phone_directory').doc(clean9).delete().catchError((_) {});
-          _db.collection('phone_directory').doc('0$clean9').delete().catchError((_) {});
-          _db.collection('phone_directory').doc('249$clean9').delete().catchError((_) {});
-          _db.collection('phone_directory').doc('00$clean9').delete().catchError((_) {});
-          _db.collection('phone_directory').doc('0249$clean9').delete().catchError((_) {});
-          _db.collection('phone_directory').doc('+249249$clean9').delete().catchError((_) {});
-          _db.collection('phone_directory').doc('+2490$clean9').delete().catchError((_) {});
+          for (final variant in [clean9, '0$clean9', '249$clean9', '00249$clean9', '0249$clean9', '00$clean9', '+249$clean9', '+2490$clean9', '+249249$clean9']) {
+            if (variant != normAdminPhone) {
+              _db.collection('phone_directory').doc(variant).delete().catchError((_) {});
+            }
+          }
         }
       }
 
@@ -3052,24 +3050,23 @@ class AuthService implements AuthContract {
         } catch (_) {}
       }
 
-      // 4. Update ONLY the single canonical phone_directory entry (+249xxxxxxxxx)
-      if (normPhone.isNotEmpty) {
-        try {
-          final phoneDirUpdate = <String, dynamic>{
-            'passwordHash': newHash,
-            'passwordUpdatedAt': FieldValue.serverTimestamp(),
-            'adminResetPassword': FieldValue.delete(),
-          };
-          await _db.collection('phone_directory').doc(normPhone).set(phoneDirUpdate, SetOptions(merge: true));
-        } catch (_) {}
-      }
+      // 4. Update ONLY canonical normalized phone_directory entry (+249xxxxxxxxx)
+      final canonicalPhone = PhoneUtils.tryNormalize(normPhone) ?? PhoneUtils.tryNormalize(phone);
+      if (canonicalPhone != null && canonicalPhone.isNotEmpty) {
+        final phoneDirUpdate = <String, dynamic>{
+          'passwordHash': newHash,
+          'passwordUpdatedAt': FieldValue.serverTimestamp(),
+          'adminResetPassword': FieldValue.delete(),
+        };
+        await _db.collection('phone_directory').doc(canonicalPhone).set(phoneDirUpdate, SetOptions(merge: true));
 
-      // 5. Purge any legacy non-canonical documents from phone_directory
-      for (final pv in phoneVariants) {
-        if (pv != normPhone) {
-          try {
-            await _db.collection('phone_directory').doc(pv).delete();
-          } catch (_) {}
+        // Strictly clean up / delete any unnormalized redundant variants
+        for (final pv in phoneVariants) {
+          if (pv != canonicalPhone) {
+            try {
+              await _db.collection('phone_directory').doc(pv).delete();
+            } catch (_) {}
+          }
         }
       }
 
