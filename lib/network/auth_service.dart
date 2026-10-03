@@ -591,6 +591,7 @@ class AuthService implements AuthContract {
         name: name,
         phone: normPhone,
         role: 'lawyer',
+        status: 'pending',
         accountId: accountId,
         photoUrl: photoUrl,
         photoBase64: photoBase64,
@@ -613,6 +614,7 @@ class AuthService implements AuthContract {
       );
 
       final userMap = user.toMap();
+      userMap['status'] = 'pending';
       userMap['passwordHash'] = pwdHash;
       userMap['email'] = effectiveEmail;
 
@@ -1135,26 +1137,54 @@ class AuthService implements AuthContract {
           } catch (_) {}
         }
       }
-      if (docData.isEmpty && expectedPortal == 'lawyer') {
+      DocumentSnapshot<Map<String, dynamic>>? lawyerDoc;
+      if (expectedPortal == 'lawyer' ||
+          discoveredRole == 'lawyer' ||
+          docData['role']?.toString().toLowerCase() == 'lawyer') {
         try {
           final lDoc = await _db.collection('lawyers').doc(uid).get();
-          if (lDoc.exists && lDoc.data() != null) docData = lDoc.data()!;
+          if (lDoc.exists && lDoc.data() != null) lawyerDoc = lDoc;
         } catch (_) {}
-        if (docData.isEmpty && discoveredUid != null && discoveredUid != uid) {
+        if (lawyerDoc == null && discoveredUid != null && discoveredUid != uid) {
           try {
             final oldL = await _db.collection('lawyers').doc(discoveredUid).get();
             if (oldL.exists && oldL.data() != null) {
               await _db.collection('lawyers').doc(uid).set(oldL.data()!, SetOptions(merge: true));
-              docData = oldL.data()!;
+              lawyerDoc = await _db.collection('lawyers').doc(uid).get();
             }
           } catch (_) {}
         }
+        if (lawyerDoc != null && lawyerDoc.data() != null) {
+          docData = {...docData, ...lawyerDoc.data()!};
+        }
       }
 
-      final String finalRole = (docData['role']?.toString().trim() ?? discoveredRole).toLowerCase();
-      final String status = (docData['status']?.toString().trim() ?? recordData['status']?.toString() ?? 'active').toLowerCase();
-      final String? rejectionReason = docData['rejectionReason']?.toString() ?? recordData['rejectionReason']?.toString();
-      final String userName = docData['name']?.toString().trim() ?? recordData['name']?.toString() ?? '';
+      final String finalRole = (lawyerDoc?.data()?['role']?.toString().trim() ??
+              docData['role']?.toString().trim() ??
+              discoveredRole)
+          .toLowerCase();
+
+      String status = (docData['status']?.toString().trim() ??
+              recordData['status']?.toString() ??
+              'active')
+          .toLowerCase();
+
+      if (finalRole == 'lawyer') {
+        final lStatus = lawyerDoc?.data()?['status']?.toString().trim().toLowerCase();
+        if (lStatus != null && lStatus.isNotEmpty) {
+          status = lStatus;
+        } else if (status != 'approved' && status != 'active' && status != 'suspended' && status != 'rejected') {
+          status = 'pending';
+        }
+      }
+
+      final String? rejectionReason = lawyerDoc?.data()?['rejectionReason']?.toString() ??
+          docData['rejectionReason']?.toString() ??
+          recordData['rejectionReason']?.toString();
+      final String userName = lawyerDoc?.data()?['name']?.toString().trim() ??
+          docData['name']?.toString().trim() ??
+          recordData['name']?.toString() ??
+          '';
 
 
 

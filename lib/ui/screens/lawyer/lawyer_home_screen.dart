@@ -34,29 +34,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
   String? _cachedPhotoUrl;
   bool _isLoading = true;
 
-  final List<String> _sudaneseCities = const [
-    'الخرطوم',
-    'أم درمان',
-    'بحري',
-    'بورتسودان',
-    'كسلا',
-    'القضارف',
-    'ود مدني',
-    'الأبيض',
-    'الفاشر',
-    'نيالا',
-    'عطبرة',
-    'شندي',
-    'دنقلا',
-    'مروي',
-    'سنار',
-    'الدمازين',
-    'زالنجي',
-    'الضعين',
-    'الجنينة',
-    'كادقلي',
-    'باقي المدن',
-  ];
+  List<String> get _sudaneseCities => SudanCities.names;
 
   @override
   void initState() {

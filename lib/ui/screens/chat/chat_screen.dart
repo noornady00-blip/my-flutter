@@ -531,7 +531,9 @@ class _ChatScreenState extends State<ChatScreen> {
           name: widget.lawyerName ?? lData['name']?.toString() ?? 'محامٍ',
           phone: widget.lawyerPhone ?? lData['phone']?.toString() ?? '',
           whatsapp: lData['whatsapp']?.toString() ?? '',
-          city: lData['city']?.toString() ?? 'السودان',
+          city: (lData['city']?.toString().trim().isNotEmpty == true)
+              ? lData['city']!.toString().trim()
+              : (userData['city']?.toString().trim() ?? ''),
           accountId: widget.lawyerAccountId ?? lData['accountId']?.toString() ?? '',
           photoUrl: lawyerPhoto,
           photoBase64: lawyerBase64,
@@ -569,7 +571,9 @@ class _ChatScreenState extends State<ChatScreen> {
           name: _currentUserName,
           phone: lData['phone']?.toString() ?? userData['phone']?.toString() ?? '',
           whatsapp: lData['whatsapp']?.toString() ?? '',
-          city: lData['city']?.toString() ?? 'السودان',
+          city: (lData['city']?.toString().trim().isNotEmpty == true)
+              ? lData['city']!.toString().trim()
+              : (userData['city']?.toString().trim() ?? ''),
           accountId: _currentUserAccountId,
           status: 'approved',
         );

@@ -16,6 +16,7 @@ import 'lawyer/lawyer_settings_screen.dart';
 import 'chat/chat_list_screen.dart';
 import 'onboarding/onboarding_screen.dart';
 import 'admin/admin_dashboard.dart';
+import 'auth/lawyer_pending_screen.dart';
 
 // ============================================================================
 // MainNavigationScreen
@@ -133,7 +134,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           );
         }
         return;
-      } else if (doc.data()?['status'] == 'suspended' && mounted) {
+      }
+      final liveStatus = doc.data()?['status']?.toString().trim().toLowerCase();
+      if (liveStatus == 'suspended' && mounted) {
         await AuthService().signOut();
         if (mounted) {
           Navigator.pushAndRemoveUntil(
@@ -143,6 +146,17 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           );
           showAccountSuspendedDialog(context);
         }
+        return;
+      }
+      if (role == 'lawyer' && (liveStatus == 'pending' || (liveStatus != 'approved' && liveStatus != 'active')) && mounted) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(
+            builder: (_) => LawyerPendingScreen(lawyerName: doc.data()?['name']?.toString()),
+          ),
+          (_) => false,
+        );
+        return;
       }
     } catch (_) {}
   }

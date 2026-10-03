@@ -425,13 +425,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await prefs.remove('user_profile_photo');
       await prefs.remove('user_profile_photo_url');
       await prefs.remove('user_profile_photo_path');
+      await prefs.remove('user_profile_photo_base64');
+      await prefs.remove('photoUrl');
+      await prefs.remove('photoBase64');
+      await prefs.remove('photo');
+
+      final Map<String, dynamic> delPhoto = {
+        'photoUrl': FieldValue.delete(),
+        'photoBase64': FieldValue.delete(),
+        'photo': FieldValue.delete(),
+        'imageUrl': FieldValue.delete(),
+        'avatar': FieldValue.delete(),
+        'profileImage': FieldValue.delete(),
+        'user_profile_photo': FieldValue.delete(),
+        'user_profile_photo_url': FieldValue.delete(),
+        'user_profile_photo_base64': FieldValue.delete(),
+        'user_profile_photo_path': FieldValue.delete(),
+      };
+
       if (_userUid != null) {
-        await FirebaseFirestore.instance.collection('users').doc(_userUid).set({
-          'photoUrl': FieldValue.delete(),
-          'photoBase64': FieldValue.delete(),
-          'user_profile_photo_base64': FieldValue.delete(),
-          'user_profile_photo_url': FieldValue.delete(),
-        }, SetOptions(merge: true));
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(_userUid)
+            .set(delPhoto, SetOptions(merge: true));
+
+        if (_userRole == 'lawyer' || _userRole == 'approved_lawyer') {
+          await FirebaseFirestore.instance
+              .collection('lawyers')
+              .doc(_userUid)
+              .set(delPhoto, SetOptions(merge: true));
+        }
+
+        if (_userPhone.isNotEmpty) {
+          try {
+            final norm = PhoneUtils.normalize(_userPhone);
+            await FirebaseFirestore.instance
+                .collection('phone_directory')
+                .doc(norm)
+                .update(delPhoto)
+                .catchError((_) {});
+          } catch (_) {}
+        }
+
+        try {
+          PaintingBinding.instance.imageCache.clear();
+          PaintingBinding.instance.imageCache.clearLiveImages();
+        } catch (_) {}
 
         unawaited(ChatService().syncUserProfileToAllChats(
           uid: _userUid!,

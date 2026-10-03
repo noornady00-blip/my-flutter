@@ -58,7 +58,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         if (role == 'admin' || role == 'subadmin') {
           targetScreen = const AdminDashboard();
         } else {
-          // Live verification of account suspension status for clients & lawyers
+          // Live verification of account status for clients & lawyers
+          String? liveStatus;
+          String? liveName;
           try {
             final col = role == 'lawyer' ? 'lawyers' : 'users';
             final doc = await FirebaseFirestore.instance.collection(col).doc(user.uid).get();
@@ -73,7 +75,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               }
               return;
             }
-            if (doc.exists && doc.data()?['status'] == 'suspended') {
+            liveStatus = doc.data()?['status']?.toString().trim().toLowerCase();
+            liveName = doc.data()?['name']?.toString().trim();
+            if (liveStatus == 'suspended') {
               await AuthService().signOut();
               if (mounted) {
                 setState(() => _isStarting = false);
@@ -84,8 +88,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           } catch (_) {}
 
           if (role == 'lawyer') {
-            if (status == 'pending') {
-              targetScreen = LawyerPendingScreen(lawyerName: name);
+            final effectiveStatus = liveStatus ?? status;
+            if (effectiveStatus == 'pending' || (effectiveStatus != 'approved' && effectiveStatus != 'active')) {
+              targetScreen = LawyerPendingScreen(lawyerName: liveName ?? name);
             } else {
               targetScreen = const MainNavigationScreen(role: 'lawyer');
             }

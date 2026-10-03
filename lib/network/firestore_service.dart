@@ -9,6 +9,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/models/lawyer.dart';
@@ -435,27 +436,39 @@ class FirestoreService implements DatabaseContract {
         lawyerUpdates['callPhone'] = callPhone.trim();
       }
       if (whatsapp != null) lawyerUpdates['whatsapp'] = whatsapp.trim();
-      if (city != null) lawyerUpdates['city'] = city.trim();
+      if (city != null) {
+        lawyerUpdates['city'] = city.trim();
+        userUpdates['city'] = city.trim();
+      }
       if (specialization != null) {
         lawyerUpdates['specialization'] = specialization.trim();
       }
 
-      if (photoUrl != null) {
-        if (photoUrl.isEmpty) {
-          lawyerUpdates['photoUrl'] = FieldValue.delete();
-          userUpdates['photoUrl'] = FieldValue.delete();
-        } else {
+      final bool isClearingPhoto = (photoUrl != null && photoUrl.isEmpty) ||
+          (photoBase64 != null && photoBase64.isEmpty);
+
+      if (isClearingPhoto) {
+        for (final k in [
+          'photoUrl',
+          'photoBase64',
+          'photo',
+          'imageUrl',
+          'avatar',
+          'profileImage',
+          'user_profile_photo',
+          'user_profile_photo_url',
+          'user_profile_photo_base64',
+          'user_profile_photo_path',
+        ]) {
+          lawyerUpdates[k] = FieldValue.delete();
+          userUpdates[k] = FieldValue.delete();
+        }
+      } else {
+        if (photoUrl != null && photoUrl.isNotEmpty) {
           lawyerUpdates['photoUrl'] = photoUrl;
           userUpdates['photoUrl'] = photoUrl;
         }
-      }
-
-      // Backward compatibility for base64
-      if (photoBase64 != null) {
-        if (photoBase64.isEmpty) {
-          lawyerUpdates['photoBase64'] = FieldValue.delete();
-          userUpdates['photoBase64'] = FieldValue.delete();
-        } else {
+        if (photoBase64 != null && photoBase64.isNotEmpty) {
           lawyerUpdates['photoBase64'] = photoBase64;
           userUpdates['photoBase64'] = photoBase64;
         }
@@ -475,6 +488,43 @@ class FirestoreService implements DatabaseContract {
       }
       await batch.commit();
 
+      // Synchronize changes to phone_directory if present
+      try {
+        final lDoc = await _db.collection('lawyers').doc(uid).get();
+        final rawPhone = phone ?? lDoc.data()?['phone']?.toString();
+        if (rawPhone != null && rawPhone.isNotEmpty) {
+          final norm = PhoneUtils.normalize(rawPhone);
+          final Map<String, dynamic> dirUpdates = {};
+          if (city != null) dirUpdates['city'] = city.trim();
+          if (name != null) dirUpdates['name'] = name.trim();
+          if (isClearingPhoto) {
+            dirUpdates['photoUrl'] = FieldValue.delete();
+            dirUpdates['photoBase64'] = FieldValue.delete();
+            dirUpdates['photo'] = FieldValue.delete();
+            dirUpdates['imageUrl'] = FieldValue.delete();
+            dirUpdates['user_profile_photo_url'] = FieldValue.delete();
+            dirUpdates['user_profile_photo_base64'] = FieldValue.delete();
+          } else if (photoUrl != null && photoUrl.isNotEmpty) {
+            dirUpdates['photoUrl'] = photoUrl;
+          }
+          if (dirUpdates.isNotEmpty) {
+            await _db
+                .collection('phone_directory')
+                .doc(norm)
+                .set(dirUpdates, SetOptions(merge: true))
+                .catchError((_) {});
+          }
+        }
+      } catch (_) {}
+
+      // Clear image cache if photo was removed
+      if (isClearingPhoto) {
+        try {
+          PaintingBinding.instance.imageCache.clear();
+          PaintingBinding.instance.imageCache.clearLiveImages();
+        } catch (_) {}
+      }
+
       // Update local memory cache if present
       if (inMemoryApprovedLawyers != null) {
         final updatedList = inMemoryApprovedLawyers!.map((l) {
@@ -486,10 +536,11 @@ class FirestoreService implements DatabaseContract {
               whatsapp: whatsapp ?? l.whatsapp,
               city: city ?? l.city,
               specialization: specialization ?? l.specialization,
-              photoUrl: (photoUrl != null && photoUrl.isEmpty)
+              clearPhoto: isClearingPhoto,
+              photoUrl: isClearingPhoto
                   ? null
                   : (photoUrl ?? l.photoUrl),
-              photoBase64: (photoBase64 != null && photoBase64.isEmpty)
+              photoBase64: isClearingPhoto
                   ? null
                   : (photoBase64 ?? l.photoBase64),
             );

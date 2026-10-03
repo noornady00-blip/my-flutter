@@ -195,7 +195,7 @@ void main() async {
             unawaited(FirestoreService().ensurePrimaryAdminsSeeded());
           } catch (_) {}
         } else if (role == 'lawyer') {
-          if (savedStatus == 'pending') {
+          if (savedStatus == 'pending' || (savedStatus != 'approved' && savedStatus != 'active')) {
             initialScreen = LawyerPendingScreen(lawyerName: savedName);
           } else {
             initialScreen = const MainNavigationScreen(role: 'lawyer');

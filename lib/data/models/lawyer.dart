@@ -222,6 +222,7 @@ class LawyerModel {
     String? accountId,
     String? photoBase64,
     String? photoUrl,
+    bool clearPhoto = false,
     DateTime? createdAt,
     DateTime? approvedAt,
   }) {
@@ -235,8 +236,8 @@ class LawyerModel {
       specialization: specialization ?? this.specialization,
       status: status ?? this.status,
       accountId: accountId ?? this.accountId,
-      photoBase64: photoBase64 ?? this.photoBase64,
-      photoUrl: photoUrl ?? this.photoUrl,
+      photoBase64: clearPhoto ? null : (photoBase64 ?? this.photoBase64),
+      photoUrl: clearPhoto ? null : (photoUrl ?? this.photoUrl),
       createdAt: createdAt ?? this.createdAt,
       approvedAt: approvedAt ?? this.approvedAt,
     );

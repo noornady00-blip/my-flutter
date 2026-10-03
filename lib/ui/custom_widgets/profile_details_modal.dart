@@ -365,7 +365,7 @@ class ProfileDetailsModal {
         name: cleanName,
         phone: fallbackPhone ?? '',
         whatsapp: fallbackPhone ?? '',
-        city: 'السودان',
+        city: '',
         accountId: fallbackAccountId ?? '',
         photoUrl: fallbackPhoto,
         photoBase64: fallbackPhotoBase64,
@@ -516,18 +516,7 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
   void initState() {
     super.initState();
     _lawyer = widget.lawyer;
-    if (_lawyer.city.isEmpty ||
-        _lawyer.name.isEmpty ||
-        _lawyer.name == 'محامٍ' ||
-        _lawyer.name == 'عميل' ||
-        _lawyer.name == 'محامي - موثق العقود' ||
-        _lawyer.accountId.isEmpty ||
-        _lawyer.photoBase64 == null ||
-        _lawyer.photoBase64!.trim().isEmpty ||
-        _lawyer.photoUrl == null ||
-        _lawyer.photoUrl!.trim().isEmpty) {
-      _loadFullLawyerData();
-    }
+    _loadFullLawyerData();
   }
 
   Future<void> _loadFullLawyerData() async {
@@ -587,9 +576,20 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
 
           if (resolvedBase64 != null && resolvedBase64.isNotEmpty) {
             mergedMap['photoBase64'] = resolvedBase64;
+          } else {
+            mergedMap.remove('photoBase64');
           }
           if (resolvedUrl != null && resolvedUrl.isNotEmpty) {
             mergedMap['photoUrl'] = resolvedUrl;
+          } else {
+            mergedMap.remove('photoUrl');
+          }
+
+          final resolvedCity = lData?['city']?.toString().trim() ??
+              uData?['city']?.toString().trim() ??
+              '';
+          if (resolvedCity.isNotEmpty) {
+            mergedMap['city'] = resolvedCity;
           }
 
           setState(() {

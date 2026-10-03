@@ -198,6 +198,14 @@ class _LawyerSettingsScreenState extends State<LawyerSettingsScreen> {
         await prefs.remove('user_profile_photo');
         await prefs.remove('user_profile_photo_url');
         await prefs.remove('user_profile_photo_base64');
+        await prefs.remove('user_profile_photo_path');
+        await prefs.remove('photoUrl');
+        await prefs.remove('photoBase64');
+        await prefs.remove('photo');
+        try {
+          PaintingBinding.instance.imageCache.clear();
+          PaintingBinding.instance.imageCache.clearLiveImages();
+        } catch (_) {}
         unawaited(ChatService().syncUserProfileToAllChats(
           uid: _uid!,
           role: 'lawyer',
