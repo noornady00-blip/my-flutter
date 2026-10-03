@@ -400,7 +400,11 @@ class _ChatListScreenState extends State<ChatListScreen> {
                                             ? 'تأكد من كتابة الاسم أو رقم الحساب بشكل صحيح.'
                                             : (_activeFilter != 'all'
                                                 ? 'يمكنك التبديل إلى تبويب "الكل" لعرض كافة المحادثات.'
-                                                : 'تواصل مع نخبة المحامين المعتمدين وستظهر محادثاتك هنا فوراً.'),
+                                                : (_role == 'admin' || _role == 'subadmin'
+                                                    ? 'لا توجد محادثات موجهة للإدارة حالياً. ستظهر هنا أي استفسارات أو رسائل دعم جديدة فور وصولها.'
+                                                    : (_role == 'lawyer'
+                                                        ? 'لا توجد محادثات نشطة مع عملاء حالياً. ستظهر هنا فور تواصل العميل معك.'
+                                                        : 'تواصل مع نخبة المحامين المعتمدين وستظهر محادثاتك هنا فوراً.'))),
                                         style: GoogleFonts.cairo(fontSize: 13, color: const Color(0xFF64748B)),
                                         textAlign: TextAlign.center,
                                       ),
@@ -433,7 +437,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                           ),
                                         )
-                                      else if (_role != 'lawyer')
+                                      else if (_role == 'client')
                                         ElevatedButton.icon(
                                           onPressed: () {
                                             if (widget.onNavigateTab != null) {
@@ -442,7 +446,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                                               Navigator.push(
                                                 context,
                                                 MaterialPageRoute(
-                                                  builder: (_) => MainNavigationScreen(initialIndex: 2, role: _role),
+                                                  builder: (_) => const MainNavigationScreen(initialIndex: 2, role: 'client'),
                                                 ),
                                               );
                                             }

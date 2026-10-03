@@ -18,6 +18,7 @@ import 'lawyer/lawyer_home_screen.dart';
 import 'lawyer/lawyer_settings_screen.dart';
 import 'chat/chat_list_screen.dart';
 import 'onboarding/onboarding_screen.dart';
+import 'admin/admin_dashboard.dart';
 
 // ============================================================================
 // MainNavigationScreen
@@ -88,6 +89,18 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   @override
   void initState() {
     super.initState();
+    final initialRole = widget.role;
+    if (initialRole == 'admin' || initialRole == 'subadmin') {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const AdminDashboard()),
+          );
+        }
+      });
+      return;
+    }
     _currentIndex = widget.initialIndex;
     if (widget.role != null) {
       _role = widget.role!;
@@ -109,7 +122,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     try {
       final session = await AuthService().getSavedSession();
       final role = session['role'] ?? _role;
-      final col = role == 'lawyer' ? 'lawyers' : 'users';
+      final col = (role == 'lawyer') ? 'lawyers' : ((role == 'admin' || role == 'subadmin') ? 'admins' : 'users');
       final doc = await FirebaseFirestore.instance.collection(col).doc(user.uid).get();
       if (!doc.exists) {
         // Auto-heal account in Firestore if document was lost or wiped
@@ -174,6 +187,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     final session = await AuthService().getSavedSession();
     final role = session['role'];
     if (role != null && role != _role && mounted) {
+      if (role == 'admin' || role == 'subadmin') {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const AdminDashboard()),
+        );
+        return;
+      }
       setState(() {
         _role = role;
         if (_role == 'lawyer' && _currentIndex > 2) {
