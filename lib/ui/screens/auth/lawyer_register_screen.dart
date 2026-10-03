@@ -377,7 +377,7 @@ class _LawyerRegisterScreenState extends State<LawyerRegisterScreen> {
                                       const Icon(Icons.lock_person_rounded, size: 18, color: Color(0xFF0B2A5B)),
                                       const SizedBox(width: 7),
                                       Text(
-                                        'رقم إنشاء الحساب (لتسجيل الدخول)',
+                                        'رقم تسجيل الدخول',
                                         style: GoogleFonts.cairo(
                                           fontSize: 14,
                                           fontWeight: FontWeight.w700,
@@ -393,7 +393,7 @@ class _LawyerRegisterScreenState extends State<LawyerRegisterScreen> {
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: Text(
-                                      'خاص • غير ظاهر للعامة',
+                                      'خاص وسري',
                                       style: GoogleFonts.cairo(
                                         fontSize: 10.5,
                                         fontWeight: FontWeight.w800,
@@ -406,10 +406,10 @@ class _LawyerRegisterScreenState extends State<LawyerRegisterScreen> {
                               const SizedBox(height: 8),
                               SudanPhoneFormField(
                                 controller: _phoneController,
-                                hintText: 'أدخل رقم إنشاء الحساب الأساسي',
+                                hintText: 'أدخل رقم هاتفك لتسجيل الدخول',
                                 validator: (v) {
                                   final val = v?.trim() ?? '';
-                                  if (val.isEmpty) return 'يرجى إدخال رقم إنشاء الحساب';
+                                  if (val.isEmpty) return 'يرجى إدخال رقم تسجيل الدخول';
                                   if (!PhoneUtils.isValid(val)) {
                                     return 'يجب إدخال رقم سوداني صحيح مكون من 9 أرقام ويبدأ بـ 9 (مثال: 912345678)';
                                   }
@@ -419,7 +419,7 @@ class _LawyerRegisterScreenState extends State<LawyerRegisterScreen> {
                               Padding(
                                 padding: const EdgeInsets.only(top: 4, right: 4),
                                 child: Text(
-                                  '🔒 هذا الرقم خاص بك لتسجيل الدخول ولن يظهر للمراجعين في بطاقتك الشخصية.',
+                                  '🔒 هذا الرقم مخصص لتسجيل الدخول فقط ولن يظهر للعامة.',
                                   style: GoogleFonts.cairo(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w600,
@@ -444,7 +444,7 @@ class _LawyerRegisterScreenState extends State<LawyerRegisterScreen> {
                                       const Icon(Icons.chat_bubble_outline_rounded, size: 18, color: Color(0xFF25D366)),
                                       const SizedBox(width: 7),
                                       Text(
-                                        'رقم الواتساب المعتمد للاستشارات',
+                                        'رقم الواتساب',
                                         style: GoogleFonts.cairo(
                                           fontSize: 14,
                                           fontWeight: FontWeight.w700,
@@ -460,7 +460,7 @@ class _LawyerRegisterScreenState extends State<LawyerRegisterScreen> {
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: Text(
-                                      'ظاهر في بطاقتك',
+                                      'للتواصل والاستشارات',
                                       style: GoogleFonts.cairo(
                                         fontSize: 10.5,
                                         fontWeight: FontWeight.w800,
@@ -495,7 +495,7 @@ class _LawyerRegisterScreenState extends State<LawyerRegisterScreen> {
                                       ),
                                       const SizedBox(width: 6),
                                       Text(
-                                        'استخدم نفس رقم الحساب (ويمكنك تغييره)',
+                                        'استخدام نفس رقم الدخول',
                                         style: GoogleFonts.cairo(
                                           fontSize: 12,
                                           fontWeight: FontWeight.w700,
@@ -509,7 +509,7 @@ class _LawyerRegisterScreenState extends State<LawyerRegisterScreen> {
                               const SizedBox(height: 6),
                               SudanPhoneFormField(
                                 controller: _whatsappController,
-                                hintText: '9XXXXXXXX (رقم الواتساب الظاهر للعملاء)',
+                                hintText: 'رقم الواتساب الظاهر للعملاء',
                                 onChanged: (v) {
                                   if (_sameAsAccountForWhatsapp && v != _phoneController.text) {
                                     setState(() => _sameAsAccountForWhatsapp = false);
@@ -518,7 +518,7 @@ class _LawyerRegisterScreenState extends State<LawyerRegisterScreen> {
                                 validator: (v) {
                                   final val = v?.trim() ?? '';
                                   if (val.isEmpty && !_sameAsAccountForWhatsapp) {
-                                    return 'يرجى إدخال رقم الواتساب أو تحديد استخدام نفس رقم الحساب';
+                                    return 'يرجى إدخال رقم الواتساب أو تفعيل خيار نفس الرقم';
                                   }
                                   if (val.isNotEmpty && !PhoneUtils.isValid(val)) {
                                     return 'يجب إدخال رقم سوداني صحيح مكون من 9 أرقام ويبدأ بـ 9';
@@ -543,7 +543,7 @@ class _LawyerRegisterScreenState extends State<LawyerRegisterScreen> {
                                       const Icon(Icons.phone_in_talk_rounded, size: 18, color: Color(0xFF0B2A5B)),
                                       const SizedBox(width: 7),
                                       Text(
-                                        'رقم الاتصال المباشر للمكالمات',
+                                        'رقم الاتصال المباشر',
                                         style: GoogleFonts.cairo(
                                           fontSize: 14,
                                           fontWeight: FontWeight.w700,
@@ -559,7 +559,7 @@ class _LawyerRegisterScreenState extends State<LawyerRegisterScreen> {
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: Text(
-                                      'ظاهر في بطاقتك',
+                                      'للمكالمات الهاتفية',
                                       style: GoogleFonts.cairo(
                                         fontSize: 10.5,
                                         fontWeight: FontWeight.w800,
@@ -594,7 +594,7 @@ class _LawyerRegisterScreenState extends State<LawyerRegisterScreen> {
                                       ),
                                       const SizedBox(width: 6),
                                       Text(
-                                        'استخدم نفس رقم الحساب (ويمكنك تغييره)',
+                                        'استخدام نفس رقم الدخول',
                                         style: GoogleFonts.cairo(
                                           fontSize: 12,
                                           fontWeight: FontWeight.w700,
@@ -608,7 +608,7 @@ class _LawyerRegisterScreenState extends State<LawyerRegisterScreen> {
                               const SizedBox(height: 6),
                               SudanPhoneFormField(
                                 controller: _callPhoneController,
-                                hintText: '9XXXXXXXX (رقم الاتصال المباشر الظاهر للعملاء)',
+                                hintText: 'رقم الهاتف الظاهر للعملاء',
                                 onChanged: (v) {
                                   if (_sameAsAccountForCall && v != _phoneController.text) {
                                     setState(() => _sameAsAccountForCall = false);
@@ -617,7 +617,7 @@ class _LawyerRegisterScreenState extends State<LawyerRegisterScreen> {
                                 validator: (v) {
                                   final val = v?.trim() ?? '';
                                   if (val.isEmpty && !_sameAsAccountForCall) {
-                                    return 'يرجى إدخال رقم الاتصال أو تحديد استخدام نفس رقم الحساب';
+                                    return 'يرجى إدخال رقم الاتصال أو تفعيل خيار نفس الرقم';
                                   }
                                   if (val.isNotEmpty && !PhoneUtils.isValid(val)) {
                                     return 'يجب إدخال رقم سوداني صحيح مكون من 9 أرقام ويبدأ بـ 9';
@@ -630,7 +630,7 @@ class _LawyerRegisterScreenState extends State<LawyerRegisterScreen> {
                           const SizedBox(height: 18),
 
                           // 4. City
-                          _buildFieldHeader('المدينة والمقر القانوني', Icons.location_city_rounded),
+                          _buildFieldHeader('المدينة', Icons.location_city_rounded),
                           const SizedBox(height: 8),
                           _buildPickerSelector(
                             label: _selectedCity ?? 'اختر مدينتك',

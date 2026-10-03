@@ -855,13 +855,13 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
                     _buildDetailRow(
                       iconWidget: const Icon(Icons.lock_person_rounded,
                           color: Color(0xFF64748B), size: 18),
-                      label: 'رقم إنشاء الحساب (خاص)',
+                      label: 'رقم تسجيل الدخول (خاص)',
                       value: lawyer.phone,
                       isPhone: true,
                       color: const Color(0xFF64748B),
                       onCopy: () {
                         Clipboard.setData(ClipboardData(text: lawyer.phone));
-                        _showCopyToast(context, 'تم نسخ رقم إنشاء الحساب بنجاح');
+                        _showCopyToast(context, 'تم نسخ رقم تسجيل الدخول بنجاح');
                       },
                     ),
                     const Divider(height: 20, color: Color(0xFFE2E8F0)),

@@ -1000,8 +1000,8 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
           _buildSuiteRow(
             icon: Icons.lock_person_rounded,
             iconColor: const Color(0xFF475569),
-            label: 'رقم إنشاء الحساب (خاص لتسجيل الدخول)',
-            subtitle: 'خاص بك فقط • لا يظهر للعملاء في بطاقتك',
+            label: 'رقم تسجيل الدخول (خاص)',
+            subtitle: 'رقم حسابك السري • لا يظهر للعملاء',
             value: accountPhone,
             isPhone: true,
             customBadgeText: 'خاص',
@@ -1010,7 +1010,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(
-                    'رقم إنشاء الحساب هو رقم تسجيل الدخول الخاص بك ولن يظهر للمراجعين. لتغيير أرقام التواصل بالبطاقة عدّل رقم الاتصال أو الواتساب أدناه.',
+                    'رقم تسجيل الدخول هو رقم حسابك الخاص ولن يظهر للعملاء في بطاقتك الشخصية.',
                     style: GoogleFonts.cairo(fontWeight: FontWeight.w600, fontSize: 13),
                   ),
                   backgroundColor: const Color(0xFF0B2A5B),

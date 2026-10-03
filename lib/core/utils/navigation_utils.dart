@@ -11,7 +11,29 @@ class NavigationUtils {
   /// Signs out cleanly: purges local SharedPreferences, resets Firebase Auth,
   /// clears cache, and smoothly transitions to AuthGatewayScreen.
   static Future<void> smoothSignOut(BuildContext context) async {
-    // 1. Navigate cleanly to AuthGatewayScreen immediately so previous screens are unmounted immediately
+    // 1. Immediately wipe SharedPreferences so old session cannot be read anywhere
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear();
+    } catch (e) {
+      debugPrint('[smoothSignOut] SharedPreferences clear notice: $e');
+    }
+
+    // 2. Clear in-memory caches
+    FirestoreService.inMemoryApprovedLawyers = null;
+
+    // 3. Complete Firebase Auth sign out
+    try {
+      await FirebaseAuth.instance.signOut();
+    } catch (e) {
+      debugPrint('[smoothSignOut] FirebaseAuth signOut notice: $e');
+    }
+
+    // 4. Background cleanup for push notifications
+    unawaited(NotificationService().clearAllSystemNotifications().catchError((_) {}));
+    unawaited(NotificationService().unregisterAdminDevice().catchError((_) {}));
+
+    // 5. Navigate cleanly to AuthGatewayScreen immediately
     final nav = NotificationService.navigatorKey.currentState;
     final gatewayRoute = PageRouteBuilder(
       pageBuilder: (context, animation, secondaryAnimation) => const AuthGatewayScreen(),
@@ -40,28 +62,6 @@ class NavigationUtils {
     } else if (context.mounted) {
       Navigator.pushAndRemoveUntil(context, gatewayRoute, (_) => false);
     }
-
-    // 2. Immediately wipe SharedPreferences so old session cannot be read
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.clear();
-    } catch (e) {
-      debugPrint('[smoothSignOut] SharedPreferences clear notice: $e');
-    }
-
-    // 3. Clear memory cache
-    FirestoreService.inMemoryApprovedLawyers = null;
-
-    // 4. Complete Firebase Auth sign out
-    try {
-      await FirebaseAuth.instance.signOut();
-    } catch (e) {
-      debugPrint('[smoothSignOut] FirebaseAuth signOut notice: $e');
-    }
-
-    // 5. Background cleanup for push notifications
-    unawaited(NotificationService().clearAllSystemNotifications().catchError((_) {}));
-    unawaited(NotificationService().unregisterAdminDevice().catchError((_) {}));
   }
 
   /// General smooth slide transition for opening child screens

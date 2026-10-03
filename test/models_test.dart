@@ -168,13 +168,46 @@ void main() {
   });
 
   group('SudanCities & Other Cities Tests', () {
-    test('SudanCities includes باقي المدن as the very last option', () {
+    test('SudanCities includes exactly the 12 specified cities plus باقي المدن', () {
+      final expectedCities = [
+        'الخرطوم',
+        'أم درمان',
+        'بحري',
+        'بورتسودان',
+        'كسلا',
+        'عطبرة',
+        'ود مدني',
+        'الأبيض',
+        'الفاشر',
+        'نيالا',
+        'دنقلا',
+        'كوستي',
+        'باقي المدن',
+      ];
+
+      expect(SudanCities.names, equals(expectedCities));
       expect(SudanCities.cities.last['name'], 'باقي المدن');
       expect(SudanCities.names.last, 'باقي المدن');
       expect(SudanCities.names.contains('باقي المدن'), isTrue);
+      expect(SudanCities.names.contains('كوستي'), isTrue);
+
+      // Verify removed cities are no longer present
+      expect(SudanCities.names.contains('القضارف'), isFalse);
+      expect(SudanCities.names.contains('شندي'), isFalse);
+      expect(SudanCities.names.contains('مروي'), isFalse);
+      expect(SudanCities.names.contains('سنار'), isFalse);
+      expect(SudanCities.names.contains('الدمازين'), isFalse);
+      expect(SudanCities.names.contains('زالنجي'), isFalse);
+      expect(SudanCities.names.contains('الضعين'), isFalse);
+      expect(SudanCities.names.contains('الجنينة'), isFalse);
+      expect(SudanCities.names.contains('كادقلي'), isFalse);
     });
 
-    test('CityLandmarkWidget resolves default seal for باقي المدن and جميع المدن', () {
+    test('CityLandmarkWidget resolves correct assets for cities, Kosti, باقي المدن and جميع المدن', () {
+      expect(
+        CityLandmarkWidget.getAssetPath('كوستي'),
+        'assets/images/cities/kosti.png',
+      );
       expect(
         CityLandmarkWidget.getAssetPath('باقي المدن'),
         'assets/images/cities/default_seal.png',

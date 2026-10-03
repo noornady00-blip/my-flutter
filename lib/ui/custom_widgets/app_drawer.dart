@@ -38,8 +38,8 @@ class AppDrawer extends StatefulWidget {
 }
 
 class _AppDrawerState extends State<AppDrawer> {
-  String _userName = 'مستخدم محاميك';
-  String _userPhone = 'لا يوجد رقم مسجل';
+  String _userName = 'زائر منصة محاميك';
+  String _userPhone = '';
   String _userRole = 'client';
   String? _photoUrl;
   String? _photoBase64;
@@ -118,9 +118,18 @@ class _AppDrawerState extends State<AppDrawer> {
         _userRole = session['role'] ?? 'client';
         _isLoggedIn = true;
       } else if (currentUser != null) {
-        _userName = currentUser.displayName ?? 'مستخدم محاميك';
+        _userName = currentUser.displayName ?? 'عميل محاميك';
         _userPhone = currentUser.email?.replaceAll('@mahameek.client.com', '').replaceAll('@mahameek.lawyer.com', '') ?? '';
         _isLoggedIn = true;
+      } else {
+        _userName = 'زائر منصة محاميك';
+        _userPhone = '';
+        _userRole = 'client';
+        _photoUrl = null;
+        _photoBase64 = null;
+        _photoPath = null;
+        _cachedAvatarBytes = null;
+        _isLoggedIn = false;
       }
     });
 
@@ -1177,6 +1186,12 @@ class _AppDrawerState extends State<AppDrawer> {
                           if (widget.onNavigateTab != null && _isLoggedIn) {
                             Navigator.of(context).pop();
                             widget.onNavigateTab!(_userRole == 'lawyer' ? 2 : 3);
+                          } else if (!_isLoggedIn) {
+                            Navigator.of(context).pop();
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => const AuthGatewayScreen()),
+                            );
                           }
                         },
                         onLongPress: () {
@@ -1253,8 +1268,8 @@ class _AppDrawerState extends State<AppDrawer> {
                             ),
                             const SizedBox(height: 5),
 
-                            // Phone Number Under Name
-                            if (_userPhone.isNotEmpty)
+                            // Phone Number Under Name (or login hint if guest)
+                            if (_isLoggedIn && _userPhone.isNotEmpty)
                               Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
@@ -1282,6 +1297,35 @@ class _AppDrawerState extends State<AppDrawer> {
                                     textDirection: TextDirection.ltr,
                                   ),
                                 ],
+                              )
+                            else if (!_isLoggedIn)
+                              InkWell(
+                                onTap: () {
+                                  Navigator.of(context).pop();
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(builder: (_) => const AuthGatewayScreen()),
+                                  );
+                                },
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.login_rounded,
+                                      size: 12,
+                                      color: Color(0xFFD49B1A),
+                                    ),
+                                    const SizedBox(width: 5),
+                                    Text(
+                                      'سجّل دخولك للوصول لكافة الخدمات',
+                                      style: GoogleFonts.cairo(
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: const Color(0xFFCBD5E1),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                           ],
                         ),

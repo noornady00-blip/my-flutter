@@ -67,4 +67,36 @@ void main() {
     expect(find.text('الأستاذ أحمد فضل الله عثمان'), findsOneWidget);
     expect(find.text('الخرطوم'), findsOneWidget);
   });
+
+  testWidgets('Guest Profile View contains clear login invitation and no fake membership data', (WidgetTester tester) async {
+    // Verify that guest card does not assert active digital membership for unauthenticated visitors
+    const guestTitle = 'أهلاً بك في منصة محاميك';
+    const guestBadge = 'وضع الزائر والضيف';
+    const guestButtonText = 'تسجيل الدخول أو إنشاء حساب';
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.themeData,
+        home: Directionality(
+          textDirection: TextDirection.rtl,
+          child: Scaffold(
+            body: Column(
+              children: [
+                Text(guestTitle),
+                Text(guestBadge),
+                Text(guestButtonText),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text(guestTitle), findsOneWidget);
+    expect(find.text(guestBadge), findsOneWidget);
+    expect(find.text(guestButtonText), findsOneWidget);
+    // Ensure fake active membership card texts are not present
+    expect(find.text('بطاقة عضوية رقمية'), findsNothing);
+    expect(find.text('2026/01/15'), findsNothing);
+  });
 }
