@@ -282,7 +282,7 @@ class ExecutiveLawyerCard extends StatelessWidget {
                       backgroundColor: const Color(0xFF0B2A5B),
                       borderColor: const Color(0xFF1E2E5C),
                       shadowColor: const Color(0xFF0B2A5B),
-                      onTap: () => _callPhone(lawyer.phone),
+                      onTap: () => _callPhone(lawyer.publicCallPhone),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -294,11 +294,7 @@ class ExecutiveLawyerCard extends StatelessWidget {
                       backgroundColor: const Color(0xFF16A34A),
                       borderColor: const Color(0xFF15803D),
                       shadowColor: const Color(0xFF16A34A),
-                      onTap: () => _openWhatsApp(
-                        lawyer.whatsapp.isNotEmpty
-                            ? lawyer.whatsapp
-                            : lawyer.phone,
-                      ),
+                      onTap: () => _openWhatsApp(lawyer.publicWhatsApp),
                     ),
                   ),
                 ],

@@ -24,10 +24,14 @@ class _LawyerRegisterScreenState extends State<LawyerRegisterScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _callPhoneController = TextEditingController();
   final _whatsappController = TextEditingController();
   final _passController = TextEditingController();
   final _confirmPassController = TextEditingController();
   final ImagePicker _picker = ImagePicker();
+
+  bool _sameAsAccountForWhatsapp = false;
+  bool _sameAsAccountForCall = false;
 
   String? _selectedCity;
   String? _photoBase64;
@@ -40,9 +44,24 @@ class _LawyerRegisterScreenState extends State<LawyerRegisterScreen> {
   final _authService = AuthService();
 
   @override
+  void initState() {
+    super.initState();
+    _phoneController.addListener(() {
+      final p = _phoneController.text;
+      if (_sameAsAccountForWhatsapp) {
+        _whatsappController.text = p;
+      }
+      if (_sameAsAccountForCall) {
+        _callPhoneController.text = p;
+      }
+    });
+  }
+
+  @override
   void dispose() {
     _nameController.dispose();
     _phoneController.dispose();
+    _callPhoneController.dispose();
     _whatsappController.dispose();
     _passController.dispose();
     _confirmPassController.dispose();
@@ -191,6 +210,12 @@ class _LawyerRegisterScreenState extends State<LawyerRegisterScreen> {
 
     setState(() { _loading = true; _error = null; });
     final normalizedPhone = PhoneUtils.normalize(_phoneController.text.trim());
+
+    final rawCall = _callPhoneController.text.trim();
+    final normalizedCallPhone = rawCall.isNotEmpty
+        ? PhoneUtils.normalize(rawCall)
+        : normalizedPhone;
+
     final rawWhatsapp = _whatsappController.text.trim();
     final normalizedWhatsapp = rawWhatsapp.isNotEmpty
         ? PhoneUtils.normalize(rawWhatsapp)
@@ -199,6 +224,7 @@ class _LawyerRegisterScreenState extends State<LawyerRegisterScreen> {
     final res = await _authService.registerLawyer(
       name: _nameController.text.trim(),
       phone: normalizedPhone,
+      callPhone: normalizedCallPhone,
       whatsapp: normalizedWhatsapp,
       city: _selectedCity!,
       specialization: '',
@@ -338,37 +364,268 @@ class _LawyerRegisterScreenState extends State<LawyerRegisterScreen> {
                           ),
                           const SizedBox(height: 18),
 
-                          // 2. Phone Number
-                          SudanPhoneFormField(
-                            controller: _phoneController,
-                            labelText: 'رقم الموبايل',
-                            headerIcon: Icons.phone_android_rounded,
-                            hintText: 'أدخل رقم الموبايل',
-                            validator: (v) {
-                              final val = v?.trim() ?? '';
-                              if (val.isEmpty) return 'يرجى إدخال رقم الموبايل';
-                              if (!PhoneUtils.isValid(val)) {
-                                return 'يجب إدخال رقم سوداني صحيح مكون من 9 أرقام ويبدأ بـ 9 (مثال: 912345678)';
-                              }
-                              return null;
-                            },
+                          // 1. Account Creation Phone Number (Private / Login Only)
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                textDirection: TextDirection.rtl,
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.lock_person_rounded, size: 18, color: Color(0xFF0B2A5B)),
+                                      const SizedBox(width: 7),
+                                      Text(
+                                        'رقم إنشاء الحساب (لتسجيل الدخول)',
+                                        style: GoogleFonts.cairo(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w700,
+                                          color: const Color(0xFF0B2A5B),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF64748B).withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      'خاص • غير ظاهر للعامة',
+                                      style: GoogleFonts.cairo(
+                                        fontSize: 10.5,
+                                        fontWeight: FontWeight.w800,
+                                        color: const Color(0xFF475569),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              SudanPhoneFormField(
+                                controller: _phoneController,
+                                hintText: 'أدخل رقم إنشاء الحساب الأساسي',
+                                validator: (v) {
+                                  final val = v?.trim() ?? '';
+                                  if (val.isEmpty) return 'يرجى إدخال رقم إنشاء الحساب';
+                                  if (!PhoneUtils.isValid(val)) {
+                                    return 'يجب إدخال رقم سوداني صحيح مكون من 9 أرقام ويبدأ بـ 9 (مثال: 912345678)';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4, right: 4),
+                                child: Text(
+                                  '🔒 هذا الرقم خاص بك لتسجيل الدخول ولن يظهر للمراجعين في بطاقتك الشخصية.',
+                                  style: GoogleFonts.cairo(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: const Color(0xFF64748B),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 18),
+                          const SizedBox(height: 20),
 
-                          // 3. WhatsApp Number
-                          SudanPhoneFormField(
-                            controller: _whatsappController,
-                            labelText: 'رقم الواتساب المعتمد للاستشارات',
-                            headerIcon: Icons.chat_bubble_outline_rounded,
-                            isRequired: false,
-                            hintText: '9XXXXXXXX (أو نفس رقم الهاتف)',
-                            validator: (v) {
-                              final val = v?.trim() ?? '';
-                              if (val.isNotEmpty && !PhoneUtils.isValid(val)) {
-                                return 'يجب إدخال رقم سوداني صحيح مكون من 9 أرقام ويبدأ بـ 9';
-                              }
-                              return null;
-                            },
+                          // 2. WhatsApp Number (Public)
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                textDirection: TextDirection.rtl,
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.chat_bubble_outline_rounded, size: 18, color: Color(0xFF25D366)),
+                                      const SizedBox(width: 7),
+                                      Text(
+                                        'رقم الواتساب المعتمد للاستشارات',
+                                        style: GoogleFonts.cairo(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w700,
+                                          color: const Color(0xFF0B2A5B),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF25D366).withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      'ظاهر في بطاقتك',
+                                      style: GoogleFonts.cairo(
+                                        fontSize: 10.5,
+                                        fontWeight: FontWeight.w800,
+                                        color: const Color(0xFF15803D),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              InkWell(
+                                onTap: () {
+                                  setState(() {
+                                    _sameAsAccountForWhatsapp = !_sameAsAccountForWhatsapp;
+                                    if (_sameAsAccountForWhatsapp) {
+                                      _whatsappController.text = _phoneController.text;
+                                    }
+                                  });
+                                },
+                                borderRadius: BorderRadius.circular(8),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 4),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        _sameAsAccountForWhatsapp
+                                            ? Icons.check_box_rounded
+                                            : Icons.check_box_outline_blank_rounded,
+                                        size: 19,
+                                        color: _sameAsAccountForWhatsapp ? const Color(0xFFD49B1A) : const Color(0xFF94A3B8),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        'استخدم نفس رقم الحساب (ويمكنك تغييره)',
+                                        style: GoogleFonts.cairo(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                          color: _sameAsAccountForWhatsapp ? const Color(0xFF0B2A5B) : const Color(0xFF64748B),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              SudanPhoneFormField(
+                                controller: _whatsappController,
+                                hintText: '9XXXXXXXX (رقم الواتساب الظاهر للعملاء)',
+                                onChanged: (v) {
+                                  if (_sameAsAccountForWhatsapp && v != _phoneController.text) {
+                                    setState(() => _sameAsAccountForWhatsapp = false);
+                                  }
+                                },
+                                validator: (v) {
+                                  final val = v?.trim() ?? '';
+                                  if (val.isEmpty && !_sameAsAccountForWhatsapp) {
+                                    return 'يرجى إدخال رقم الواتساب أو تحديد استخدام نفس رقم الحساب';
+                                  }
+                                  if (val.isNotEmpty && !PhoneUtils.isValid(val)) {
+                                    return 'يجب إدخال رقم سوداني صحيح مكون من 9 أرقام ويبدأ بـ 9';
+                                  }
+                                  return null;
+                                },
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+
+                          // 3. Direct Call Phone (Public)
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                textDirection: TextDirection.rtl,
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.phone_in_talk_rounded, size: 18, color: Color(0xFF0B2A5B)),
+                                      const SizedBox(width: 7),
+                                      Text(
+                                        'رقم الاتصال المباشر للمكالمات',
+                                        style: GoogleFonts.cairo(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w700,
+                                          color: const Color(0xFF0B2A5B),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF0B2A5B).withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      'ظاهر في بطاقتك',
+                                      style: GoogleFonts.cairo(
+                                        fontSize: 10.5,
+                                        fontWeight: FontWeight.w800,
+                                        color: const Color(0xFF0B2A5B),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              InkWell(
+                                onTap: () {
+                                  setState(() {
+                                    _sameAsAccountForCall = !_sameAsAccountForCall;
+                                    if (_sameAsAccountForCall) {
+                                      _callPhoneController.text = _phoneController.text;
+                                    }
+                                  });
+                                },
+                                borderRadius: BorderRadius.circular(8),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 4),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        _sameAsAccountForCall
+                                            ? Icons.check_box_rounded
+                                            : Icons.check_box_outline_blank_rounded,
+                                        size: 19,
+                                        color: _sameAsAccountForCall ? const Color(0xFFD49B1A) : const Color(0xFF94A3B8),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        'استخدم نفس رقم الحساب (ويمكنك تغييره)',
+                                        style: GoogleFonts.cairo(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                          color: _sameAsAccountForCall ? const Color(0xFF0B2A5B) : const Color(0xFF64748B),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              SudanPhoneFormField(
+                                controller: _callPhoneController,
+                                hintText: '9XXXXXXXX (رقم الاتصال المباشر الظاهر للعملاء)',
+                                onChanged: (v) {
+                                  if (_sameAsAccountForCall && v != _phoneController.text) {
+                                    setState(() => _sameAsAccountForCall = false);
+                                  }
+                                },
+                                validator: (v) {
+                                  final val = v?.trim() ?? '';
+                                  if (val.isEmpty && !_sameAsAccountForCall) {
+                                    return 'يرجى إدخال رقم الاتصال أو تحديد استخدام نفس رقم الحساب';
+                                  }
+                                  if (val.isNotEmpty && !PhoneUtils.isValid(val)) {
+                                    return 'يجب إدخال رقم سوداني صحيح مكون من 9 أرقام ويبدأ بـ 9';
+                                  }
+                                  return null;
+                                },
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 18),
 

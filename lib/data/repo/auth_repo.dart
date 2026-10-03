@@ -65,6 +65,7 @@ class AuthRepo {
   Future<Map<String, dynamic>> registerLawyer({
     required String name,
     required String phone,
+    String? callPhone,
     required String password,
     required String city,
     String? specialization,
@@ -75,6 +76,7 @@ class AuthRepo {
       _authContract.registerLawyer(
         name: name,
         phone: phone,
+        callPhone: callPhone,
         password: password,
         city: city,
         specialization: specialization,

@@ -461,6 +461,7 @@ class AuthService implements AuthContract {
   Future<Map<String, dynamic>> registerLawyer({
     required String name,
     required String phone,
+    String? callPhone,
     required String whatsapp,
     required String city,
     String? specialization,
@@ -480,6 +481,9 @@ class AuthService implements AuthContract {
       }
 
       final normPhone = PhoneUtils.normalize(phone);
+      final normCallPhone = (callPhone != null && callPhone.trim().isNotEmpty)
+          ? PhoneUtils.normalize(callPhone)
+          : normPhone;
       final normWhatsapp = whatsapp.trim().isNotEmpty
           ? PhoneUtils.normalize(whatsapp)
           : normPhone;
@@ -597,6 +601,7 @@ class AuthService implements AuthContract {
         uid: uid,
         name: name,
         phone: normPhone,
+        callPhone: normCallPhone,
         whatsapp: normWhatsapp,
         city: city,
         specialization: specialization ?? '',

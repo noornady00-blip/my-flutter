@@ -34,6 +34,7 @@ abstract class DatabaseContract {
     required String uid,
     String? name,
     String? phone,
+    String? callPhone,
     String? whatsapp,
     String? city,
     String? specialization,

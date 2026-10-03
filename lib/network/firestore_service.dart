@@ -412,6 +412,7 @@ class FirestoreService implements DatabaseContract {
     required String uid,
     String? name,
     String? phone,
+    String? callPhone,
     String? whatsapp,
     String? city,
     String? specialization,
@@ -429,6 +430,9 @@ class FirestoreService implements DatabaseContract {
       if (phone != null && phone.trim().isNotEmpty) {
         lawyerUpdates['phone'] = phone.trim();
         userUpdates['phone'] = phone.trim();
+      }
+      if (callPhone != null && callPhone.trim().isNotEmpty) {
+        lawyerUpdates['callPhone'] = callPhone.trim();
       }
       if (whatsapp != null) lawyerUpdates['whatsapp'] = whatsapp.trim();
       if (city != null) lawyerUpdates['city'] = city.trim();
@@ -478,6 +482,7 @@ class FirestoreService implements DatabaseContract {
             return l.copyWith(
               name: name ?? l.name,
               phone: phone ?? l.phone,
+              callPhone: callPhone ?? l.callPhone,
               whatsapp: whatsapp ?? l.whatsapp,
               city: city ?? l.city,
               specialization: specialization ?? l.specialization,

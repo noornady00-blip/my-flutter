@@ -472,7 +472,8 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
           final lawyer = snapshot.data;
           final name = lawyer?.name.isNotEmpty == true ? lawyer!.name : (_cachedName ?? 'الأستاذ المحامي');
           final phone = lawyer?.phone.isNotEmpty == true ? lawyer!.phone : (_cachedPhone ?? '---');
-          final whatsapp = lawyer?.whatsapp.isNotEmpty == true ? lawyer!.whatsapp : phone;
+          final callPhone = lawyer?.publicCallPhone ?? phone;
+          final whatsapp = lawyer?.publicWhatsApp ?? phone;
           final city = lawyer?.city.isNotEmpty == true ? lawyer!.city : 'الخرطوم';
           final accountId = lawyer?.accountId ?? '';
           final photoBase64 = lawyer?.photoBase64;
@@ -500,7 +501,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
 
                 // 3. Client Live Interaction Preview Card
                 _buildLiveClientInteractionCard(
-                  phone: phone,
+                  phone: callPhone,
                   whatsapp: whatsapp,
                   lawyer: lawyer,
                 ),
@@ -532,7 +533,8 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
 
                 // 5. Unified Data Management Suite
                 _buildDataManagementSuite(
-                  phone: phone,
+                  accountPhone: phone,
+                  callPhone: callPhone,
                   whatsapp: whatsapp,
                   city: city,
                   accountId: accountId,
@@ -969,7 +971,8 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
   // 3. Unified Data Management Suite (Sleek List Layout)
   // ─────────────────────────────────────────────────────────────
   Widget _buildDataManagementSuite({
-    required String phone,
+    required String accountPhone,
+    required String callPhone,
     required String whatsapp,
     required String city,
     required String accountId,
@@ -995,8 +998,11 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
               icon: Icons.badge_rounded,
               iconColor: const Color(0xFFD49B1A),
               label: 'المعرّف الموحد الرقمي (12 رقم)',
+              subtitle: 'معرّف حسابك الرسمي في المنصة',
               value: AccountIdUtils.formatForDisplay(accountId),
               isPhone: false,
+              customBadgeText: 'نسخ',
+              customBadgeColor: const Color(0xFFD49B1A),
               onTap: () {
                 Clipboard.setData(ClipboardData(text: accountId));
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -1012,11 +1018,38 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
             const Divider(height: 1, indent: 54, endIndent: 16, color: Color(0xFFF1F5F9)),
           ],
 
-          // 1. WhatsApp Row
+          // 1. Account Creation Phone Row (Private / Login Only)
+          _buildSuiteRow(
+            icon: Icons.lock_person_rounded,
+            iconColor: const Color(0xFF475569),
+            label: 'رقم إنشاء الحساب (خاص لتسجيل الدخول)',
+            subtitle: 'خاص بك فقط • لا يظهر للعملاء في بطاقتك',
+            value: accountPhone,
+            isPhone: true,
+            customBadgeText: 'خاص',
+            customBadgeColor: const Color(0xFF64748B),
+            onTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'رقم إنشاء الحساب هو رقم تسجيل الدخول الخاص بك ولن يظهر للمراجعين. لتغيير أرقام التواصل بالبطاقة عدّل رقم الاتصال أو الواتساب أدناه.',
+                    style: GoogleFonts.cairo(fontWeight: FontWeight.w600, fontSize: 13),
+                  ),
+                  backgroundColor: const Color(0xFF0B2A5B),
+                  behavior: SnackBarBehavior.floating,
+                  duration: const Duration(seconds: 4),
+                ),
+              );
+            },
+          ),
+          const Divider(height: 1, indent: 54, endIndent: 16, color: Color(0xFFF1F5F9)),
+
+          // 2. WhatsApp Row (Public)
           _buildSuiteRow(
             icon: Icons.chat_bubble_rounded,
             iconColor: const Color(0xFF25D366),
-            label: 'رقم الواتساب المعتمد',
+            label: 'رقم الواتساب للاستشارات',
+            subtitle: 'ظاهر للعملاء في بطاقتك الشخصية',
             value: whatsapp,
             isPhone: true,
             onTap: () => _openEditModal(
@@ -1031,30 +1064,32 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
           ),
           const Divider(height: 1, indent: 54, endIndent: 16, color: Color(0xFFF1F5F9)),
 
-          // 2. Phone Row
+          // 3. Direct Call Phone Row (Public)
           _buildSuiteRow(
             icon: Icons.phone_rounded,
             iconColor: const Color(0xFF0B2A5B),
-            label: 'رقم الهاتف المباشر',
-            value: phone,
+            label: 'رقم الاتصال المباشر',
+            subtitle: 'ظاهر للعملاء في بطاقتك الشخصية',
+            value: callPhone,
             isPhone: true,
             onTap: () => _openEditModal(
-              title: 'تعديل رقم الهاتف',
-              label: 'رقم الهاتف',
-              initialValue: phone,
+              title: 'تعديل رقم الاتصال المباشر',
+              label: 'رقم الاتصال المباشر',
+              initialValue: callPhone,
               icon: Icons.phone_rounded,
               keyboardType: TextInputType.phone,
               isPhone: true,
-              onSave: (val) => _firestoreService.updateLawyerProfile(uid: _uid!, phone: val),
+              onSave: (val) => _firestoreService.updateLawyerProfile(uid: _uid!, callPhone: val),
             ),
           ),
           const Divider(height: 1, indent: 54, endIndent: 16, color: Color(0xFFF1F5F9)),
 
-          // 3. City Row
+          // 4. City Row
           _buildSuiteRow(
             icon: Icons.location_on_rounded,
             iconColor: const Color(0xFFDC2626),
             label: 'المدينة ومقر الممارسة',
+            subtitle: 'مقر عملك المعتمد في المنصة',
             value: city,
             isPhone: false,
             onTap: () => _openDropdownModal(
@@ -1073,8 +1108,11 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
     required IconData icon,
     required Color iconColor,
     required String label,
+    String? subtitle,
     required String value,
     bool isPhone = false,
+    String? customBadgeText,
+    Color? customBadgeColor,
     required VoidCallback onTap,
   }) {
     final displayValue = isPhone ? PhoneUtils.toLocalDisplay(value) : value;
@@ -1083,7 +1121,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
             Container(
@@ -1103,7 +1141,7 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
                     label,
                     style: GoogleFonts.cairo(
                       fontSize: 11,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
                       color: const Color(0xFF64748B),
                     ),
                   ),
@@ -1120,6 +1158,18 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
+                  if (subtitle != null && subtitle.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 1.5),
+                      child: Text(
+                        subtitle,
+                        style: GoogleFonts.cairo(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF94A3B8),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -1127,20 +1177,25 @@ class _LawyerHomeScreenState extends State<LawyerHomeScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: const Color(0xFFFFFBEB),
+                color: (customBadgeColor ?? const Color(0xFFD97706)).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.edit_rounded, color: Color(0xFFD97706), size: 12),
+                  if (customBadgeText == null)
+                    const Icon(Icons.edit_rounded, color: Color(0xFFD97706), size: 12)
+                  else if (customBadgeText == 'خاص')
+                    const Icon(Icons.lock_outline_rounded, color: Color(0xFF64748B), size: 12)
+                  else if (customBadgeText == 'نسخ')
+                    const Icon(Icons.copy_rounded, color: Color(0xFFD49B1A), size: 12),
                   const SizedBox(width: 3),
                   Text(
-                    'تعديل',
+                    customBadgeText ?? 'تعديل',
                     style: GoogleFonts.cairo(
                       fontSize: 11,
                       fontWeight: FontWeight.w800,
-                      color: const Color(0xFFD97706),
+                      color: customBadgeColor ?? const Color(0xFFD97706),
                     ),
                   ),
                 ],

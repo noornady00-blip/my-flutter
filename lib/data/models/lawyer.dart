@@ -11,8 +11,9 @@ export 'sudan_cities.dart';
 class LawyerModel {
   final String uid;
   final String name;
-  final String phone;
-  final String whatsapp;
+  final String phone; // رقم إنشاء الحساب الأساسي (خاص لتسجيل الدخول)
+  final String callPhone; // رقم الاتصال المباشر (ظاهر للعامة في البطاقة)
+  final String whatsapp; // رقم الواتساب المعتمد (ظاهر للعامة في البطاقة)
   final String city;
   final String specialization; // Kept as optional fallback for legacy data compatibility
   final String status; // 'pending' | 'approved' | 'rejected' | 'suspended'
@@ -26,6 +27,7 @@ class LawyerModel {
     required this.uid,
     required this.name,
     required this.phone,
+    String? callPhone,
     this.whatsapp = '',
     this.city = '',
     this.specialization = '',
@@ -35,10 +37,17 @@ class LawyerModel {
     this.photoUrl,
     DateTime? createdAt,
     this.approvedAt,
-  }) : createdAt = createdAt ?? DateTime.now();
+  })  : callPhone = (callPhone != null && callPhone.isNotEmpty) ? callPhone : phone,
+        createdAt = createdAt ?? DateTime.now();
 
   /// Effective joined or approved date for chronological ordering
   DateTime get effectiveJoinedAt => approvedAt ?? createdAt;
+
+  /// Effective public call phone for clients and public cards
+  String get publicCallPhone => callPhone.isNotEmpty ? callPhone : phone;
+
+  /// Effective public WhatsApp phone for clients and public cards
+  String get publicWhatsApp => whatsapp.isNotEmpty ? whatsapp : phone;
 
   // ---------------------------------------------------------------------------
   // Status Flags
@@ -84,11 +93,20 @@ class LawyerModel {
         .trim() ??
         '';
 
+    final phoneVal = map['phone']?.toString().trim() ?? '';
+    final callPhoneVal = (map['callPhone'] ??
+            map['contactPhone'] ??
+            map['publicPhone'])
+        ?.toString()
+        .trim();
+    final waVal = map['whatsapp']?.toString().trim() ?? '';
+
     return LawyerModel(
       uid: id,
       name: map['name']?.toString() ?? '',
-      phone: map['phone']?.toString() ?? '',
-      whatsapp: map['whatsapp']?.toString() ?? '',
+      phone: phoneVal,
+      callPhone: (callPhoneVal != null && callPhoneVal.isNotEmpty) ? callPhoneVal : phoneVal,
+      whatsapp: waVal.isNotEmpty ? waVal : phoneVal,
       city: cityVal,
       specialization: specVal,
       status: map['status']?.toString() ?? 'pending',
@@ -110,7 +128,8 @@ class LawyerModel {
       'uid': uid,
       'name': name,
       'phone': phone,
-      'whatsapp': whatsapp,
+      'callPhone': callPhone.isNotEmpty ? callPhone : phone,
+      'whatsapp': whatsapp.isNotEmpty ? whatsapp : phone,
       'city': city,
       if (specialization.isNotEmpty) 'specialization': specialization,
       'role': 'lawyer',
@@ -128,7 +147,8 @@ class LawyerModel {
       'uid': uid,
       'name': name,
       'phone': phone,
-      'whatsapp': whatsapp,
+      'callPhone': callPhone.isNotEmpty ? callPhone : phone,
+      'whatsapp': whatsapp.isNotEmpty ? whatsapp : phone,
       'city': city,
       if (specialization.isNotEmpty) 'specialization': specialization,
       'role': 'lawyer',
@@ -158,11 +178,20 @@ class LawyerModel {
         .trim() ??
         '';
 
+    final phoneVal = map['phone']?.toString().trim() ?? '';
+    final callPhoneVal = (map['callPhone'] ??
+            map['contactPhone'] ??
+            map['publicPhone'])
+        ?.toString()
+        .trim();
+    final waVal = map['whatsapp']?.toString().trim() ?? '';
+
     return LawyerModel(
       uid: map['uid']?.toString() ?? '',
       name: map['name']?.toString() ?? '',
-      phone: map['phone']?.toString() ?? '',
-      whatsapp: map['whatsapp']?.toString() ?? '',
+      phone: phoneVal,
+      callPhone: (callPhoneVal != null && callPhoneVal.isNotEmpty) ? callPhoneVal : phoneVal,
+      whatsapp: waVal.isNotEmpty ? waVal : phoneVal,
       city: cityVal,
       specialization: specVal,
       status: map['status']?.toString() ?? 'approved',
@@ -185,6 +214,7 @@ class LawyerModel {
     String? uid,
     String? name,
     String? phone,
+    String? callPhone,
     String? whatsapp,
     String? city,
     String? specialization,
@@ -199,6 +229,7 @@ class LawyerModel {
       uid: uid ?? this.uid,
       name: name ?? this.name,
       phone: phone ?? this.phone,
+      callPhone: callPhone ?? this.callPhone,
       whatsapp: whatsapp ?? this.whatsapp,
       city: city ?? this.city,
       specialization: specialization ?? this.specialization,

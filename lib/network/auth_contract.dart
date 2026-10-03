@@ -42,6 +42,7 @@ abstract class AuthContract {
   Future<Map<String, dynamic>> registerLawyer({
     required String name,
     required String phone,
+    String? callPhone,
     required String whatsapp,
     required String city,
     String? specialization,

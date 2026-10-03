@@ -820,38 +820,52 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
                     const Divider(height: 20, color: Color(0xFFE2E8F0)),
                   ],
 
-                  // Phone & WhatsApp
+                  // 1. Direct Call Phone (Public)
                   _buildDetailRow(
-                    iconWidget: const Icon(Icons.phone_android_rounded,
-                        color: Color(0xFF3B82F6), size: 18),
-                    label: 'رقم الهاتف',
-                    value: lawyer.phone,
+                    iconWidget: const Icon(Icons.phone_rounded,
+                        color: Color(0xFF0B2A5B), size: 18),
+                    label: 'رقم الاتصال المباشر',
+                    value: lawyer.publicCallPhone,
                     isPhone: true,
-                    color: const Color(0xFF3B82F6),
+                    color: const Color(0xFF0B2A5B),
                     onCopy: () {
-                      Clipboard.setData(ClipboardData(text: lawyer.phone));
-                      _showCopyToast(context, 'تم نسخ رقم الهاتف بنجاح');
+                      Clipboard.setData(ClipboardData(text: lawyer.publicCallPhone));
+                      _showCopyToast(context, 'تم نسخ رقم الاتصال بنجاح');
                     },
                   ),
                   const Divider(height: 20, color: Color(0xFFE2E8F0)),
+
+                  // 2. WhatsApp (Public)
                   _buildDetailRow(
                     iconWidget: const WhatsAppIcon(
                         size: 18, color: Color(0xFF10B981)),
                     label: 'رقم الواتساب',
-                    value: lawyer.whatsapp.isNotEmpty
-                        ? lawyer.whatsapp
-                        : lawyer.phone,
+                    value: lawyer.publicWhatsApp,
                     isPhone: true,
                     color: const Color(0xFF10B981),
                     onCopy: () {
-                      final val = lawyer.whatsapp.isNotEmpty
-                          ? lawyer.whatsapp
-                          : lawyer.phone;
-                      Clipboard.setData(ClipboardData(text: val));
+                      Clipboard.setData(ClipboardData(text: lawyer.publicWhatsApp));
                       _showCopyToast(context, 'تم نسخ رقم الواتساب بنجاح');
                     },
                   ),
                   const Divider(height: 20, color: Color(0xFFE2E8F0)),
+
+                  // 3. Account Creation Phone (Visible only in Admin portal)
+                  if (widget.isAdmin) ...[
+                    _buildDetailRow(
+                      iconWidget: const Icon(Icons.lock_person_rounded,
+                          color: Color(0xFF64748B), size: 18),
+                      label: 'رقم إنشاء الحساب (خاص)',
+                      value: lawyer.phone,
+                      isPhone: true,
+                      color: const Color(0xFF64748B),
+                      onCopy: () {
+                        Clipboard.setData(ClipboardData(text: lawyer.phone));
+                        _showCopyToast(context, 'تم نسخ رقم إنشاء الحساب بنجاح');
+                      },
+                    ),
+                    const Divider(height: 20, color: Color(0xFFE2E8F0)),
+                  ],
 
                   _buildDetailRow(
                     iconWidget: Icon(
@@ -1055,9 +1069,8 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
 
   Widget _buildIconic3DActionButtons(
       BuildContext context, LawyerModel lawyer) {
-    final phone = lawyer.phone;
-    final whatsapp = lawyer.whatsapp;
-    final targetWhatsapp = whatsapp.isNotEmpty ? whatsapp : phone;
+    final phone = lawyer.publicCallPhone;
+    final targetWhatsapp = lawyer.publicWhatsApp;
 
     return Row(
       textDirection: TextDirection.rtl,
