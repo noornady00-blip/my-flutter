@@ -782,22 +782,38 @@ class FirestoreService implements DatabaseContract {
         }
       } catch (_) {}
 
-      // 4. Clean up any unnormalized redundant phone_directory documents in Firestore
+      // 4. Clean up unnormalized or orphaned phone_directory documents in Firestore
       try {
         final dirSnap = await _db.collection('phone_directory').get();
-        final batch = _db.batch();
-        int deleteCount = 0;
-        for (final doc in dirSnap.docs) {
-          final docId = doc.id;
-          final norm = PhoneUtils.tryNormalize(docId);
-          // If the docId is not strictly the canonical format (+249xxxxxxxxx)
-          if (norm != docId) {
-            batch.delete(doc.reference);
-            deleteCount++;
+        if (dirSnap.docs.isNotEmpty) {
+          // Fetch existing user/lawyer/admin UIDs to detect orphans
+          final usersSnap = await _db.collection('users').get();
+          final lawyersSnap = await _db.collection('lawyers').get();
+          final adminsSnap = await _db.collection('admins').get();
+
+          final existingUids = <String>{
+            ...usersSnap.docs.map((d) => d.id),
+            ...lawyersSnap.docs.map((d) => d.id),
+            ...adminsSnap.docs.map((d) => d.id),
+          };
+
+          final batch = _db.batch();
+          int deleteCount = 0;
+          for (final doc in dirSnap.docs) {
+            final docId = doc.id;
+            final norm = PhoneUtils.tryNormalize(docId);
+            final uid = (doc.data()['uid'] ?? '').toString();
+
+            // Delete if not strictly canonical format (+249xxxxxxxxx) or if the referenced user was deleted
+            final isOrphan = uid.isNotEmpty && !existingUids.contains(uid);
+            if (norm != docId || isOrphan) {
+              batch.delete(doc.reference);
+              deleteCount++;
+            }
           }
-        }
-        if (deleteCount > 0) {
-          await batch.commit();
+          if (deleteCount > 0) {
+            await batch.commit();
+          }
         }
       } catch (_) {}
     } catch (e) {

@@ -378,35 +378,27 @@ class _ChatScreenState extends State<ChatScreen> {
           final docRef = FirebaseFirestore.instance.collection(userCol).doc(_currentUserId);
           final docSnap = await docRef.get().timeout(const Duration(seconds: 3));
 
-          final Map<String, dynamic> healData = {};
           if (!docSnap.exists) {
-            healData['uid'] = _currentUserId;
-            healData['name'] = _currentUserName;
-            healData['role'] = _currentUserRole;
-            healData['status'] = 'active';
-            healData['createdAt'] = FieldValue.serverTimestamp();
-            if (localPhone.isNotEmpty) healData['phone'] = localPhone;
-            if (_currentUserAccountId.isNotEmpty) healData['accountId'] = _currentUserAccountId;
-            if (localPhotoUrl != null && localPhotoUrl.isNotEmpty) healData['photoUrl'] = localPhotoUrl;
-            if (localPhotoBase64 != null && localPhotoBase64.isNotEmpty) healData['photoBase64'] = localPhotoBase64;
+            // User was deleted in Firebase Console or by Admin! Do not recreate!
+            return;
+          }
+
+          final Map<String, dynamic> healData = {};
+          final data = docSnap.data() ?? {};
+          if (localPhone.isNotEmpty && (data['phone'] == null || data['phone'].toString().isEmpty)) {
+            healData['phone'] = localPhone;
+          }
+          if (_currentUserAccountId.isNotEmpty && (data['accountId'] == null || data['accountId'].toString().isEmpty)) {
+            healData['accountId'] = _currentUserAccountId;
+          }
+          if (localPhotoUrl != null && localPhotoUrl.isNotEmpty && (data['photoUrl'] == null || data['photoUrl'].toString().isEmpty)) {
+            healData['photoUrl'] = localPhotoUrl;
+          }
+          if (localPhotoBase64 != null && localPhotoBase64.isNotEmpty && (data['photoBase64'] == null || data['photoBase64'].toString().isEmpty)) {
+            healData['photoBase64'] = localPhotoBase64;
+          }
+          if (healData.isNotEmpty) {
             await docRef.set(healData, SetOptions(merge: true));
-          } else {
-            final data = docSnap.data() ?? {};
-            if (localPhone.isNotEmpty && (data['phone'] == null || data['phone'].toString().isEmpty)) {
-              healData['phone'] = localPhone;
-            }
-            if (_currentUserAccountId.isNotEmpty && (data['accountId'] == null || data['accountId'].toString().isEmpty)) {
-              healData['accountId'] = _currentUserAccountId;
-            }
-            if (localPhotoUrl != null && localPhotoUrl.isNotEmpty && (data['photoUrl'] == null || data['photoUrl'].toString().isEmpty)) {
-              healData['photoUrl'] = localPhotoUrl;
-            }
-            if (localPhotoBase64 != null && localPhotoBase64.isNotEmpty && (data['photoBase64'] == null || data['photoBase64'].toString().isEmpty)) {
-              healData['photoBase64'] = localPhotoBase64;
-            }
-            if (healData.isNotEmpty) {
-              await docRef.set(healData, SetOptions(merge: true));
-            }
           }
 
           if (localPhone.isNotEmpty) {

@@ -394,35 +394,6 @@ class ChatService {
         : (senderData?['photoBase64']?.toString() ??
             senderData?['user_profile_photo_base64']?.toString());
 
-    // Auto-heal: Ensure sender document exists in Firestore so other parties can load it
-    if (senderData == null && senderId.isNotEmpty && !senderId.startsWith('guest_')) {
-      try {
-        final healCol = senderRole == 'lawyer' ? 'lawyers' : 'users';
-        final healMap = <String, dynamic>{
-          'uid': senderId,
-          'name': senderName.isNotEmpty ? senderName : 'مستخدم المنصة',
-          'role': senderRole,
-          'status': 'active',
-          if (senderAccountId.isNotEmpty) 'accountId': senderAccountId,
-          if (resolvedSenderPhone.isNotEmpty) 'phone': resolvedSenderPhone,
-          if (resolvedSenderPhoto != null && resolvedSenderPhoto.isNotEmpty) 'photoUrl': resolvedSenderPhoto,
-          if (resolvedSenderPhotoBase64 != null && resolvedSenderPhotoBase64.isNotEmpty) 'photoBase64': resolvedSenderPhotoBase64,
-          'createdAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        };
-        unawaited(_db.collection(healCol).doc(senderId).set(healMap, SetOptions(merge: true)).catchError((_) {}));
-        if (senderAccountId.isNotEmpty) {
-          unawaited(_db.collection('account_ids').doc(senderAccountId.replaceAll(' ', '')).set({
-            'uid': senderId,
-            'role': senderRole,
-            'createdAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true)).catchError((_) {}));
-        }
-        if (resolvedSenderPhone.isNotEmpty) {
-          unawaited(_db.collection('phone_directory').doc(PhoneUtils.normalize(resolvedSenderPhone)).set(healMap, SetOptions(merge: true)).catchError((_) {}));
-        }
-      } catch (_) {}
-    }
 
     final batch = _db.batch();
 

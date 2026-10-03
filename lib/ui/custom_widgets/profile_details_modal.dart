@@ -1801,21 +1801,6 @@ class _ClientModalSheetState extends State<_ClientModalSheet> {
               createdAt: fetched.createdAt,
             );
           });
-
-          // Auto-heal missing client document in users collection for future accesses
-          if ((userDoc == null || !userDoc.exists) && targetUid != null && targetUid.isNotEmpty && !targetUid.startsWith('guest_')) {
-            unawaited(FirebaseFirestore.instance.collection('users').doc(targetUid).set({
-              'uid': targetUid,
-              'name': _client.name,
-              'role': _client.role,
-              'status': 'active',
-              if (_client.phone.isNotEmpty) 'phone': _client.phone,
-              if (_client.accountId.isNotEmpty) 'accountId': _client.accountId,
-              if (resolvedUrl != null && resolvedUrl.isNotEmpty) 'photoUrl': resolvedUrl,
-              if (resolvedBase64 != null && resolvedBase64.isNotEmpty) 'photoBase64': resolvedBase64,
-              'createdAt': FieldValue.serverTimestamp(),
-            }, SetOptions(merge: true)).catchError((_) {}));
-          }
         }
       }
     } catch (_) {}

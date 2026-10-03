@@ -118,8 +118,8 @@ class AuthService implements AuthContract {
             final role = data['role']?.toString() ?? 'client';
             final uid = data['uid']?.toString() ?? dirDoc.id;
 
-            // Verify the user document actually exists if authenticated to prevent orphan ghosts
-            if (_auth.currentUser != null && role != 'admin' && role != 'subadmin') {
+            // Verify the user document actually exists in Firestore to prevent orphan ghosts
+            if (role != 'admin' && role != 'subadmin') {
               final col = role == 'lawyer' ? 'lawyers' : 'users';
               try {
                 final userCheck = await _db.collection(col).doc(uid).get().timeout(const Duration(seconds: 2));
@@ -829,6 +829,23 @@ class AuthService implements AuthContract {
         }
       } catch (_) {}
 
+      // Validate that the user found in phone_directory actually still exists in Firestore!
+      if (dirSnap != null) {
+        final dUid = dirSnap.data()?['uid']?.toString() ?? dirSnap.id;
+        final dRole = (dirSnap.data()?['role']?.toString() ?? 'client').toLowerCase();
+        final col = (dRole == 'lawyer') ? 'lawyers' : (dRole == 'admin' || dRole == 'subadmin') ? 'admins' : 'users';
+        try {
+          final liveDoc = await _db.collection(col).doc(dUid).get().timeout(const Duration(milliseconds: 1500));
+          if (!liveDoc.exists) {
+            // User was deleted in Firebase Console! Purge all orphan phone_directory candidates
+            for (final c in candidatesList) {
+              unawaited(_db.collection('phone_directory').doc(c).delete().catchError((_) {}));
+            }
+            dirSnap = null;
+          }
+        } catch (_) {}
+      }
+
       Map<String, dynamic>? registered;
       if (dirSnap == null) {
         try {
@@ -1353,6 +1370,26 @@ class AuthService implements AuthContract {
       // 5. Role mismatch checks (INSTANT < 50ms)
       if (discoveredRole == 'admin' || isPrimaryAdmin) {
         return await adminLogin(emailOrPhone: phoneOrEmail, password: password);
+      }
+
+      // Verify that discovered non-admin user actually exists in Firestore
+      if (discoveredUid != null && discoveredRole != 'admin' && discoveredRole != 'subadmin') {
+        final col = discoveredRole == 'lawyer' ? 'lawyers' : 'users';
+        try {
+          final docCheck = await _db.collection(col).doc(discoveredUid).get().timeout(const Duration(seconds: 2));
+          if (!docCheck.exists) {
+            if (dirSnap != null) {
+              unawaited(dirSnap.reference.delete().catchError((_) {}));
+            }
+            if (normPhone.isNotEmpty) {
+              unawaited(_db.collection('phone_directory').doc(normPhone).delete().catchError((_) {}));
+            }
+            return {
+              'success': false,
+              'error': 'هذا الحساب تم حذفه من قبل الإدارة، يرجى إنشاء حساب جديد أو مراجعة الدعم الفني.',
+            };
+          }
+        } catch (_) {}
       }
 
       if (role == 'client' && discoveredRole == 'lawyer') {

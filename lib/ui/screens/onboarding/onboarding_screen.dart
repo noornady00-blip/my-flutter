@@ -62,6 +62,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           try {
             final col = role == 'lawyer' ? 'lawyers' : 'users';
             final doc = await FirebaseFirestore.instance.collection(col).doc(user.uid).get();
+            if (!doc.exists) {
+              await AuthService().signOut();
+              if (mounted) {
+                setState(() => _isStarting = false);
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AuthGatewayScreen()),
+                );
+              }
+              return;
+            }
             if (doc.exists && doc.data()?['status'] == 'suspended') {
               await AuthService().signOut();
               if (mounted) {
