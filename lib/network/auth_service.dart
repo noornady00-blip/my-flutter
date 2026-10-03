@@ -902,9 +902,35 @@ class AuthService implements AuthContract {
       FirebaseAuthException? lastAuthException;
 
       if (hasPasswordRecord) {
-        final bool isMatch = (adminReset != null && adminReset == cleanPassword) ||
+        bool isMatch = (adminReset != null && adminReset == cleanPassword) ||
             (storedHash != null && (storedHash == inputHash || storedHash == rawSha256 || storedHash == cleanPassword)) ||
             (prevHash != null && (prevHash == inputHash || prevHash == rawSha256 || prevHash == cleanPassword));
+
+        if (!isMatch && discoveredUid != null && discoveredUid.isNotEmpty) {
+          // If phone_directory didn't match, check primary collection (users/lawyers/admins) in case password was changed there
+          try {
+            final col = discoveredRole == 'lawyer' ? 'lawyers' : 'users';
+            final uDoc = await _db.collection(col).doc(discoveredUid).get().timeout(const Duration(seconds: 2));
+            if (uDoc.exists && uDoc.data() != null) {
+              final uStored = uDoc.data()!['passwordHash']?.toString();
+              final uAdmin = uDoc.data()!['adminResetPassword']?.toString();
+              final uPlain = uDoc.data()!['password']?.toString();
+              if ((uAdmin != null && (uAdmin == cleanPassword || uAdmin == password)) ||
+                  (uPlain != null && (uPlain == cleanPassword || uPlain == password)) ||
+                  (uStored != null && (uStored == inputHash || uStored == rawSha256 || uStored == cleanPassword || uStored == password))) {
+                isMatch = true;
+                // Auto-sync back to phone_directory
+                final p = recordData['phone']?.toString() ?? '';
+                if (p.isNotEmpty) {
+                  unawaited(_db.collection('phone_directory').doc(PhoneUtils.normalize(p)).set({
+                    'passwordHash': inputHash,
+                    'passwordUpdatedAt': FieldValue.serverTimestamp(),
+                  }, SetOptions(merge: true)).catchError((_) {}));
+                }
+              }
+            }
+          } catch (_) {}
+        }
 
         if (!isMatch) {
           // Fallback: Verify directly with Firebase Auth in case password was changed in Firebase Console
@@ -2815,16 +2841,51 @@ class AuthService implements AuthContract {
             (cleanDigits.isNotEmpty && spRole != null ? '$cleanDigits@mahameek.$spRole.com' : '');
       }
 
-      String? storedHash = docData['passwordHash']?.toString();
-      String? adminReset = docData['adminResetPassword']?.toString();
+      // Collect all password/hash candidates from ALL potential sources (users, lawyers, admins, phone_directory)
+      final Set<String> storedCandidates = {};
+      final Set<String> adminResetCandidates = {};
 
-      // Check phone_directory if hash wasn't found in primary document
-      if (storedHash == null && adminReset == null && normPhone.isNotEmpty) {
+      void addCandidate(dynamic val) {
+        if (val != null) {
+          final s = val.toString().trim();
+          if (s.isNotEmpty) storedCandidates.add(s);
+        }
+      }
+
+      void addResetCandidate(dynamic val) {
+        if (val != null) {
+          final s = val.toString().trim();
+          if (s.isNotEmpty) adminResetCandidates.add(s);
+        }
+      }
+
+      // 1. From docData (users, lawyers, admins)
+      addCandidate(docData['passwordHash']);
+      addCandidate(docData['password']);
+      addCandidate(docData['previousPasswordHash']);
+      addResetCandidate(docData['adminResetPassword']);
+
+      // 2. From phone_directory across all possible phone variations
+      final phoneVariants = <String>{
+        if (normPhone.isNotEmpty) normPhone,
+        if (phone.isNotEmpty) phone.trim(),
+        if (cleanDigits.isNotEmpty) cleanDigits,
+        if (cleanDigits.isNotEmpty) '+$cleanDigits',
+        if (cleanDigits.isNotEmpty) '+249$cleanDigits',
+        if (cleanDigits.isNotEmpty) '0$cleanDigits',
+        if (norm9Digits.isNotEmpty) norm9Digits,
+        if (norm9Digits.isNotEmpty) '+249$norm9Digits',
+        if (norm9Digits.isNotEmpty) '0$norm9Digits',
+      };
+
+      for (final pv in phoneVariants) {
         try {
-          final dirSnap = await _db.collection('phone_directory').doc(normPhone).get();
+          final dirSnap = await _db.collection('phone_directory').doc(pv).get().timeout(const Duration(seconds: 2));
           if (dirSnap.exists && dirSnap.data() != null) {
-            storedHash = dirSnap.data()!['passwordHash']?.toString();
-            adminReset = dirSnap.data()!['adminResetPassword']?.toString();
+            addCandidate(dirSnap.data()!['passwordHash']);
+            addCandidate(dirSnap.data()!['password']);
+            addCandidate(dirSnap.data()!['previousPasswordHash']);
+            addResetCandidate(dirSnap.data()!['adminResetPassword']);
           }
         } catch (_) {}
       }
@@ -2836,20 +2897,50 @@ class AuthService implements AuthContract {
       final currentHash = hashPassword(cleanCurrent);
       final rawCurrentHash = hashPassword(currentPassword);
       final rawSha256 = sha256.convert(utf8.encode(cleanCurrent)).toString();
+      final rawSha256Raw = sha256.convert(utf8.encode(currentPassword)).toString();
 
-      bool isCurrentValid;
+      final inputMatches = <String>{
+        cleanCurrent,
+        currentPassword,
+        currentHash,
+        rawCurrentHash,
+        rawSha256,
+        rawSha256Raw,
+        if (cleanCurrent.length < 6) cleanCurrent.padRight(6, '0'),
+        if (currentPassword.length < 6) currentPassword.padRight(6, '0'),
+      };
+
+      bool isCurrentValid = false;
+
       if (isPrimaryAdmin) {
-        if (adminReset != null || storedHash != null) {
-          isCurrentValid = (adminReset != null && (adminReset == cleanCurrent || adminReset == currentPassword)) ||
-              (storedHash != null && (storedHash == currentHash || storedHash == rawCurrentHash || storedHash == cleanCurrent || storedHash == currentPassword || storedHash == rawSha256));
+        if (adminResetCandidates.isNotEmpty || storedCandidates.isNotEmpty) {
+          isCurrentValid = adminResetCandidates.any((ar) => ar == cleanCurrent || ar == currentPassword) ||
+              storedCandidates.any((sc) => inputMatches.contains(sc));
         } else {
           isCurrentValid = isPrimary1
               ? (cleanCurrent == '123' || cleanCurrent == '123000' || cleanCurrent == '123456')
               : (cleanCurrent == '123456' || cleanCurrent == '123' || cleanCurrent == '123000');
         }
       } else {
-        isCurrentValid = (adminReset != null && (adminReset == cleanCurrent || adminReset == currentPassword)) ||
-            (storedHash == null || storedHash == currentHash || storedHash == rawCurrentHash || storedHash == cleanCurrent || storedHash == currentPassword || storedHash == rawSha256);
+        if (storedCandidates.isEmpty && adminResetCandidates.isEmpty) {
+          // If no stored credentials exist in Firestore, accept current input
+          isCurrentValid = true;
+        } else {
+          isCurrentValid = adminResetCandidates.any((ar) => ar == cleanCurrent || ar == currentPassword) ||
+              storedCandidates.any((sc) => inputMatches.contains(sc));
+        }
+      }
+
+      // Fallback verification with Firebase Auth directly if not yet validated
+      if (!isCurrentValid && userEmail.isNotEmpty) {
+        for (final pwTest in [cleanCurrent, currentPassword, if (cleanCurrent.length < 6) cleanCurrent.padRight(6, '0')]) {
+          try {
+            final cred = EmailAuthProvider.credential(email: userEmail, password: pwTest);
+            await _auth.currentUser?.reauthenticateWithCredential(cred);
+            isCurrentValid = true;
+            break;
+          } catch (_) {}
+        }
       }
 
       if (!isCurrentValid) {
@@ -2873,7 +2964,7 @@ class AuthService implements AuthContract {
         currentPassword,
         if (cleanCurrent.length < 6) cleanCurrent.padRight(6, '0'),
         if (currentPassword.length < 6) currentPassword.padRight(6, '0'),
-        if (adminReset != null && adminReset.isNotEmpty) adminReset,
+        if (adminResetCandidates.isNotEmpty) ...adminResetCandidates,
         '123000',
         '123456',
         '123',
@@ -2935,12 +3026,10 @@ class AuthService implements AuthContract {
         'passwordHash': newHash,
         'passwordUpdatedAt': FieldValue.serverTimestamp(),
       };
-      if (storedHash != null) {
-        userUpdate['previousPasswordHash'] = storedHash;
+      if (storedCandidates.isNotEmpty) {
+        userUpdate['previousPasswordHash'] = storedCandidates.first;
       }
-      if (adminReset != null) {
-        userUpdate['adminResetPassword'] = FieldValue.delete();
-      }
+      userUpdate['adminResetPassword'] = FieldValue.delete();
 
       // 1. Update primary users collection
       await _db.collection('users').doc(uid).set(userUpdate, SetOptions(merge: true));
@@ -2959,14 +3048,15 @@ class AuthService implements AuthContract {
         } catch (_) {}
       }
 
-      // 4. Update single canonical phone_directory entry
-      if (normPhone.isNotEmpty) {
+      // 4. Update ALL matching phone_directory entries
+      for (final pv in phoneVariants) {
         try {
           final phoneDirUpdate = <String, dynamic>{
             'passwordHash': newHash,
             'passwordUpdatedAt': FieldValue.serverTimestamp(),
+            'adminResetPassword': FieldValue.delete(),
           };
-          await _db.collection('phone_directory').doc(normPhone).set(phoneDirUpdate, SetOptions(merge: true));
+          await _db.collection('phone_directory').doc(pv).set(phoneDirUpdate, SetOptions(merge: true));
         } catch (_) {}
       }
 
