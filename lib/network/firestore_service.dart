@@ -781,6 +781,24 @@ class FirestoreService implements DatabaseContract {
           }
         }
       } catch (_) {}
+
+      // 4. Ensure phone_directory ONLY contains the single canonical format (+249xxxxxxxxx)
+      try {
+        final allPhoneDocs = await _db.collection('phone_directory').get();
+        final batch = _db.batch();
+        bool hasDeletions = false;
+        for (final doc in allPhoneDocs.docs) {
+          final id = doc.id;
+          final isValidCanonical = id.startsWith('+249') && id.length == 13;
+          if (!isValidCanonical) {
+            batch.delete(doc.reference);
+            hasDeletions = true;
+          }
+        }
+        if (hasDeletions) {
+          await batch.commit();
+        }
+      } catch (_) {}
     } catch (e) {
       debugPrint('ensurePrimaryAdminsSeeded notice: $e');
     }
