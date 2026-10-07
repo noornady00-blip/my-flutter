@@ -11,6 +11,7 @@ import '../../custom_widgets/account_suspended_dialog.dart';
 import '../main_navigation_screen.dart';
 import '../../../core/utils/navigation_utils.dart';
 import '../../../network/notification_service.dart';
+import '../../../network/auth_service.dart';
 import 'lawyer_register_screen.dart';
 
 class LawyerPendingScreen extends StatefulWidget {
@@ -75,20 +76,42 @@ class _LawyerPendingScreenState extends State<LawyerPendingScreen> {
           );
         }
       } else if (!doc.exists) {
-        // Lawyer request was deleted by admin
-        _statusSubscription?.cancel();
-        if (mounted) {
-          _logout();
-          final navCtx = NotificationService.navigatorKey.currentContext;
-          if (navCtx != null && navCtx.mounted) {
-            showAccountDeletedDialog(navCtx);
-          }
+        if (AuthService.isRegistrationInProgress) return;
+        final creationTime = user.metadata.creationTime;
+        if (creationTime != null &&
+            DateTime.now().difference(creationTime).inSeconds < 90) {
+          return;
         }
+
+        // Double check after a grace period before declaring deletion
+        Future.delayed(const Duration(seconds: 2), () async {
+          if (!mounted) return;
+          try {
+            final check = await FirebaseFirestore.instance.collection('lawyers').doc(user.uid).get();
+            if (check.exists) return; // False alarm, doc exists
+          } catch (_) {}
+
+          _statusSubscription?.cancel();
+          if (mounted) {
+            _logout();
+            final navCtx = NotificationService.navigatorKey.currentContext;
+            if (navCtx != null && navCtx.mounted) {
+              showAccountDeletedDialog(navCtx);
+            }
+          }
+        });
       }
     }, onError: (e) {
       debugPrint('[LawyerPendingScreen] status listener error: $e');
       if (e is FirebaseException &&
           (e.code == 'permission-denied' || e.code == 'not-found')) {
+        if (AuthService.isRegistrationInProgress) return;
+        final creationTime = user.metadata.creationTime;
+        if (creationTime != null &&
+            DateTime.now().difference(creationTime).inSeconds < 90) {
+          return;
+        }
+
         _statusSubscription?.cancel();
         if (mounted) {
           _logout();

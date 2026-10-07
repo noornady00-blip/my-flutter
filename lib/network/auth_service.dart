@@ -31,6 +31,9 @@ import '../core/utils/account_id_utils.dart';
 
 /// Concrete implementation of authentication and session contract.
 class AuthService implements AuthContract {
+  /// Flag to prevent race conditions with GlobalAccountStatusBarrier during registration
+  static bool isRegistrationInProgress = false;
+
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
@@ -235,6 +238,7 @@ class AuthService implements AuthContract {
     String? photoUrl,
     String? photoBase64,
   }) async {
+    isRegistrationInProgress = true;
     try {
       final hasNet = await NetworkService().hasInternet();
       if (!hasNet) {
@@ -311,11 +315,7 @@ class AuthService implements AuthContract {
         final recoveryPasswords = [
           authKey,
           fbPassword,
-          password,
           if (localDigits.isNotEmpty) internalAuthKey(localDigits),
-          '123456',
-          '12345678',
-          '000000',
         ];
         for (final pw in recoveryPasswords) {
           try {
@@ -459,6 +459,8 @@ class AuthService implements AuthContract {
         'success': false,
         'error': 'حدث خطأ أثناء إنشاء الحساب ($e)'
       };
+    } finally {
+      isRegistrationInProgress = false;
     }
   }
 
@@ -478,6 +480,7 @@ class AuthService implements AuthContract {
     String? photoUrl,
     String? photoBase64,
   }) async {
+    isRegistrationInProgress = true;
     try {
       final hasNet = await NetworkService().hasInternet();
       if (!hasNet) {
@@ -560,11 +563,7 @@ class AuthService implements AuthContract {
         final recoveryPasswords = [
           authKey,
           fbPassword,
-          password,
           if (localDigits.isNotEmpty) internalAuthKey(localDigits),
-          '123456',
-          '12345678',
-          '000000',
         ];
         for (final pw in recoveryPasswords) {
           try {
@@ -751,6 +750,8 @@ class AuthService implements AuthContract {
         'success': false,
         'error': 'حدث خطأ أثناء تسجيل المحامي ($e)'
       };
+    } finally {
+      isRegistrationInProgress = false;
     }
   }
 
@@ -829,6 +830,7 @@ class AuthService implements AuthContract {
       final candidatesList = [
         normalizedPhone,
         cleanDigits,
+        localDigits,
         rawDigits,
         raw9,
         '0$raw9',
@@ -1020,85 +1022,91 @@ class AuthService implements AuthContract {
       // 6. Sign into Firebase Auth
       final userFbPassword = cleanPassword.length < 6 ? cleanPassword.padRight(6, '0') : cleanPassword;
 
-      final candidateEmails = <String>{
-        if (recordData['email'] != null && recordData['email'].toString().trim().isNotEmpty)
-          recordData['email'].toString().trim().toLowerCase(),
-        '$normDigits@mahameek.$expectedPortal.com',
-        '$raw9@mahameek.$expectedPortal.com',
-        '$localDigits@mahameek.$expectedPortal.com',
-      }.toList();
+      final primaryEmail = (recordData['email'] != null && recordData['email'].toString().trim().isNotEmpty)
+          ? recordData['email'].toString().trim().toLowerCase()
+          : '$normDigits@mahameek.$expectedPortal.com';
 
-      final pwCandidates = <String>{
-        internalAuthKey(normDigits),
-        if (raw9.isNotEmpty) internalAuthKey(raw9),
-        if (localDigits.isNotEmpty) internalAuthKey(localDigits),
-        userFbPassword,
-        cleanPassword,
-        '123456',
-        '123000',
-        '123',
-        '12345678',
-      }.toList();
+      // Check if current user is already authenticated with matching UID
+      final currentAuthUser = _auth.currentUser;
+      final bool alreadyLoggedInWithMatchingUid = currentAuthUser != null &&
+          discoveredUid != null &&
+          discoveredUid.isNotEmpty &&
+          currentAuthUser.uid == discoveredUid;
 
-      if (cred == null && _auth.currentUser != null) {
-        try {
-          await _auth.signOut();
-        } catch (_) {}
-      }
+      if (!alreadyLoggedInWithMatchingUid) {
+        if (cred == null && currentAuthUser != null) {
+          try {
+            await _auth.signOut();
+          } catch (_) {}
+        }
 
-      if (cred == null) {
-        for (final email in candidateEmails) {
-          for (final pw in pwCandidates) {
+        if (cred == null) {
+          final candidateEmails = <String>[
+            primaryEmail,
+            if (primaryEmail != '$normDigits@mahameek.$expectedPortal.com')
+              '$normDigits@mahameek.$expectedPortal.com',
+          ];
+
+          final pwCandidates = <String>[
+            internalAuthKey(normDigits),
+            userFbPassword,
+          ];
+
+          for (final email in candidateEmails) {
+            for (final pw in pwCandidates) {
+              try {
+                cred = await _auth.signInWithEmailAndPassword(
+                  email: email,
+                  password: pw,
+                );
+                if (cred.user != null) break;
+              } on FirebaseAuthException catch (e) {
+                lastAuthException = e;
+                if (e.code == 'network-request-failed' || e.code == 'unavailable') {
+                  return {
+                    'success': false,
+                    'error': 'الشبكة المتصل بها لا يتوفر بها إنترنت. يرجى التأكد من اتصالك بالإنترنت والمحاولة مجدداً.',
+                    'isNetworkError': true,
+                  };
+                }
+                if (e.code == 'too-many-requests') {
+                  return {
+                    'success': false,
+                    'error': 'محاولات دخول متكررة، يرجى الانتظار دقيقة والمحاولة مجدداً.',
+                  };
+                }
+                if (e.code == 'user-not-found') break;
+              } catch (_) {}
+            }
+            if (cred?.user != null) break;
+          }
+        }
+
+        // If user not in Firebase Auth, but password matched locally, create once with canonical email
+        if ((cred == null || cred.user == null) && _auth.currentUser == null) {
+          if (hasPasswordRecord) {
+            final createEmail = primaryEmail;
+            final createPw = internalAuthKey(normDigits);
             try {
-              cred = await _auth.signInWithEmailAndPassword(
-                email: email,
-                password: pw,
+              cred = await _auth.createUserWithEmailAndPassword(
+                email: createEmail,
+                password: createPw,
               );
-              if (cred.user != null) break;
-            } on FirebaseAuthException catch (e) {
-              lastAuthException = e;
-              if (e.code == 'network-request-failed' || e.code == 'unavailable') {
-                return {
-                  'success': false,
-                  'error': 'الشبكة المتصل بها لا يتوفر بها إنترنت. يرجى التأكد من اتصالك بالإنترنت والمحاولة مجدداً.',
-                  'isNetworkError': true,
-                };
-              }
-              if (e.code == 'too-many-requests') {
+            } catch (createErr) {
+              if (createErr is FirebaseAuthException && createErr.code == 'too-many-requests') {
                 return {
                   'success': false,
                   'error': 'محاولات دخول متكررة، يرجى الانتظار دقيقة والمحاولة مجدداً.',
                 };
               }
-              if (e.code == 'user-not-found') break;
-            } catch (_) {}
-          }
-          if (cred?.user != null) break;
-        }
-      }
-
-      // If user not in Firebase Auth, but password matched locally, create once with canonical email
-      if (cred == null || cred.user == null) {
-        if (hasPasswordRecord) {
-          final createEmail = candidateEmails.first;
-          final createPw = internalAuthKey(normDigits);
-          try {
-            cred = await _auth.createUserWithEmailAndPassword(
-              email: createEmail,
-              password: createPw,
-            );
-          } catch (createErr) {
-            if (createErr is FirebaseAuthException && createErr.code == 'too-many-requests') {
-              return {
-                'success': false,
-                'error': 'محاولات دخول متكررة، يرجى الانتظار دقيقة والمحاولة مجدداً.',
-              };
             }
           }
         }
       }
 
-      if (cred == null || cred.user == null) {
+      final authenticatedUser = cred?.user ?? _auth.currentUser;
+
+      if (authenticatedUser == null) {
         if (lastAuthException != null && lastAuthException.code == 'too-many-requests') {
           return {
             'success': false,
@@ -1111,12 +1119,12 @@ class AuthService implements AuthContract {
         };
       }
 
-      final uid = cred.user!.uid;
+      final uid = authenticatedUser.uid;
 
       // Sync Firebase Auth password to internalAuthKey(normDigits) for permanent consistency
       if (hasPasswordRecord) {
         try {
-          await cred.user!.updatePassword(internalAuthKey(normDigits));
+          await authenticatedUser.updatePassword(internalAuthKey(normDigits));
         } catch (_) {}
       }
 
@@ -1510,72 +1518,83 @@ class AuthService implements AuthContract {
               ? input.toLowerCase()
               : '$cleanDigits@mahameek.$effectiveRole.com');
 
-      // Sign out current session to ensure clean auth state
-      if (_auth.currentUser != null) {
-        try {
-          await _auth.signOut();
-        } catch (_) {}
-      }
+      // Check if current user is already authenticated with matching UID
+      final currentAuthUser = _auth.currentUser;
+      final bool alreadyLoggedInWithMatchingUid = currentAuthUser != null &&
+          discoveredUid != null &&
+          discoveredUid.isNotEmpty &&
+          currentAuthUser.uid == discoveredUid;
 
       UserCredential? cred;
       FirebaseAuthException? lastAuthException;
 
-      // Targeted sign-in: Try authKey first, then user's password (max 2 attempts!)
-      final pwCandidates = <String>[
-        if (authKey.isNotEmpty) authKey,
-        userFbPassword,
-      ];
+      if (!alreadyLoggedInWithMatchingUid) {
+        // Sign out current session to ensure clean auth state
+        if (_auth.currentUser != null) {
+          try {
+            await _auth.signOut();
+          } catch (_) {}
+        }
 
-      for (final pw in pwCandidates) {
-        try {
-          cred = await _auth.signInWithEmailAndPassword(
-            email: primaryEmail,
-            password: pw,
-          );
-          if (cred.user != null) break;
-        } on FirebaseAuthException catch (e) {
-          lastAuthException = e;
-          if (e.code == 'network-request-failed' || e.code == 'unavailable') {
-            return {
-              'success': false,
-              'error':
-                  'الشبكة المتصل بها لا يتوفر بها إنترنت. يرجى التأكد من اتصالك بالإنترنت والمحاولة مجدداً.',
-              'isNetworkError': true,
-            };
-          }
-          if (e.code == 'user-not-found') {
-            break; // Skip to creation
-          }
-          if (e.code == 'too-many-requests') {
-            rethrow;
-          }
-        } catch (_) {}
-      }
+        // Targeted sign-in: Try authKey first, then user's password (max 2 attempts!)
+        final pwCandidates = <String>[
+          if (authKey.isNotEmpty) authKey,
+          userFbPassword,
+        ];
 
-      // If user not in Firebase Auth, create it directly
-      if (cred == null || cred.user == null) {
-        try {
-          cred = await _auth.createUserWithEmailAndPassword(
-            email: primaryEmail,
-            password: authKey.isNotEmpty ? authKey : userFbPassword,
-          );
-        } catch (createErr) {
-          if (createErr is FirebaseAuthException &&
-              (createErr.code == 'network-request-failed' || createErr.code == 'unavailable')) {
-            return {
-              'success': false,
-              'error':
-                  'الشبكة المتصل بها لا يتوفر بها إنترنت. يرجى التأكد من اتصالك بالإنترنت والمحاولة مجدداً.',
-              'isNetworkError': true,
-            };
-          }
-          if (createErr is FirebaseAuthException && createErr.code == 'too-many-requests') {
-            rethrow;
+        for (final pw in pwCandidates) {
+          try {
+            cred = await _auth.signInWithEmailAndPassword(
+              email: primaryEmail,
+              password: pw,
+            );
+            if (cred.user != null) break;
+          } on FirebaseAuthException catch (e) {
+            lastAuthException = e;
+            if (e.code == 'network-request-failed' || e.code == 'unavailable') {
+              return {
+                'success': false,
+                'error':
+                    'الشبكة المتصل بها لا يتوفر بها إنترنت. يرجى التأكد من اتصالك بالإنترنت والمحاولة مجدداً.',
+                'isNetworkError': true,
+              };
+            }
+            if (e.code == 'user-not-found') {
+              break; // Skip to creation
+            }
+            if (e.code == 'too-many-requests') {
+              rethrow;
+            }
+          } catch (_) {}
+        }
+
+        // If user not in Firebase Auth, create it directly
+        if ((cred == null || cred.user == null) && _auth.currentUser == null) {
+          try {
+            cred = await _auth.createUserWithEmailAndPassword(
+              email: primaryEmail,
+              password: authKey.isNotEmpty ? authKey : userFbPassword,
+            );
+          } catch (createErr) {
+            if (createErr is FirebaseAuthException &&
+                (createErr.code == 'network-request-failed' || createErr.code == 'unavailable')) {
+              return {
+                'success': false,
+                'error':
+                    'الشبكة المتصل بها لا يتوفر بها إنترنت. يرجى التأكد من اتصالك بالإنترنت والمحاولة مجدداً.',
+                'isNetworkError': true,
+              };
+            }
+            if (createErr is FirebaseAuthException && createErr.code == 'too-many-requests') {
+              rethrow;
+            }
           }
         }
       }
 
-      if (cred == null || cred.user == null) {
+      final authenticatedUser = cred?.user ?? _auth.currentUser;
+
+      if (authenticatedUser == null) {
         if (lastAuthException != null && lastAuthException.code == 'too-many-requests') {
           return {
             'success': false,
@@ -1591,12 +1610,12 @@ class AuthService implements AuthContract {
 
       // 8. Post-login: Load user profile & sync
       await _resetFailedLogin();
-      final uid = cred.user!.uid;
+      final uid = authenticatedUser.uid;
 
       // Sync Firebase Auth password to authKey for permanent consistency
       if (authKey.isNotEmpty) {
         try {
-          await cred.user!.updatePassword(authKey);
+          await authenticatedUser.updatePassword(authKey);
         } catch (_) {}
       }
 
@@ -1683,7 +1702,7 @@ class AuthService implements AuthContract {
       final syncBatch = _db.batch();
       final syncData = <String, dynamic>{
         'passwordHash': inputHash,
-        'email': cred.user!.email,
+        'email': authenticatedUser.email ?? primaryEmail,
         'adminResetPassword': FieldValue.delete(),
         'previousPasswordHash': FieldValue.delete(),
         'passwordUpdatedAt': FieldValue.serverTimestamp(),

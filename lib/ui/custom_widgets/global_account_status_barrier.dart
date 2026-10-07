@@ -23,6 +23,7 @@ import '../../core/utils/navigation_utils.dart';
 import '../screens/onboarding/onboarding_screen.dart';
 import '../../network/notification_service.dart';
 import '../../network/firestore_service.dart';
+import '../../network/auth_service.dart';
 import 'account_suspended_dialog.dart';
 
 class GlobalAccountStatusBarrier extends StatefulWidget {
@@ -101,7 +102,24 @@ class _GlobalAccountStatusBarrierState
   Future<void> _checkIfAccountDeleted(String uid) async {
     if (uid.isEmpty || _isLoggingOut) return;
     try {
+      // 1. NEVER interrupt ongoing registration in AuthService
+      if (AuthService.isRegistrationInProgress) {
+        debugPrint('🛡️ [Barrier] Registration in progress, skipping deletion check for $uid');
+        return;
+      }
+
       final currentUser = FirebaseAuth.instance.currentUser;
+
+      // 2. NEVER delete an account that was created within the last 90 seconds (setup phase)
+      final creationTime = currentUser?.metadata.creationTime;
+      if (creationTime != null) {
+        final age = DateTime.now().difference(creationTime);
+        if (age.inSeconds < 90) {
+          debugPrint('🛡️ [Barrier] Account $uid created ${age.inSeconds}s ago, still in registration/setup. Skipping.');
+          return;
+        }
+      }
+
       final email = currentUser?.email?.toLowerCase() ?? '';
       if (email.endsWith('@mahameek.admin.com') || email.startsWith('admin_')) {
         return; // Admins are never deleted by this barrier
@@ -113,11 +131,13 @@ class _GlobalAccountStatusBarrierState
         return; // Admins are never deleted by this barrier
       }
 
-      // Small debounce (350ms) to ensure ongoing auth or batch creation completes
-      await Future.delayed(const Duration(milliseconds: 350));
-      if (!mounted || _isLoggingOut) return;
+      // Check if this UID is the active saved UID in preferences
+      final savedUid = prefs.getString('uid');
+      if (savedUid != null && savedUid.isNotEmpty && savedUid != uid) {
+        return; // UID mismatch with saved session
+      }
 
-      // 1. Check if Firebase Auth account was deleted
+      // 3. Check if Firebase Auth account was explicitly deleted from console
       if (currentUser != null) {
         try {
           await currentUser.reload().timeout(const Duration(seconds: 3));
@@ -130,53 +150,58 @@ class _GlobalAccountStatusBarrierState
         } catch (_) {}
       }
 
-      // 2. Query Firestore collections
-      final db = FirebaseFirestore.instance;
-      bool userDocFound = false;
-      bool lawyerDocFound = false;
-      bool adminDocFound = false;
-      bool permissionDenied = false;
+      // 4. Perform 3 validation attempts spaced apart before declaring deletion
+      // This prevents race conditions with network latency or profile uploads.
+      bool isDocStillPresent = false;
+      for (int attempt = 1; attempt <= 3; attempt++) {
+        await Future.delayed(Duration(milliseconds: 1000 * attempt));
+        if (!mounted || _isLoggingOut) return;
+        if (AuthService.isRegistrationInProgress) return;
 
-      try {
-        final uDoc = await db
-            .collection('users')
-            .doc(uid)
-            .get()
-            .timeout(const Duration(seconds: 3));
-        if (uDoc.exists) userDocFound = true;
-      } on FirebaseException catch (e) {
-        if (e.code == 'permission-denied') permissionDenied = true;
-      } catch (_) {}
+        final db = FirebaseFirestore.instance;
+        bool uFound = false;
+        bool lFound = false;
+        bool aFound = false;
 
-      try {
-        final lDoc = await db
-            .collection('lawyers')
-            .doc(uid)
-            .get()
-            .timeout(const Duration(seconds: 3));
-        if (lDoc.exists) lawyerDocFound = true;
-      } on FirebaseException catch (e) {
-        if (e.code == 'permission-denied') permissionDenied = true;
-      } catch (_) {}
+        try {
+          final uDoc = await db
+              .collection('users')
+              .doc(uid)
+              .get()
+              .timeout(const Duration(seconds: 3));
+          if (uDoc.exists) uFound = true;
+        } catch (_) {}
 
-      try {
-        final aDoc = await db
-            .collection('admins')
-            .doc(uid)
-            .get()
-            .timeout(const Duration(seconds: 2));
-        if (aDoc.exists) adminDocFound = true;
-      } on FirebaseException catch (e) {
-        if (e.code == 'permission-denied') permissionDenied = true;
-      } catch (_) {}
+        try {
+          final lDoc = await db
+              .collection('lawyers')
+              .doc(uid)
+              .get()
+              .timeout(const Duration(seconds: 3));
+          if (lDoc.exists) lFound = true;
+        } catch (_) {}
 
-      if (userDocFound || lawyerDocFound || adminDocFound) {
-        return; // Account still exists!
+        try {
+          final aDoc = await db
+              .collection('admins')
+              .doc(uid)
+              .get()
+              .timeout(const Duration(seconds: 2));
+          if (aDoc.exists) aFound = true;
+        } catch (_) {}
+
+        if (uFound || lFound || aFound) {
+          isDocStillPresent = true;
+          break;
+        }
       }
 
-      // If none exist or access was denied due to deleted account -> Sign out
-      debugPrint(
-          '🚫 [Barrier] Account deleted in Firebase for UID: $uid (permDenied=$permissionDenied)');
+      if (isDocStillPresent) {
+        return; // Document exists or just appeared!
+      }
+
+      // If none exist after all retries and debounce -> Truly deleted by admin!
+      debugPrint('🚫 [Barrier] Account confirmed deleted in Firebase for UID: $uid');
       await _performAccountDeletionSignOut(uid);
     } catch (e) {
       debugPrint('[GlobalAccountStatusBarrier] check deletion error: $e');
@@ -214,10 +239,7 @@ class _GlobalAccountStatusBarrierState
       debugPrint('[Barrier] prefs clear notice: $e');
     }
 
-    // 4. Delete local Firebase Auth user & sign out
-    try {
-      await FirebaseAuth.instance.currentUser?.delete();
-    } catch (_) {}
+    // 4. Sign out Firebase Auth cleanly (do NOT delete currentUser from client!)
     try {
       await FirebaseAuth.instance.signOut();
     } catch (_) {}
