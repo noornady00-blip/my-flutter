@@ -18,6 +18,7 @@ import 'ui/screens/main_navigation_screen.dart';
 import 'ui/screens/auth/lawyer_pending_screen.dart';
 import 'ui/custom_widgets/global_network_banner.dart';
 import 'ui/custom_widgets/global_account_status_barrier.dart';
+import 'ui/custom_widgets/account_suspended_dialog.dart';
 import 'network/firestore_service.dart';
 import 'core/utils/recent_lawyers_tracker.dart';
 
@@ -143,29 +144,69 @@ void main() async {
     if (isLoggedIn) {
       bool accountStillExists = true;
       try {
-        final uDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(savedUid)
-            .get()
-            .timeout(const Duration(seconds: 3));
-        if (!uDoc.exists) {
-          final lDoc = await FirebaseFirestore.instance
-              .collection('lawyers')
-              .doc(savedUid)
-              .get()
-              .timeout(const Duration(seconds: 2));
-          final aDoc = await FirebaseFirestore.instance
-              .collection('admins')
-              .doc(savedUid)
-              .get()
-              .timeout(const Duration(seconds: 2));
-          if (!lDoc.exists && !aDoc.exists) {
-            final email = currentUser.email?.toLowerCase() ?? '';
-            final isAdm = effectiveRole == 'admin' ||
-                effectiveRole == 'subadmin' ||
-                email.endsWith('@mahameek.admin.com') ||
-                email.startsWith('admin_');
-            if (!isAdm) {
+        // 1. Reload currentUser to verify Firebase Auth account is still alive
+        try {
+          await currentUser.reload().timeout(const Duration(seconds: 3));
+        } on FirebaseAuthException catch (authErr) {
+          if (authErr.code == 'user-not-found' ||
+              authErr.code == 'user-disabled') {
+            accountStillExists = false;
+          }
+        } catch (_) {}
+
+        if (accountStillExists) {
+          final email = currentUser.email?.toLowerCase() ?? '';
+          final isAdm = effectiveRole == 'admin' ||
+              effectiveRole == 'subadmin' ||
+              email.endsWith('@mahameek.admin.com') ||
+              email.startsWith('admin_');
+
+          if (!isAdm) {
+            bool docFound = false;
+            try {
+              final uDoc = await FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(savedUid)
+                  .get()
+                  .timeout(const Duration(seconds: 3));
+              if (uDoc.exists) docFound = true;
+            } on FirebaseException catch (e) {
+              if (e.code == 'permission-denied') {
+                accountStillExists = false;
+              }
+            } catch (_) {}
+
+            if (!docFound && accountStillExists) {
+              try {
+                final lDoc = await FirebaseFirestore.instance
+                    .collection('lawyers')
+                    .doc(savedUid)
+                    .get()
+                    .timeout(const Duration(seconds: 3));
+                if (lDoc.exists) docFound = true;
+              } on FirebaseException catch (e) {
+                if (e.code == 'permission-denied') {
+                  accountStillExists = false;
+                }
+              } catch (_) {}
+            }
+
+            if (!docFound && accountStillExists) {
+              try {
+                final aDoc = await FirebaseFirestore.instance
+                    .collection('admins')
+                    .doc(savedUid)
+                    .get()
+                    .timeout(const Duration(seconds: 2));
+                if (aDoc.exists) docFound = true;
+              } on FirebaseException catch (e) {
+                if (e.code == 'permission-denied') {
+                  accountStillExists = false;
+                }
+              } catch (_) {}
+            }
+
+            if (!docFound) {
               accountStillExists = false;
             }
           }
@@ -176,10 +217,21 @@ void main() async {
 
       if (!accountStillExists) {
         try {
+          await NotificationService().unregisterUserDevice(uid: savedUid);
+          await NotificationService().clearAllSystemNotifications();
           await prefs.clear();
+          try {
+            await currentUser.delete();
+          } catch (_) {}
           await FirebaseAuth.instance.signOut();
         } catch (_) {}
         initialScreen = const OnboardingScreen();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final ctx = NotificationService.navigatorKey.currentContext;
+          if (ctx != null) {
+            showAccountDeletedDialog(ctx);
+          }
+        });
       } else {
         final String role = effectiveRole ?? 'client';
         final currentUid = savedUid;

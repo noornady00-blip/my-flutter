@@ -18,12 +18,16 @@ import '../data/models/user_model.dart';
 import '../data/models/lawyer.dart';
 import '../core/utils/phone_utils.dart';
 import 'fcm_dispatcher_service.dart';
+import 'notification_service.dart';
 
 class ChatService {
   final FirebaseFirestore _db;
 
   ChatService({FirebaseFirestore? firestore})
       : _db = firestore ?? FirebaseFirestore.instance;
+
+  static final Set<String> _knownAdminUids = {};
+  static final Set<String> _knownNonAdminUids = {};
 
   // ---------------------------------------------------------------------------
   // ⚡ LOCAL CACHING & FAST 0MS RETRIEVAL
@@ -657,6 +661,90 @@ class ChatService {
           senderAccountId: senderAccountId,
         ));
       } catch (_) {}
+    }
+
+    // Dispatch in-app admin alert if recipient is an admin / supervisor
+    if (recipientId.isNotEmpty && recipientId != senderId && senderRole != 'admin') {
+      unawaited(_dispatchAdminChatAlertIfNeeded(
+        chatId: chatId,
+        recipientId: recipientId,
+        senderId: senderId,
+        senderName: senderName,
+        senderRole: senderRole,
+        cleanText: cleanText,
+        senderPhone: resolvedSenderPhone,
+        senderAccountId: senderAccountId,
+      ));
+    }
+  }
+
+  /// Dispatches an in-app administrative notification if the chat recipient is an admin/supervisor.
+  Future<void> _dispatchAdminChatAlertIfNeeded({
+    required String chatId,
+    required String recipientId,
+    required String senderId,
+    required String senderName,
+    required String senderRole,
+    required String cleanText,
+    required String senderPhone,
+    required String senderAccountId,
+  }) async {
+    try {
+      bool isRecipientAdmin = _knownAdminUids.contains(recipientId);
+
+      if (!isRecipientAdmin && !_knownNonAdminUids.contains(recipientId)) {
+        final adminDoc = await _db
+            .collection('admins')
+            .doc(recipientId)
+            .get()
+            .timeout(const Duration(seconds: 2));
+        if (adminDoc.exists) {
+          isRecipientAdmin = true;
+          _knownAdminUids.add(recipientId);
+        } else {
+          final uDoc = await _db
+              .collection('users')
+              .doc(recipientId)
+              .get()
+              .timeout(const Duration(seconds: 2));
+          final uData = uDoc.data();
+          final rRole = uData?['role']?.toString().toLowerCase();
+          final rPhone = uData?['phone']?.toString();
+          if (rRole == 'admin' ||
+              rRole == 'subadmin' ||
+              PhoneUtils.isSuperAdminPhone(rPhone)) {
+            isRecipientAdmin = true;
+            _knownAdminUids.add(recipientId);
+          } else {
+            _knownNonAdminUids.add(recipientId);
+          }
+        }
+      }
+
+      if (isRecipientAdmin) {
+        // Also update unreadByAdmin counter in chat document for department badge
+        unawaited(_db.collection('chats').doc(chatId).set({
+          'unreadByAdmin': FieldValue.increment(1),
+        }, SetOptions(merge: true)).catchError((_) {}));
+
+        final roleLabel = (senderRole == 'lawyer') ? 'محامٍ' : 'عميل';
+        await NotificationService().dispatchAdminAlert(
+          type: 'chat_message',
+          title: 'رسالة جديدة من $senderName ($roleLabel)',
+          body: cleanText,
+          data: {
+            'chatId': chatId,
+            'senderId': senderId,
+            'senderName': senderName,
+            'senderRole': senderRole,
+            'senderPhone': senderPhone,
+            'senderAccountId': senderAccountId,
+            'type': 'chat_message',
+          },
+        );
+      }
+    } catch (e) {
+      debugPrint('[ChatService] _dispatchAdminChatAlertIfNeeded error: $e');
     }
   }
 

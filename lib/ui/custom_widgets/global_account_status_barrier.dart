@@ -22,6 +22,8 @@ import '../../core/constants/app_constants.dart';
 import '../../core/utils/navigation_utils.dart';
 import '../screens/onboarding/onboarding_screen.dart';
 import '../../network/notification_service.dart';
+import '../../network/firestore_service.dart';
+import 'account_suspended_dialog.dart';
 
 class GlobalAccountStatusBarrier extends StatefulWidget {
   final Widget child;
@@ -33,7 +35,8 @@ class GlobalAccountStatusBarrier extends StatefulWidget {
 }
 
 class _GlobalAccountStatusBarrierState
-    extends State<GlobalAccountStatusBarrier> {
+    extends State<GlobalAccountStatusBarrier>
+    with WidgetsBindingObserver {
   StreamSubscription<User?>? _authSub;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _userDocSub;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _roleDocSub;
@@ -48,7 +51,25 @@ class _GlobalAccountStatusBarrierState
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _listenToAuth();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _authSub?.cancel();
+    _cancelDocSubscriptions();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      if (_currentUid.isNotEmpty && !_isLoggingOut) {
+        _checkIfAccountDeleted(_currentUid);
+      }
+    }
   }
 
   void _listenToAuth() {
@@ -92,53 +113,138 @@ class _GlobalAccountStatusBarrierState
         return; // Admins are never deleted by this barrier
       }
 
-      // Grace period to ensure ongoing auth/creation sync completes
-      await Future.delayed(const Duration(milliseconds: 2500));
+      // Small debounce (350ms) to ensure ongoing auth or batch creation completes
+      await Future.delayed(const Duration(milliseconds: 350));
       if (!mounted || _isLoggingOut) return;
 
-      final db = FirebaseFirestore.instance;
-      final uDoc = await db.collection('users').doc(uid).get();
-      if (uDoc.exists) return;
-      final lDoc = await db.collection('lawyers').doc(uid).get();
-      if (lDoc.exists) return;
-      final aDoc = await db.collection('admins').doc(uid).get();
-      if (aDoc.exists) return;
-
-      // Double check in phone_directory before deleting
-      final phone = prefs.getString('phone');
-      if (phone != null && phone.isNotEmpty) {
-        final pDoc = await db.collection('phone_directory').doc(phone).get();
-        if (pDoc.exists) return;
+      // 1. Check if Firebase Auth account was deleted
+      if (currentUser != null) {
+        try {
+          await currentUser.reload().timeout(const Duration(seconds: 3));
+        } on FirebaseAuthException catch (authErr) {
+          if (authErr.code == 'user-not-found' || authErr.code == 'user-disabled') {
+            debugPrint('⚠️ [Barrier] Firebase Auth user deleted: ${authErr.code}');
+            await _performAccountDeletionSignOut(uid);
+            return;
+          }
+        } catch (_) {}
       }
 
-      // Account was deleted permanently by administrator
-      _isLoggingOut = true;
-      _cancelDocSubscriptions();
+      // 2. Query Firestore collections
+      final db = FirebaseFirestore.instance;
+      bool userDocFound = false;
+      bool lawyerDocFound = false;
+      bool adminDocFound = false;
+      bool permissionDenied = false;
 
-      await prefs.clear();
       try {
-        await FirebaseAuth.instance.signOut();
+        final uDoc = await db
+            .collection('users')
+            .doc(uid)
+            .get()
+            .timeout(const Duration(seconds: 3));
+        if (uDoc.exists) userDocFound = true;
+      } on FirebaseException catch (e) {
+        if (e.code == 'permission-denied') permissionDenied = true;
       } catch (_) {}
 
-      if (mounted) {
-        setState(() {
-          _isSuspended = false;
-          _currentUid = '';
-        });
+      try {
+        final lDoc = await db
+            .collection('lawyers')
+            .doc(uid)
+            .get()
+            .timeout(const Duration(seconds: 3));
+        if (lDoc.exists) lawyerDocFound = true;
+      } on FirebaseException catch (e) {
+        if (e.code == 'permission-denied') permissionDenied = true;
+      } catch (_) {}
+
+      try {
+        final aDoc = await db
+            .collection('admins')
+            .doc(uid)
+            .get()
+            .timeout(const Duration(seconds: 2));
+        if (aDoc.exists) adminDocFound = true;
+      } on FirebaseException catch (e) {
+        if (e.code == 'permission-denied') permissionDenied = true;
+      } catch (_) {}
+
+      if (userDocFound || lawyerDocFound || adminDocFound) {
+        return; // Account still exists!
       }
 
-      final nav = NotificationService.navigatorKey.currentState;
-      if (nav != null) {
-        nav.pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const OnboardingScreen()),
-          (_) => false,
-        );
-      }
+      // If none exist or access was denied due to deleted account -> Sign out
+      debugPrint(
+          '🚫 [Barrier] Account deleted in Firebase for UID: $uid (permDenied=$permissionDenied)');
+      await _performAccountDeletionSignOut(uid);
     } catch (e) {
       debugPrint('[GlobalAccountStatusBarrier] check deletion error: $e');
-    } finally {
-      _isLoggingOut = false;
     }
+  }
+
+  Future<void> _performAccountDeletionSignOut(String uid) async {
+    if (_isLoggingOut) return;
+    _isLoggingOut = true;
+    _cancelDocSubscriptions();
+
+    final uidToClean = uid.isNotEmpty ? uid : _currentUid;
+
+    try {
+      // 1. Stop chat listeners and unregister device tokens
+      NotificationService().stopGlobalUserChatListener();
+      if (uidToClean.isNotEmpty) {
+        await NotificationService()
+            .unregisterUserDevice(uid: uidToClean)
+            .timeout(const Duration(seconds: 3));
+      }
+      await NotificationService().clearAllSystemNotifications();
+    } catch (e) {
+      debugPrint('[Barrier] notification cleanup notice: $e');
+    }
+
+    // 2. Clear in-memory cache
+    FirestoreService.inMemoryApprovedLawyers = null;
+
+    // 3. Clear SharedPreferences completely
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear();
+    } catch (e) {
+      debugPrint('[Barrier] prefs clear notice: $e');
+    }
+
+    // 4. Delete local Firebase Auth user & sign out
+    try {
+      await FirebaseAuth.instance.currentUser?.delete();
+    } catch (_) {}
+    try {
+      await FirebaseAuth.instance.signOut();
+    } catch (_) {}
+
+    if (mounted) {
+      setState(() {
+        _isSuspended = false;
+        _currentUid = '';
+      });
+    }
+
+    // 5. Navigate cleanly to OnboardingScreen (removes all previous screens)
+    final nav = NotificationService.navigatorKey.currentState;
+    if (nav != null) {
+      nav.pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+        (_) => false,
+      );
+    }
+
+    // 6. Show informative Dialog to user
+    final ctx = NotificationService.navigatorKey.currentContext;
+    if (ctx != null && ctx.mounted) {
+      showAccountDeletedDialog(ctx);
+    }
+
+    _isLoggingOut = false;
   }
 
   Future<void> _subscribeToUserStatus(String uid) async {
@@ -146,12 +252,13 @@ class _GlobalAccountStatusBarrierState
 
     final currentUser = FirebaseAuth.instance.currentUser;
     final email = currentUser?.email?.toLowerCase() ?? '';
-    final bool isAdminEmail = email.endsWith('@mahameek.admin.com') || email.startsWith('admin_');
+    final bool isAdminEmail =
+        email.endsWith('@mahameek.admin.com') || email.startsWith('admin_');
 
     // Read cached session first
     try {
       final prefs = await SharedPreferences.getInstance();
-      _userRole = prefs.getString('role') ?? 'client';
+      _userRole = prefs.getString('role')?.toLowerCase().trim() ?? 'client';
       _userName = prefs.getString('name') ?? '';
       _userPhone = prefs.getString('phone') ?? '';
       final cachedStatus = prefs.getString('status')?.toLowerCase().trim();
@@ -159,6 +266,10 @@ class _GlobalAccountStatusBarrierState
         if (mounted) setState(() => _isSuspended = true);
       }
     } catch (_) {}
+
+    if (email.contains('@mahameek.lawyer.com')) {
+      _userRole = 'lawyer';
+    }
 
     // Admins and subadmins are never monitored for client account suspension
     if (_userRole == 'admin' || _userRole == 'subadmin' || isAdminEmail) {
@@ -170,44 +281,85 @@ class _GlobalAccountStatusBarrierState
 
     final db = FirebaseFirestore.instance;
 
-    // 1. Listen to users/{uid} in real time
-    _userDocSub = db.collection('users').doc(uid).snapshots().listen((snap) {
-      if (!snap.exists) {
-        _checkIfAccountDeleted(uid);
-        return;
-      }
-      final data = snap.data() ?? {};
-      final role = data['role']?.toString().toLowerCase().trim() ?? _userRole;
-      final name = data['name']?.toString() ?? _userName;
-      final phone = data['phone']?.toString() ?? _userPhone;
-      final status = data['status']?.toString().toLowerCase().trim() ?? '';
+    if (_userRole == 'lawyer') {
+      // 1. For Lawyers: Listen to lawyers/{uid} as PRIMARY
+      _roleDocSub =
+          db.collection('lawyers').doc(uid).snapshots().listen((rSnap) {
+        if (!rSnap.exists) {
+          // Lawyer document deleted!
+          _checkIfAccountDeleted(uid);
+          return;
+        }
+        final rData = rSnap.data() ?? {};
+        final rStatus =
+            rData['status']?.toString().toLowerCase().trim() ?? '';
+        final rName = rData['name']?.toString() ?? _userName;
+        final rPhone = rData['phone']?.toString() ?? _userPhone;
 
-      _userName = name;
-      _userPhone = phone;
-      _userRole = role;
+        _userName = rName;
+        _userPhone = rPhone;
 
-      final bool suspended = (status == 'suspended');
-      _updateSuspendedState(suspended, status);
+        final bool suspended = (rStatus == 'suspended');
+        _updateSuspendedState(suspended, rStatus);
+      }, onError: (err) {
+        debugPrint(
+            '[GlobalAccountStatusBarrier] lawyer roleDocSub error: $err');
+        if (err is FirebaseException &&
+            (err.code == 'permission-denied' || err.code == 'not-found')) {
+          _checkIfAccountDeleted(uid);
+        }
+      });
 
-      // If user is a lawyer or admin, also listen to the dedicated collection
-      if (_roleDocSub == null && (role == 'lawyer' || role == 'admin' || role == 'subadmin')) {
-        final collectionName = (role == 'lawyer') ? 'lawyers' : 'admins';
-        _roleDocSub = db.collection(collectionName).doc(uid).snapshots().listen((rSnap) {
-          if (!rSnap.exists) return;
-          final rData = rSnap.data() ?? {};
-          final rStatus = rData['status']?.toString().toLowerCase().trim() ?? '';
-          if (rStatus == 'suspended') {
+      // Also listen to users/{uid} for mirror suspension updates if present
+      _userDocSub =
+          db.collection('users').doc(uid).snapshots().listen((snap) {
+        if (snap.exists) {
+          final data = snap.data() ?? {};
+          final status =
+              data['status']?.toString().toLowerCase().trim() ?? '';
+          if (status == 'suspended') {
             _updateSuspendedState(true, 'suspended');
-          } else if (rStatus == 'active' || rStatus == 'approved') {
-            if (status != 'suspended') {
-              _updateSuspendedState(false, rStatus);
-            }
           }
-        });
-      }
-    }, onError: (err) {
-      debugPrint('[GlobalAccountStatusBarrier] userDocSub error: $err');
-    });
+        }
+      }, onError: (_) {});
+    } else {
+      // 2. For Clients: Listen to users/{uid} as PRIMARY
+      _userDocSub =
+          db.collection('users').doc(uid).snapshots().listen((snap) {
+        if (!snap.exists) {
+          // Client document deleted!
+          _checkIfAccountDeleted(uid);
+          return;
+        }
+        final data = snap.data() ?? {};
+        final role =
+            data['role']?.toString().toLowerCase().trim() ?? _userRole;
+        final name = data['name']?.toString() ?? _userName;
+        final phone = data['phone']?.toString() ?? _userPhone;
+        final status =
+            data['status']?.toString().toLowerCase().trim() ?? '';
+
+        _userName = name;
+        _userPhone = phone;
+        _userRole = role;
+
+        // If the user's role is actually lawyer, re-subscribe as lawyer
+        if (role == 'lawyer') {
+          _subscribeToUserStatus(uid);
+          return;
+        }
+
+        final bool suspended = (status == 'suspended');
+        _updateSuspendedState(suspended, status);
+      }, onError: (err) {
+        debugPrint(
+            '[GlobalAccountStatusBarrier] client userDocSub error: $err');
+        if (err is FirebaseException &&
+            (err.code == 'permission-denied' || err.code == 'not-found')) {
+          _checkIfAccountDeleted(uid);
+        }
+      });
+    }
   }
 
   void _updateSuspendedState(bool suspended, String rawStatus) {
@@ -221,13 +373,6 @@ class _GlobalAccountStatusBarrierState
         prefs.setString('status', suspended ? 'suspended' : rawStatus);
       }).catchError((_) {});
     }
-  }
-
-  @override
-  void dispose() {
-    _authSub?.cancel();
-    _cancelDocSubscriptions();
-    super.dispose();
   }
 
   @override

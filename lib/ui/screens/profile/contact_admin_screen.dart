@@ -187,14 +187,18 @@ class _ContactAdminScreenState extends State<ContactAdminScreen> {
       try {
         await NotificationService().dispatchAdminAlert(
           type: 'support_message',
-          title: 'رسالة دعم فني جديدة',
-          body: 'المرسل: $senderName ($senderPhone)\n$msgBody',
+          title: 'رسالة تواصل ودعم جديدة من $senderName',
+          body: msgBody,
           data: {
             'phone': senderPhone,
             'name': senderName,
+            'senderUid': currentUser?.uid ?? '',
+            'type': 'support_message',
           },
         );
-      } catch (_) {}
+      } catch (err) {
+        debugPrint('Failed to dispatchAdminAlert in contact screen: $err');
+      }
 
       try {
         final prefs = await SharedPreferences.getInstance();

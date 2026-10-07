@@ -23,6 +23,7 @@ import 'fcm_dispatcher_service.dart';
 import '../ui/screens/admin/admin_password_resets_screen.dart';
 import '../ui/screens/admin/admin_support_messages_screen.dart';
 import '../ui/screens/admin/admin_pending_lawyers_screen.dart';
+import '../ui/screens/admin/admin_chat_management_screen.dart';
 import '../ui/screens/chat/chat_screen.dart';
 import '../ui/screens/auth/auth_gateway_screen.dart';
 import '../ui/screens/main_navigation_screen.dart';
@@ -392,6 +393,11 @@ class NotificationService {
         nav.push(
           MaterialPageRoute(
               builder: (_) => const AdminPendingLawyersScreen()),
+        );
+      } else if (type == 'chat_message' || type == 'admin_chat') {
+        nav.push(
+          MaterialPageRoute(
+              builder: (_) => const AdminChatManagementScreen()),
         );
       }
     });
@@ -1406,6 +1412,8 @@ class NotificationService {
               subData['uid'] == entityId ||
               subData['lawyerId'] == entityId ||
               subData['msgId'] == entityId ||
+              subData['chatId'] == entityId ||
+              subData['senderId'] == entityId ||
               subData['id'] == entityId ||
               doc.id == entityId) {
             matches = true;

@@ -25,6 +25,7 @@ import 'admin_pending_lawyers_screen.dart';
 import 'admin_password_resets_screen.dart';
 import 'admin_recent_lawyers_screen.dart';
 import 'admin_chat_management_screen.dart';
+import '../chat/chat_screen.dart';
 import '../../../core/utils/recent_lawyers_tracker.dart';
 import '../../../core/utils/search_utils.dart';
 import '../../../core/utils/navigation_utils.dart';
@@ -80,6 +81,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
     if (digits.endsWith('912209596')) return '222222222222';
     return '';
   }
+
+  String get _displayAdminName => FirebaseAuth.instance.currentUser?.displayName ?? 'المشرف العام';
 
   bool get _isCurrentAdminSuperAdmin => PhoneUtils.isSuperAdminPhone(_displayAdminPhone);
 
@@ -387,6 +390,25 @@ class _AdminDashboardState extends State<AdminDashboard> {
       _pushSmoothRoute(const AdminPendingLawyersScreen());
     } else if (n.isSupportMessage) {
       _pushSmoothRoute(const AdminSupportMessagesScreen());
+    } else if (n.isChatMessage) {
+      final chatId = n.data['chatId']?.toString() ?? '';
+      final senderId = n.data['senderId']?.toString() ?? '';
+      final senderName = n.data['senderName']?.toString() ?? '';
+      final senderRole = n.data['senderRole']?.toString() ?? '';
+      final senderAccountId = n.data['senderAccountId']?.toString() ?? '';
+      if (chatId.isNotEmpty || senderId.isNotEmpty) {
+        _pushSmoothRoute(ChatScreen(
+          currentUserId: FirebaseAuth.instance.currentUser?.uid,
+          currentUserName: _displayAdminName,
+          currentUserRole: 'admin',
+          otherUserUid: senderId,
+          otherUserName: senderName,
+          otherUserRole: senderRole,
+          otherUserAccountId: senderAccountId,
+        ));
+      } else {
+        _pushSmoothRoute(const AdminChatManagementScreen());
+      }
     } else {
       if (_currentIndex != 0) {
         setState(() => _currentIndex = 0);
@@ -1664,25 +1686,32 @@ class _AdminDashboardState extends State<AdminDashboard> {
                           final isReset = n.isPasswordReset;
                           final isLawyer = n.isLawyerRegistration;
                           final isSupport = n.isSupportMessage;
+                          final isChat = n.isChatMessage;
                           final formattedTime = DateFormat('yyyy/MM/dd - hh:mm a').format(n.createdAt);
 
                           final iconData = isReset
                               ? Icons.key_rounded
                               : (isLawyer
                                   ? Icons.gavel_rounded
-                                  : (isSupport ? Icons.chat_bubble_outline_rounded : Icons.info_rounded));
+                                  : (isChat
+                                      ? Icons.forum_rounded
+                                      : (isSupport ? Icons.chat_bubble_outline_rounded : Icons.info_rounded)));
 
                           final iconColor = isReset
                               ? const Color(0xFFEA580C)
                               : (isLawyer
                                   ? const Color(0xFFD97706)
-                                  : (isSupport ? const Color(0xFF2563EB) : const Color(0xFF2563EB)));
+                                  : (isChat
+                                      ? const Color(0xFFD49B1A)
+                                      : (isSupport ? const Color(0xFF2563EB) : const Color(0xFF2563EB))));
 
                           final iconBg = isReset
                               ? const Color(0xFFFFF7ED)
                               : (isLawyer
                                   ? const Color(0xFFFEF3C7)
-                                  : (isSupport ? const Color(0xFFEFF6FF) : const Color(0xFFEFF6FF)));
+                                  : (isChat
+                                      ? const Color(0xFFFFFBEB)
+                                      : (isSupport ? const Color(0xFFEFF6FF) : const Color(0xFFEFF6FF))));
 
                           return InkWell(
                             onTap: () {

@@ -7,8 +7,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../custom_widgets/app_logo_badge.dart';
+import '../../custom_widgets/account_suspended_dialog.dart';
 import '../main_navigation_screen.dart';
 import '../../../core/utils/navigation_utils.dart';
+import '../../../network/notification_service.dart';
 import 'lawyer_register_screen.dart';
 
 class LawyerPendingScreen extends StatefulWidget {
@@ -72,9 +74,30 @@ class _LawyerPendingScreenState extends State<LawyerPendingScreen> {
             (_) => false,
           );
         }
+      } else if (!doc.exists) {
+        // Lawyer request was deleted by admin
+        _statusSubscription?.cancel();
+        if (mounted) {
+          _logout();
+          final navCtx = NotificationService.navigatorKey.currentContext;
+          if (navCtx != null && navCtx.mounted) {
+            showAccountDeletedDialog(navCtx);
+          }
+        }
       }
     }, onError: (e) {
       debugPrint('[LawyerPendingScreen] status listener error: $e');
+      if (e is FirebaseException &&
+          (e.code == 'permission-denied' || e.code == 'not-found')) {
+        _statusSubscription?.cancel();
+        if (mounted) {
+          _logout();
+          final navCtx = NotificationService.navigatorKey.currentContext;
+          if (navCtx != null && navCtx.mounted) {
+            showAccountDeletedDialog(navCtx);
+          }
+        }
+      }
     });
   }
 

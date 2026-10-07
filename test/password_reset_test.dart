@@ -172,7 +172,33 @@ void main() {
       expect(notif.isSupportMessage, isTrue);
       expect(notif.isPasswordReset, isFalse);
       expect(notif.isLawyerRegistration, isFalse);
+      expect(notif.isChatMessage, isFalse);
       expect(notif.isRead, isFalse);
+    });
+
+    test('AdminNotificationModel parses chat message alert to supervisor correctly', () {
+      final now = DateTime(2026, 9, 5, 23, 10);
+      final notif = AdminNotificationModel.fromMap({
+        'type': 'chat_message',
+        'title': 'رسالة جديدة من أحمد المنصور (عميل)',
+        'body': 'السلام عليكم، أود الاستفسار بخصوص...',
+        'data': {
+          'chatId': 'chat_123',
+          'senderId': 'user_456',
+          'senderName': 'أحمد المنصور',
+          'senderRole': 'client',
+        },
+        'createdAt': Timestamp.fromDate(now),
+        'read': false,
+      }, 'notif_004');
+
+      expect(notif.isChatMessage, isTrue);
+      expect(notif.isSupportMessage, isFalse);
+      expect(notif.isPasswordReset, isFalse);
+      expect(notif.isLawyerRegistration, isFalse);
+      expect(notif.isRead, isFalse);
+      expect(notif.data['chatId'], 'chat_123');
+      expect(notif.data['senderName'], 'أحمد المنصور');
     });
 
     test('Bulk selection logic toggles correctly between select all and deselect all', () {

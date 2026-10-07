@@ -138,17 +138,28 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       final col = (role == 'lawyer') ? 'lawyers' : ((role == 'admin' || role == 'subadmin') ? 'admins' : 'users');
       final doc = await FirebaseFirestore.instance.collection(col).doc(user.uid).get();
       if (!doc.exists) {
-        // Account was deleted in Firebase Console or by Admin!
-        // Immediately sign out and do NOT resurrect/auto-heal it!
-        await AuthService().signOut();
-        if (mounted) {
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(builder: (_) => const OnboardingScreen()),
-            (route) => false,
-          );
+        // Double-check alternate collection before concluding account deletion
+        bool otherFound = false;
+        if (col == 'lawyers') {
+          final uDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+          otherFound = uDoc.exists;
+        } else if (col == 'users') {
+          final lDoc = await FirebaseFirestore.instance.collection('lawyers').doc(user.uid).get();
+          otherFound = lDoc.exists;
         }
-        return;
+        if (!otherFound) {
+          // Account was deleted in Firebase Console or by Admin!
+          await AuthService().signOut();
+          if (mounted) {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+              (route) => false,
+            );
+            showAccountDeletedDialog(context);
+          }
+          return;
+        }
       }
       final liveStatus = doc.data()?['status']?.toString().trim().toLowerCase();
       if (liveStatus == 'suspended' && mounted) {

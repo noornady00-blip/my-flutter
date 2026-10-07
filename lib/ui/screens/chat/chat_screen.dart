@@ -791,6 +791,12 @@ class _ChatScreenState extends State<ChatScreen> {
         currentUserId: _currentUserId,
         currentUserRole: _currentUserRole,
       );
+      if (_currentUserRole == 'admin') {
+        NotificationService().markNotificationsReadForEntity(
+          type: 'chat_message',
+          entityId: _activeChat!.id,
+        );
+      }
     } catch (_) {
     } finally {
       _isMarkingRead = false;

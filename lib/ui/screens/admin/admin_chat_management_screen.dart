@@ -9,6 +9,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../network/auth_service.dart';
+import '../../../network/notification_service.dart';
 import '../../../core/utils/account_id_utils.dart';
 import '../chat/chat_list_screen.dart';
 
@@ -30,6 +31,7 @@ class _AdminChatManagementScreenState
   @override
   void initState() {
     super.initState();
+    NotificationService().markNotificationsReadForEntity(type: 'chat_message');
     _loadAdminSession();
   }
 

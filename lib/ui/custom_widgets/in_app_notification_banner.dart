@@ -147,11 +147,17 @@ class _InAppNotificationWidgetState extends State<_InAppNotificationWidget>
         cleanTitle.contains('كلمة المرور')) {
       typeIcon = Icons.vpn_key_rounded;
       typeLabel = 'استعادة كلمة المرور';
+    } else if (widget.payload == 'chat_message' ||
+        widget.payload == 'admin_chat' ||
+        cleanTitle.contains('محادثة')) {
+      typeIcon = Icons.forum_rounded;
+      typeLabel = 'رسالة جديدة للمشرف';
     } else if (widget.payload == 'support_message' ||
         cleanTitle.contains('تواصل') ||
-        cleanTitle.contains('رسالة')) {
+        cleanTitle.contains('رسالة') ||
+        cleanTitle.contains('دعم')) {
       typeIcon = Icons.chat_bubble_outline_rounded;
-      typeLabel = 'رسالة تواصل جديدة';
+      typeLabel = 'رسالة دعم وتواصل';
     } else if (widget.payload == 'lawyer_registration' ||
         cleanTitle.contains('محام') ||
         cleanTitle.contains('انضمام')) {

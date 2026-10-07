@@ -38,7 +38,16 @@ class AdminNotificationModel {
   bool get isSupportMessage =>
       type == 'support_message' ||
       type == 'contact' ||
-      title.contains('رسالة تواصل');
+      type == 'contact_admin' ||
+      title.contains('دعم') ||
+      title.contains('تواصل');
+
+  bool get isChatMessage =>
+      type == 'chat_message' ||
+      type == 'chat' ||
+      type == 'admin_chat' ||
+      title.contains('محادثة') ||
+      (title.contains('رسالة') && !isSupportMessage);
 
   // ---------------------------------------------------------------------------
   // Factory Deserialization
