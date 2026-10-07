@@ -13,7 +13,6 @@ import '../../core/utils/navigation_utils.dart';
 import '../../core/utils/phone_utils.dart';
 import 'app_logo_badge.dart';
 import '../screens/admin/admin_dashboard.dart';
-import '../screens/auth/login_screen.dart';
 import '../screens/auth/auth_gateway_screen.dart';
 import 'profile_details_modal.dart';
 
@@ -38,7 +37,7 @@ class AppDrawer extends StatefulWidget {
 }
 
 class _AppDrawerState extends State<AppDrawer> {
-  String _userName = 'زائر منصة محاميك';
+  String _userName = 'عميل محاميك';
   String _userPhone = '';
   String _userRole = 'client';
   String? _photoUrl;
@@ -122,7 +121,7 @@ class _AppDrawerState extends State<AppDrawer> {
         _userPhone = currentUser.email?.replaceAll('@mahameek.client.com', '').replaceAll('@mahameek.lawyer.com', '') ?? '';
         _isLoggedIn = true;
       } else {
-        _userName = 'زائر منصة محاميك';
+        _userName = 'عميل محاميك';
         _userPhone = '';
         _userRole = 'client';
         _photoUrl = null;
@@ -130,6 +129,15 @@ class _AppDrawerState extends State<AppDrawer> {
         _photoPath = null;
         _cachedAvatarBytes = null;
         _isLoggedIn = false;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (_) => const AuthGatewayScreen()),
+              (route) => false,
+            );
+          }
+        });
       }
     });
 
@@ -1477,51 +1485,16 @@ class _AppDrawerState extends State<AppDrawer> {
                       onTap: _confirmSignOut,
                     ),
                   ]
-                  // 4. GUEST / NOT LOGGED IN
                   else ...[
                     _buildDrawerItem(
-                      icon: Icons.home_rounded,
-                      title: 'الرئيسية والمدن',
-                      onTap: () {
-                        Navigator.pop(context);
-                        widget.onNavigateTab?.call(0);
-                      },
-                    ),
-                    _buildDrawerItem(
-                      icon: Icons.chat_bubble_rounded,
-                      title: 'المحادثات المباشرة',
-                      onTap: () {
-                        Navigator.pop(context);
-                        widget.onNavigateTab?.call(1);
-                      },
-                    ),
-                    _buildDrawerItem(
-                      icon: Icons.search_rounded,
-                      title: 'البحث',
-                      onTap: () {
-                        Navigator.pop(context);
-                        widget.onNavigateTab?.call(2);
-                      },
-                    ),
-                    _buildDrawerItem(
                       icon: Icons.login_rounded,
-                      title: 'تسجيل الدخول',
+                      title: 'تسجيل الدخول / إنشاء حساب',
                       onTap: () {
                         Navigator.pop(context);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const LoginScreen()),
-                        );
-                      },
-                    ),
-                    _buildDrawerItem(
-                      icon: Icons.person_add_rounded,
-                      title: 'إنشاء حساب جديد',
-                      onTap: () {
-                        Navigator.pop(context);
-                        Navigator.push(
+                        Navigator.pushAndRemoveUntil(
                           context,
                           MaterialPageRoute(builder: (_) => const AuthGatewayScreen()),
+                          (route) => false,
                         );
                       },
                     ),

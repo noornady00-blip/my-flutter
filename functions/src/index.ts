@@ -27,9 +27,21 @@ function normalizePhone(rawPhone: string): string {
   return `+249${digits}`;
 }
 
-function toAuthEmail(normalized: string): string {
-  const digits = normalized.replace(/[^0-9]/g, "");
-  return `${digits}@mahameek.com`;
+function internalAuthKey(phone: string): string {
+  const clean = phone.replace(/[^0-9]/g, "");
+  const hash = crypto.createHash("sha256").update(`mahameek_auth_key_salt_2026_${clean}`).digest("hex");
+  return `Mhk@${hash.substring(0, 16)}#`;
+}
+
+function hashPassword(password: string): string {
+  return crypto.createHash("sha256").update(`mahameek_pwd_salt_2026_${password.trim()}_secure`).digest("hex");
+}
+
+function toAuthEmail(phone: string, role: string = "client"): string {
+  const digits = extractDigits(phone);
+  if (role === "lawyer") return `${digits}@mahameek.lawyer.com`;
+  if (role === "admin" || role === "subadmin") return `admin_${digits}@mahameek.admin.com`;
+  return `${digits}@mahameek.client.com`;
 }
 
 function isSuperAdminPhone(phone: string): boolean {
@@ -71,19 +83,20 @@ export const adminSetUserPassword = functions.https.onCall(async (data, context)
     throw new functions.https.HttpsError("permission-denied", "لا يمكن تعديل حساب المشرف الأساسي");
   }
 
-  const hash = crypto.createHash('sha256').update(newPassword.trim()).digest('hex');
+  const role = docData.role || (lawyerDoc.exists ? "lawyer" : "client");
+  const hash = hashPassword(newPassword);
   const now = admin.firestore.FieldValue.serverTimestamp();
 
   // 1. Update Auth
   const digits = extractDigits(docData.phone || "");
-  const authKey = digits.length > 0 ? `MHMK-${digits}-SEC` : "";
+  const authKey = digits.length > 0 ? internalAuthKey(docData.phone) : "";
   const fbPassword = authKey || newPassword.trim();
+  const email = toAuthEmail(docData.phone, role);
   
   try {
-    await admin.auth().updateUser(uid, { password: fbPassword });
+    await admin.auth().updateUser(uid, { password: fbPassword, email });
   } catch (err: any) {
     if (err.code === "auth/user-not-found") {
-       const email = toAuthEmail(docData.phone);
        await admin.auth().createUser({
           uid,
           email,
@@ -194,6 +207,32 @@ export const adminDeleteUserPermanently = functions.https.onCall(async (data, co
   
   await batch.commit();
 
+  // 3. Purge all related chats and messages
+  try {
+    const chatsSnap1 = await admin.firestore().collection("chats").where("participants", "array-contains", uid).get();
+    const chatsSnap2 = await admin.firestore().collection("chats").where("clientId", "==", uid).get();
+    const chatsSnap3 = await admin.firestore().collection("chats").where("lawyerId", "==", uid).get();
+
+    const chatDocRefs = new Map<string, admin.firestore.DocumentReference>();
+    for (const snap of [chatsSnap1, chatsSnap2, chatsSnap3]) {
+      for (const doc of snap.docs) {
+        chatDocRefs.set(doc.id, doc.ref);
+      }
+    }
+
+    for (const chatRef of chatDocRefs.values()) {
+      const msgs = await chatRef.collection("messages").get();
+      const msgBatch = admin.firestore().batch();
+      for (const mDoc of msgs.docs) {
+        msgBatch.delete(mDoc.ref);
+      }
+      msgBatch.delete(chatRef);
+      await msgBatch.commit().catch(() => {});
+    }
+  } catch (chatPurgeErr) {
+    console.error(`Failed to purge chats for user ${uid}:`, chatPurgeErr);
+  }
+
   return { success: true, deletedUid: uid };
 });
 
@@ -205,9 +244,8 @@ export const adminCreateAdminAccount = functions.https.onCall(async (data, conte
   }
 
   const normPhone = normalizePhone(phone);
-  const authEmail = toAuthEmail(normPhone);
-  const digits = extractDigits(normPhone);
-  const authKey = `MHMK-${digits}-SEC`;
+  const authEmail = toAuthEmail(normPhone, "admin");
+  const authKey = internalAuthKey(normPhone);
 
   // Check if exists
   const existingDoc = await admin.firestore().collection("phone_directory").doc(normPhone).get();
@@ -215,7 +253,7 @@ export const adminCreateAdminAccount = functions.https.onCall(async (data, conte
     throw new functions.https.HttpsError("already-exists", "رقم الهاتف مسجل مسبقاً");
   }
 
-  const hash = crypto.createHash('sha256').update(password.trim()).digest('hex');
+  const hash = hashPassword(password);
 
   // Create in Auth
   let uid: string;
@@ -276,7 +314,7 @@ export const verifyLoginFailureReason = functions.https.onCall(async (data, cont
   const uid = dirDoc.data()?.uid;
   if (!uid) return { reason: "not_found" };
 
-  const hash = crypto.createHash('sha256').update(password.trim()).digest('hex');
+  const hash = hashPassword(password);
   
   const historyDoc = await admin.firestore().collection("passwordHistory").doc(uid).get();
   if (historyDoc.exists) {
@@ -336,9 +374,9 @@ export const migrateFixAuthFirestoreMismatch = functions.https.onCall(async (dat
       if (!phone) continue;
 
       const normPhone = normalizePhone(phone);
-      const email = toAuthEmail(normPhone);
-      const digits = extractDigits(normPhone);
-      const authKey = `MHMK-${digits}-SEC`;
+      const role = docData.role || "client";
+      const email = toAuthEmail(normPhone, role);
+      const authKey = internalAuthKey(normPhone);
 
       try {
           const authUser = await admin.auth().getUser(uid);

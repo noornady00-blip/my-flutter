@@ -64,6 +64,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
     _role = widget.initialRole ?? 'client';
     if (_uid != null) {
       _isLoading = false;
+      _chatService.preloadCachedChats(_uid!).then((_) {
+        if (mounted) setState(() {});
+      });
     }
     _loadUserSession();
     _searchCtrl.addListener(() {
@@ -83,13 +86,19 @@ class _ChatListScreenState extends State<ChatListScreen> {
       final session = await _authService.getSavedSession();
 
       if (mounted) {
+        final resolvedUid = currentFirebaseUser?.uid ?? widget.initialUserId ?? session['uid'];
         setState(() {
-          _uid = currentFirebaseUser?.uid ?? widget.initialUserId ?? session['uid'];
+          _uid = resolvedUid;
           _role = widget.initialRole ?? session['role'] ?? 'client';
           _name = session['name'] ?? 'المستخدم';
           _accountId = session['accountId'] ?? '';
           _isLoading = false;
         });
+        if (resolvedUid != null && resolvedUid.isNotEmpty) {
+          _chatService.preloadCachedChats(resolvedUid).then((_) {
+            if (mounted) setState(() {});
+          });
+        }
       }
 
       if (_uid != null && _uid!.isNotEmpty && (_accountId == null || _accountId!.isEmpty)) {
@@ -269,9 +278,11 @@ class _ChatListScreenState extends State<ChatListScreen> {
             // Chats Stream
             Expanded(
               child: StreamBuilder<List<ChatModel>>(
+                initialData: _uid != null ? _chatService.getCachedChats(_uid!) : null,
                 stream: _chatService.getChatsForUser(_uid!, _role ?? 'client'),
                 builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+                  final allChats = snapshot.data ?? [];
+                  if (snapshot.connectionState == ConnectionState.waiting && allChats.isEmpty) {
                     return Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
@@ -306,7 +317,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
                     );
                   }
 
-                  final allChats = snapshot.data ?? [];
                   final unreadCount = allChats.where((c) => c.getUnreadCount(_uid!) > 0).length;
                   final pinnedCount = allChats.where((c) => c.isPinnedBy(_uid!)).length;
 

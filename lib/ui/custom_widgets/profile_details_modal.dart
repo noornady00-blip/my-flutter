@@ -16,6 +16,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../data/models/lawyer.dart';
 import '../../data/models/user_model.dart';
+import '../../network/firestore_service.dart';
 import '../../core/utils/phone_utils.dart';
 import '../../core/utils/image_utils.dart';
 import '../../core/utils/account_id_utils.dart';
@@ -223,6 +224,9 @@ class ProfileDetailsModal {
     String? role,
     String? fallbackName,
     String? fallbackPhone,
+    String? fallbackCallPhone,
+    String? fallbackWhatsapp,
+    String? fallbackCity,
     String? fallbackPhoto,
     String? fallbackPhotoBase64,
     String? fallbackAccountId,
@@ -360,18 +364,50 @@ class ProfileDetailsModal {
         : (effectiveRole == 'lawyer' ? 'محامي - موثق العقود' : 'عميل المنصة');
 
     if (effectiveRole == 'lawyer') {
-      final initialLawyer = LawyerModel(
+      // 1. Check in-memory approved lawyers cache first for immediate fresh numbers
+      LawyerModel? resolvedLawyer = FirestoreService.inMemoryApprovedLawyers
+          ?.where((l) => (cleanUid.isNotEmpty && l.uid == cleanUid) || (fallbackPhone != null && fallbackPhone.isNotEmpty && l.phone == fallbackPhone))
+          .firstOrNull;
+
+      // 2. If not found in cache, fetch fresh from lawyers collection
+      if (resolvedLawyer == null && cleanUid.isNotEmpty && !cleanUid.startsWith('guest_')) {
+        try {
+          final lDoc = await FirebaseFirestore.instance
+              .collection('lawyers')
+              .doc(cleanUid)
+              .get()
+              .timeout(const Duration(seconds: 3));
+          if (lDoc.exists && lDoc.data() != null) {
+            resolvedLawyer = LawyerModel.fromMap(lDoc.data()!, lDoc.id);
+          }
+        } catch (_) {}
+      }
+
+      // 3. Fallback to constructed model if offline or not found
+      resolvedLawyer ??= LawyerModel(
         uid: cleanUid,
         name: cleanName,
         phone: fallbackPhone ?? '',
-        whatsapp: fallbackPhone ?? '',
-        city: '',
+        callPhone: (fallbackCallPhone != null && fallbackCallPhone.isNotEmpty)
+            ? fallbackCallPhone
+            : (fallbackPhone ?? ''),
+        whatsapp: (fallbackWhatsapp != null && fallbackWhatsapp.isNotEmpty)
+            ? fallbackWhatsapp
+            : (fallbackPhone ?? ''),
+        city: fallbackCity ?? '',
         accountId: fallbackAccountId ?? '',
         photoUrl: fallbackPhoto,
         photoBase64: fallbackPhotoBase64,
         status: 'approved',
       );
-      showLawyerModal(context, lawyer: initialLawyer, isAdmin: isAdmin, isAlreadyInChat: isAlreadyInChat);
+
+      if (!context.mounted) return;
+      showLawyerModal(
+        context,
+        lawyer: resolvedLawyer,
+        isAdmin: isAdmin,
+        isAlreadyInChat: isAlreadyInChat,
+      );
     } else {
       final initialClient = UserModel(
         uid: cleanUid,
@@ -521,20 +557,39 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
 
   Future<void> _loadFullLawyerData() async {
     try {
+      // 0. Instant 0ms lookup from in-memory cache if available
+      if (FirestoreService.inMemoryApprovedLawyers != null && FirestoreService.inMemoryApprovedLawyers!.isNotEmpty) {
+        final cached = FirestoreService.inMemoryApprovedLawyers!.where(
+          (l) => (_lawyer.uid.isNotEmpty && l.uid.trim() == _lawyer.uid.trim()) ||
+                 (_lawyer.phone.isNotEmpty && l.phone.trim() == _lawyer.phone.trim()),
+        ).firstOrNull;
+        if (cached != null && mounted) {
+          setState(() {
+            _lawyer = cached;
+          });
+        }
+      }
+
       DocumentSnapshot<Map<String, dynamic>>? lawyerDoc;
       if (_lawyer.uid.isNotEmpty && !_lawyer.uid.startsWith('guest_')) {
-        lawyerDoc = await FirebaseFirestore.instance
-            .collection('lawyers')
-            .doc(_lawyer.uid)
-            .get();
+        try {
+          lawyerDoc = await FirebaseFirestore.instance
+              .collection('lawyers')
+              .doc(_lawyer.uid)
+              .get()
+              .timeout(const Duration(seconds: 4));
+        } catch (_) {}
       }
       if ((lawyerDoc == null || !lawyerDoc.exists) && _lawyer.phone.isNotEmpty) {
-        final snap = await FirebaseFirestore.instance
-            .collection('lawyers')
-            .where('phone', isEqualTo: _lawyer.phone.trim())
-            .limit(1)
-            .get();
-        if (snap.docs.isNotEmpty) lawyerDoc = snap.docs.first;
+        try {
+          final snap = await FirebaseFirestore.instance
+              .collection('lawyers')
+              .where('phone', isEqualTo: _lawyer.phone.trim())
+              .limit(1)
+              .get()
+              .timeout(const Duration(seconds: 4));
+          if (snap.docs.isNotEmpty) lawyerDoc = snap.docs.first;
+        } catch (_) {}
       }
 
       DocumentSnapshot<Map<String, dynamic>>? userDoc;
@@ -542,10 +597,16 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
           ? _lawyer.uid
           : lawyerDoc?.id;
       if (targetUid != null && targetUid.isNotEmpty) {
-        userDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(targetUid)
-            .get();
+        try {
+          userDoc = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(targetUid)
+              .get()
+              .timeout(const Duration(seconds: 3));
+        } catch (_) {
+          // Expected permission-denied for client users accessing another user's private users document
+          userDoc = null;
+        }
       }
 
       if (mounted) {
@@ -554,9 +615,22 @@ class _LawyerModalSheetState extends State<_LawyerModalSheet> {
 
         if (lData != null || uData != null) {
           final mergedMap = <String, dynamic>{
+            'callPhone': _lawyer.callPhone,
+            'whatsapp': _lawyer.whatsapp,
+            'city': _lawyer.city,
             ...?uData,
             ...?lData,
           };
+          final resolvedCallPhone = lData?['callPhone']?.toString().trim() ??
+              uData?['callPhone']?.toString().trim();
+          if (resolvedCallPhone != null && resolvedCallPhone.isNotEmpty) {
+            mergedMap['callPhone'] = resolvedCallPhone;
+          }
+          final resolvedWhatsapp = lData?['whatsapp']?.toString().trim() ??
+              uData?['whatsapp']?.toString().trim();
+          if (resolvedWhatsapp != null && resolvedWhatsapp.isNotEmpty) {
+            mergedMap['whatsapp'] = resolvedWhatsapp;
+          }
           final lRawPhoto = lData?['photo']?.toString() ?? uData?['photo']?.toString();
           final resolvedBase64 = lData?['photoBase64']?.toString() ??
               lData?['user_profile_photo_base64']?.toString() ??

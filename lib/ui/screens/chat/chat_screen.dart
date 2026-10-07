@@ -9,6 +9,7 @@
 
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -22,10 +23,12 @@ import '../../../data/models/lawyer.dart';
 import '../../../network/chat_service.dart';
 import '../../../network/auth_service.dart';
 import '../../../network/notification_service.dart';
+import '../../../network/firestore_service.dart';
 import '../../../core/utils/phone_utils.dart';
 import '../../../core/utils/image_utils.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../custom_widgets/profile_details_modal.dart';
+import '../auth/auth_gateway_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   final ChatModel? chat;
@@ -111,6 +114,9 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _liveOtherName;
   String? _liveOtherAccountId;
   String? _liveOtherPhone;
+  String? _liveOtherCallPhone;
+  String? _liveOtherWhatsapp;
+  String? _liveOtherCity;
 
   // Active reply target
   ChatMessageModel? _replyingTo;
@@ -218,6 +224,9 @@ class _ChatScreenState extends State<ChatScreen> {
         String? name = docData['name']?.toString();
         String? phone = docData['phone']?.toString();
         String? accId = docData['accountId']?.toString() ?? docData['memberId']?.toString();
+        String? callPhone = (docData['callPhone'] ?? docData['contactPhone'] ?? docData['publicPhone'])?.toString();
+        String? whatsapp = docData['whatsapp']?.toString();
+        String? city = (docData['city'] ?? docData['location'] ?? docData['governorate'])?.toString();
 
         final rawPhoto = docData['photo']?.toString();
         String? photoUrl = docData['photoUrl']?.toString() ??
@@ -234,6 +243,24 @@ class _ChatScreenState extends State<ChatScreen> {
             (rawPhoto != null && !rawPhoto.startsWith('http') && rawPhoto.length > 50
                 ? rawPhoto
                 : null);
+
+        // If other party is an approved lawyer, sync with memory cache for instant fresh contact numbers
+        if (isLawyer && FirestoreService.inMemoryApprovedLawyers != null && FirestoreService.inMemoryApprovedLawyers!.isNotEmpty) {
+          final cached = FirestoreService.inMemoryApprovedLawyers!.where(
+            (l) => (targetUid.isNotEmpty && l.uid.trim() == targetUid.trim()) ||
+                   (phone != null && phone.isNotEmpty && l.phone.trim() == phone.trim()),
+          ).firstOrNull;
+          if (cached != null) {
+            name ??= cached.name;
+            phone ??= cached.phone;
+            callPhone = cached.callPhone.isNotEmpty ? cached.callPhone : callPhone;
+            whatsapp = cached.whatsapp.isNotEmpty ? cached.whatsapp : whatsapp;
+            city ??= cached.city;
+            accId ??= cached.accountId;
+            photoUrl ??= cached.photoUrl;
+            photoBase64 ??= cached.photoBase64;
+          }
+        }
 
         // Additional phone_directory fallback if details are missing or generic
         if (name == null || name.isEmpty || name == 'عميل' || name == 'محامٍ' || (photoUrl == null && photoBase64 == null)) {
@@ -274,6 +301,9 @@ class _ChatScreenState extends State<ChatScreen> {
             if (name != null && name.isNotEmpty) _liveOtherName = name;
             if (accId != null && accId.isNotEmpty) _liveOtherAccountId = accId;
             if (phone != null && phone.isNotEmpty) _liveOtherPhone = phone;
+            if (callPhone != null && callPhone.isNotEmpty) _liveOtherCallPhone = callPhone;
+            if (whatsapp != null && whatsapp.isNotEmpty) _liveOtherWhatsapp = whatsapp;
+            if (city != null && city.isNotEmpty) _liveOtherCity = city;
           });
         }
 
@@ -294,6 +324,12 @@ class _ChatScreenState extends State<ChatScreen> {
             }
             if (phone != null && phone.isNotEmpty) {
               chatUpdates['lawyerPhone'] = phone;
+            }
+            if (callPhone != null && callPhone.isNotEmpty) {
+              chatUpdates['lawyerCallPhone'] = callPhone;
+            }
+            if (whatsapp != null && whatsapp.isNotEmpty) {
+              chatUpdates['lawyerWhatsapp'] = whatsapp;
             }
             if (accId != null && accId.isNotEmpty) {
               chatUpdates['lawyerAccountId'] = accId;
@@ -360,6 +396,17 @@ class _ChatScreenState extends State<ChatScreen> {
     _currentUserRole = widget.currentUserRole ?? session?['role'] ?? 'client';
     _currentUserName = widget.currentUserName ?? session?['name'] ?? (authUser?.displayName ?? 'المستخدم');
     _currentUserAccountId = widget.currentUserAccountId ?? session?['accountId'] ?? '';
+
+    if (_currentUserId.isEmpty) {
+      if (mounted) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const AuthGatewayScreen()),
+          (route) => false,
+        );
+      }
+      return;
+    }
 
     // Initialize live image state from widget parameters if available
     _liveOtherPhotoUrl = widget.clientPhotoUrl ?? widget.lawyerPhotoUrl;
@@ -474,6 +521,9 @@ class _ChatScreenState extends State<ChatScreen> {
       lastMessageTime: DateTime.now(),
     );
     NotificationService.activeChatId = _activeChat!.id;
+    _chatService.preloadCachedMessages(_activeChat!.id).then((_) {
+      if (mounted) setState(() {});
+    });
     _setupChatDocListener(_activeChat!.id);
     _updateMessagesStream();
     if (mounted) setState(() {});
@@ -625,6 +675,29 @@ class _ChatScreenState extends State<ChatScreen> {
     final targetUid = otherUid.isNotEmpty
         ? otherUid
         : (widget.lawyerUid ?? widget.clientUid ?? widget.otherUserUid ?? '');
+    final cleanUid = targetUid.trim();
+
+    // 1. If other party is a lawyer, check inMemoryApprovedLawyers for instant live numbers
+    if ((otherRole == 'lawyer' || widget.lawyerUid != null) &&
+        FirestoreService.inMemoryApprovedLawyers != null &&
+        FirestoreService.inMemoryApprovedLawyers!.isNotEmpty) {
+      final cachedLawyer = FirestoreService.inMemoryApprovedLawyers!.where(
+        (l) => (cleanUid.isNotEmpty && l.uid.trim() == cleanUid) ||
+               (_liveOtherPhone != null && _liveOtherPhone!.isNotEmpty && l.phone.trim() == _liveOtherPhone!.trim()) ||
+               (otherPhone.isNotEmpty && l.phone.trim() == otherPhone.trim()),
+      ).firstOrNull;
+
+      if (cachedLawyer != null) {
+        ProfileDetailsModal.showLawyerModal(
+          context,
+          lawyer: cachedLawyer,
+          isAdmin: _currentUserRole == 'admin',
+          isAlreadyInChat: true,
+        );
+        return;
+      }
+    }
+
     final fallbackName = displayOtherName;
     final fallbackPhone = otherRole == 'admin' ? '' : (_liveOtherPhone ?? (otherPhone.isNotEmpty ? otherPhone : (widget.clientPhone ?? widget.lawyerPhone ?? '')));
     final fallbackPhoto = _liveOtherPhotoUrl ?? otherPhoto ?? widget.clientPhotoUrl ?? widget.lawyerPhotoUrl;
@@ -637,6 +710,9 @@ class _ChatScreenState extends State<ChatScreen> {
       role: otherRole,
       fallbackName: fallbackName,
       fallbackPhone: fallbackPhone,
+      fallbackCallPhone: _liveOtherCallPhone,
+      fallbackWhatsapp: _liveOtherWhatsapp,
+      fallbackCity: _liveOtherCity,
       fallbackPhoto: fallbackPhoto,
       fallbackPhotoBase64: fallbackPhotoBase64,
       fallbackAccountId: fallbackAccountId,
@@ -1255,7 +1331,7 @@ class _ChatScreenState extends State<ChatScreen> {
               // Messages Stream Area
               Expanded(
                 child: StreamBuilder<List<ChatMessageModel>>(
-                  initialData: const <ChatMessageModel>[],
+                  initialData: _activeChat != null ? _chatService.getCachedMessages(_activeChat!.id) : null,
                   stream: _messagesStream ?? (_activeChat != null ? _chatService.getMessagesStream(_activeChat!.id, currentUserId: _currentUserId) : const Stream.empty()),
                   builder: (context, snapshot) {
                     final messages = snapshot.data ?? [];
@@ -1264,7 +1340,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     }
 
                     if (messages.isEmpty) {
-                      if (snapshot.connectionState == ConnectionState.waiting && snapshot.data == null) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
                         return const Center(
                           child: CircularProgressIndicator(color: brandNavy),
                         );
@@ -1363,72 +1439,14 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  /// Wraps message bubble with Dismissible for Swipe Left (Reply) & Swipe Right (Delete)
+  /// Wraps message bubble with fluid, spring-physics swipe gestures for Reply (left) & Delete (right)
   Widget _buildDismissibleBubble(ChatMessageModel message, bool isMe) {
-    // In RTL context:
-    // startToEnd = dragging from Right to Left (سحب للشمال) -> REPLY
-    // endToStart = dragging from Left to Right (سحب لليمين) -> DELETE
-    return Dismissible(
+    return _SwipeableMessageBubble(
       key: ValueKey('msg_${message.id}'),
-      direction: DismissDirection.horizontal,
-      confirmDismiss: (direction) async {
-        final isRtl = Directionality.of(context) == TextDirection.rtl;
-        final isDragLeft = isRtl
-            ? (direction == DismissDirection.startToEnd)
-            : (direction == DismissDirection.endToStart);
-
-        if (isDragLeft) {
-          // Swipe Left: Reply
-          _onReplyToMessage(message);
-          return false; // do not remove from list
-        } else {
-          // Swipe Right: Delete
-          _showDeleteDialog(message);
-          return false; // do not remove from list
-        }
-      },
-      // When dragging Right to Left (Reply in RTL)
-      background: Container(
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        decoration: BoxDecoration(
-          color: const Color(0xFF0B2A5B).withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.reply_rounded, color: Color(0xFF0B2A5B), size: 24),
-            const SizedBox(width: 8),
-            Text(
-              'رد',
-              style: GoogleFonts.cairo(color: const Color(0xFF0B2A5B), fontWeight: FontWeight.bold, fontSize: 13),
-            ),
-          ],
-        ),
-      ),
-      // When dragging Left to Right (Delete in RTL)
-      secondaryBackground: Container(
-        alignment: Alignment.centerLeft,
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        decoration: BoxDecoration(
-          color: Colors.red.shade50,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'حذف',
-              style: GoogleFonts.cairo(color: Colors.red.shade700, fontWeight: FontWeight.bold, fontSize: 13),
-            ),
-            const SizedBox(width: 8),
-            Icon(Icons.delete_outline_rounded, color: Colors.red.shade700, size: 24),
-          ],
-        ),
-      ),
+      canReply: !message.isDeletedForEveryone,
+      canDelete: true,
+      onReply: () => _onReplyToMessage(message),
+      onDelete: () => _showDeleteDialog(message),
       child: InkWell(
         onLongPress: () {
           _showActionMenu(message);
@@ -1817,9 +1835,13 @@ class _ChatScreenState extends State<ChatScreen> {
                 if (isMe) ...[
                   const SizedBox(width: 4),
                   Icon(
-                    message.isRead ? Icons.done_all_rounded : Icons.done_rounded,
-                    size: 15,
-                    color: message.isRead ? const Color(0xFF38BDF8) : Colors.white60,
+                    message.isPending
+                        ? Icons.access_time_rounded
+                        : (message.isRead ? Icons.done_all_rounded : Icons.done_rounded),
+                    size: message.isPending ? 13 : 15,
+                    color: message.isPending
+                        ? Colors.white70
+                        : (message.isRead ? const Color(0xFF38BDF8) : Colors.white60),
                   ),
                 ],
               ],
@@ -1909,6 +1931,223 @@ class _ChatScreenState extends State<ChatScreen> {
                 onSubmitted: (_) => _handleSend(),
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ==============================================================================
+// 🎯 FLUID SPRING-PHYSICS SWIPEABLE MESSAGE BUBBLE
+// ==============================================================================
+// Provides responsive swipe-to-reply (left) and swipe-to-delete (right)
+// with tactile haptic feedback, spring-physics return, and scalable action badges.
+// ==============================================================================
+class _SwipeableMessageBubble extends StatefulWidget {
+  final Widget child;
+  final VoidCallback onReply;
+  final VoidCallback? onDelete;
+  final bool canReply;
+  final bool canDelete;
+
+  const _SwipeableMessageBubble({
+    super.key,
+    required this.child,
+    required this.onReply,
+    this.onDelete,
+    this.canReply = true,
+    this.canDelete = true,
+  });
+
+  @override
+  State<_SwipeableMessageBubble> createState() => _SwipeableMessageBubbleState();
+}
+
+class _SwipeableMessageBubbleState extends State<_SwipeableMessageBubble>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _animController;
+  late Animation<double> _offsetAnimation;
+  double _dragOffset = 0.0;
+  bool _thresholdVibrated = false;
+
+  static const double _kThreshold = 46.0;
+  static const double _kMaxOffset = 76.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 240),
+    );
+    _animController.addListener(() {
+      setState(() {
+        _dragOffset = _offsetAnimation.value;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _animController.dispose();
+    super.dispose();
+  }
+
+  void _onHorizontalDragUpdate(DragUpdateDetails details) {
+    if (_animController.isAnimating) return;
+
+    final double delta = details.primaryDelta ?? 0.0;
+    double newOffset = _dragOffset + delta;
+
+    // Left swipe = Reply (negative dx in screen coords)
+    if (newOffset < 0 && !widget.canReply) {
+      newOffset = 0;
+    }
+    // Right swipe = Delete (positive dx in screen coords)
+    if (newOffset > 0 && !widget.canDelete) {
+      newOffset = 0;
+    }
+
+    // Elastic damping resistance past threshold
+    if (newOffset.abs() > _kThreshold) {
+      final sign = newOffset.sign;
+      final excess = newOffset.abs() - _kThreshold;
+      newOffset = sign * (_kThreshold + excess * 0.35);
+    }
+
+    newOffset = newOffset.clamp(-_kMaxOffset, _kMaxOffset);
+
+    // Haptic feedback once when reaching activation threshold
+    if (newOffset.abs() >= _kThreshold && !_thresholdVibrated) {
+      _thresholdVibrated = true;
+      HapticFeedback.lightImpact();
+    } else if (newOffset.abs() < _kThreshold && _thresholdVibrated) {
+      _thresholdVibrated = false;
+    }
+
+    setState(() {
+      _dragOffset = newOffset;
+    });
+  }
+
+  void _onHorizontalDragEnd(DragEndDetails details) {
+    if (_dragOffset <= -_kThreshold && widget.canReply) {
+      widget.onReply();
+    } else if (_dragOffset >= _kThreshold && widget.canDelete && widget.onDelete != null) {
+      widget.onDelete!();
+    }
+    _animateBack();
+  }
+
+  void _onHorizontalDragCancel() {
+    _animateBack();
+  }
+
+  void _animateBack() {
+    _thresholdVibrated = false;
+    _offsetAnimation = Tween<double>(
+      begin: _dragOffset,
+      end: 0.0,
+    ).animate(CurvedAnimation(
+      parent: _animController,
+      curve: Curves.easeOutBack,
+    ));
+    _animController.forward(from: 0.0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isSwipingLeft = _dragOffset < 0; // Swipe Left -> Reply
+    final isSwipingRight = _dragOffset > 0; // Swipe Right -> Delete
+    final progress = (_dragOffset.abs() / _kThreshold).clamp(0.0, 1.0);
+
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onHorizontalDragUpdate: _onHorizontalDragUpdate,
+      onHorizontalDragEnd: _onHorizontalDragEnd,
+      onHorizontalDragCancel: _onHorizontalDragCancel,
+      child: Stack(
+        alignment: Alignment.center,
+        clipBehavior: Clip.none,
+        children: [
+          // Background Action Badges:
+          // Reply Badge (revealed when sliding left)
+          if (isSwipingLeft && widget.canReply)
+            Positioned(
+              right: 8,
+              child: Transform.scale(
+                scale: 0.4 + (0.6 * progress),
+                child: Opacity(
+                  opacity: progress,
+                  child: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: progress >= 1.0 ? const Color(0xFF0B2A5B) : const Color(0xFF0B2A5B).withValues(alpha: 0.8),
+                      shape: BoxShape.circle,
+                      boxShadow: progress >= 1.0
+                          ? [
+                              BoxShadow(
+                                color: const Color(0xFF0B2A5B).withValues(alpha: 0.35),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
+                              )
+                            ]
+                          : null,
+                    ),
+                    child: const Center(
+                      child: Icon(
+                        Icons.reply_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+          // Delete Badge (revealed when sliding right)
+          if (isSwipingRight && widget.canDelete)
+            Positioned(
+              left: 8,
+              child: Transform.scale(
+                scale: 0.4 + (0.6 * progress),
+                child: Opacity(
+                  opacity: progress,
+                  child: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: progress >= 1.0 ? const Color(0xFFDC2626) : const Color(0xFFDC2626).withValues(alpha: 0.8),
+                      shape: BoxShape.circle,
+                      boxShadow: progress >= 1.0
+                          ? [
+                              BoxShadow(
+                                color: const Color(0xFFDC2626).withValues(alpha: 0.35),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
+                              )
+                            ]
+                          : null,
+                    ),
+                    child: const Center(
+                      child: Icon(
+                        Icons.delete_outline_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+          // Message Bubble translated horizontally
+          Transform.translate(
+            offset: Offset(_dragOffset, 0),
+            child: widget.child,
           ),
         ],
       ),

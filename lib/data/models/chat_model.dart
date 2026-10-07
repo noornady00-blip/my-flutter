@@ -184,6 +184,14 @@ class ChatModel {
     };
   }
 
+  Map<String, dynamic> toJsonMap() {
+    final map = toMap();
+    map['lastMessageTime'] = lastMessageTime.toIso8601String();
+    map['createdAt'] = createdAt.toIso8601String();
+    map['updatedAt'] = updatedAt.toIso8601String();
+    return map;
+  }
+
   bool isPinnedBy(String uid) => pinnedBy.contains(uid);
   bool isDeletedBy(String uid) => deletedBy.contains(uid);
   bool isMutedBy(String uid) => mutedBy.contains(uid);

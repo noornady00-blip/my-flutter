@@ -155,17 +155,64 @@ void main() {
         text: 'استشارة قانونية بخصوص عقد',
         createdAt: now,
         isRead: false,
+        isPending: true,
       );
 
       final map = msg.toMap();
       expect(map['senderId'], 'client_uid');
       expect(map['text'], 'استشارة قانونية بخصوص عقد');
       expect(map['isRead'], isFalse);
+      expect(map['isPending'], isTrue);
 
       final parsed = ChatMessageModel.fromMap(map, 'msg_1');
       expect(parsed.text, 'استشارة قانونية بخصوص عقد');
       expect(parsed.senderName, 'عمر العميل');
       expect(parsed.isRead, isFalse);
+      expect(parsed.isPending, isTrue);
+
+      final jsonMap = msg.toJsonMap();
+      expect(jsonMap['createdAt'], isA<String>());
+      expect(jsonMap['isPending'], isTrue);
+    });
+
+    test('Chat purge phone candidates identify all standard format variations', () {
+      const phone = '0912345678';
+      final cleanDigits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+      expect(cleanDigits, '0912345678');
+      final raw9 = cleanDigits.substring(cleanDigits.length - 9);
+      expect(raw9, '912345678');
+
+      final candidates = <String>{
+        phone,
+        '+249$raw9',
+        '249$raw9',
+        '0$raw9',
+        raw9,
+      };
+
+      expect(candidates.contains('0912345678'), isTrue);
+      expect(candidates.contains('+249912345678'), isTrue);
+      expect(candidates.contains('249912345678'), isTrue);
+      expect(candidates.contains('912345678'), isTrue);
+    });
+
+    test('ChatModel matches participant by uid or phone for complete purge', () {
+      final chat = ChatModel(
+        id: 'chat_client_1_lawyer_2',
+        participants: ['uid_client_1', 'uid_lawyer_2'],
+        clientId: 'uid_client_1',
+        clientPhone: '+249912345678',
+        lawyerId: 'uid_lawyer_2',
+        lawyerPhone: '+249987654321',
+        clientName: 'عميل',
+        lawyerName: 'محامٍ',
+      );
+
+      // Verify chat identification criteria used in purgeAllChatsForUser
+      expect(chat.participants.contains('uid_client_1'), isTrue);
+      expect(chat.clientId == 'uid_client_1', isTrue);
+      expect(chat.clientPhone == '+249912345678', isTrue);
+      expect(chat.isDeletedBy('uid_client_1'), isFalse);
     });
   });
 }

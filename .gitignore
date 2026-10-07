@@ -63,3 +63,6 @@ functions/export_old_data.js
 functions/import_to_new_project.js
 functions/reset_and_setup_admin.js
 functions/clean_phone_directory.js
+functions/cleanup_and_keep_admins.js
+functions/inspect_accounts.js
+*.zip

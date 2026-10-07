@@ -18,6 +18,7 @@ import '../data/models/password_reset_model.dart';
 import '../core/utils/phone_utils.dart';
 import 'database_contract.dart';
 import 'auth_service.dart';
+import 'chat_service.dart';
 
 /// Database service managing all Firestore collections and queries.
 class FirestoreService implements DatabaseContract {
@@ -318,6 +319,16 @@ class FirestoreService implements DatabaseContract {
         }
       } catch (_) {}
 
+      // Purge any chat threads and messages permanently
+      try {
+        await ChatService(firestore: _db).purgeAllChatsForUser(
+          uid: uid,
+          phone: effectivePhone,
+        );
+      } catch (chatErr) {
+        debugPrint('[FirestoreService] rejectLawyer purge chats notice: $chatErr');
+      }
+
       // Invalidate memory/local caches
       inMemoryApprovedLawyers = null;
     } catch (e) {
@@ -371,6 +382,16 @@ class FirestoreService implements DatabaseContract {
           await doc.reference.delete().catchError((_) {});
         }
       } catch (_) {}
+
+      // Purge all chat conversations and messages permanently
+      try {
+        await ChatService(firestore: _db).purgeAllChatsForUser(
+          uid: uid,
+          phone: effectivePhone,
+        );
+      } catch (chatErr) {
+        debugPrint('[FirestoreService] deleteLawyer purge chats notice: $chatErr');
+      }
 
       // Delete user account permanently from Firebase Authentication
       try {
@@ -658,6 +679,16 @@ class FirestoreService implements DatabaseContract {
           await doc.reference.delete().catchError((_) {});
         }
       } catch (_) {}
+
+      // Purge all chat conversations and messages permanently
+      try {
+        await ChatService(firestore: _db).purgeAllChatsForUser(
+          uid: uid,
+          phone: effectivePhone,
+        );
+      } catch (chatErr) {
+        debugPrint('[FirestoreService] deleteUser purge chats notice: $chatErr');
+      }
 
       // Delete user account permanently from Firebase Authentication
       try {

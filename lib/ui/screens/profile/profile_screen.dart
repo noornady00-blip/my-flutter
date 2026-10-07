@@ -99,13 +99,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _isLoggedIn = true;
       } else {
         _userUid = null;
-        _userName = 'زائر منصة محاميك';
-        _userPhone = '';
-        _accountId = null;
-        _photoUrl = null;
-        _photoBase64 = null;
-        _photoPath = null;
         _isLoggedIn = false;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (_) => const AuthGatewayScreen()),
+              (route) => false,
+            );
+          }
+        });
+        return;
       }
     });
 
@@ -1116,7 +1120,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     const SizedBox(width: 5),
                     Text(
-                      _isLoggedIn ? 'الملف الشخصي' : 'حساب زائر',
+                      'الملف الشخصي',
                       style: GoogleFonts.cairo(
                         fontSize: 13,
                         fontWeight: FontWeight.w800,
@@ -1129,132 +1133,81 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
         ),
       ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 95),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (_isLoggedIn) ...[
-                // 1. Profile Header Card (Active VIP Member)
-                _buildProfileHeaderCard(),
-                const SizedBox(height: 22),
+      body: !_isLoggedIn
+          ? const Center(child: CircularProgressIndicator(color: AppTheme.gold))
+          : SafeArea(
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 95),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // 1. Profile Header Card (Active VIP Member)
+                    _buildProfileHeaderCard(),
+                    const SizedBox(height: 22),
 
-                // 2. Account & Security Section
-                _buildSectionTitle('الحساب والأمان', const Color(0xFFF59E0B)),
-                const SizedBox(height: 12),
+                    // 2. Account & Security Section
+                    _buildSectionTitle('الحساب والأمان', const Color(0xFFF59E0B)),
+                    const SizedBox(height: 12),
 
-                _buildActionCard(
-                  icon: Icons.lock_reset_rounded,
-                  title: 'تغيير كلمة المرور',
-                  subtitle: 'تحديث وتأمين رمز المرور الخاص بحسابك',
-                  iconColor: const Color(0xFFF59E0B),
-                  onTap: _showChangePasswordDialog,
+                    _buildActionCard(
+                      icon: Icons.lock_reset_rounded,
+                      title: 'تغيير كلمة المرور',
+                      subtitle: 'تحديث وتأمين رمز المرور الخاص بحسابك',
+                      iconColor: const Color(0xFFF59E0B),
+                      onTap: _showChangePasswordDialog,
+                    ),
+                    const SizedBox(height: 22),
+
+                    // 3. Support & Assistance Section
+                    _buildSectionTitle('الدعم والتواصل المباشر', const Color(0xFF3B82F6)),
+                    const SizedBox(height: 12),
+
+                    _buildActionCard(
+                      icon: Icons.support_agent_rounded,
+                      title: 'معلومات الاتصال بالإدارة',
+                      subtitle: 'قنوات الدعم الفني، الواتساب، ونموذج المراسلة الفورية',
+                      iconColor: const Color(0xFF3B82F6),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const ContactAdminScreen()),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 22),
+
+                    // 4. Legal & App Info Section
+                    _buildSectionTitle('المعلومات والخصوصية', const Color(0xFF8B5CF6)),
+                    const SizedBox(height: 12),
+
+                    _buildActionCard(
+                      icon: Icons.verified_user_outlined,
+                      title: 'شروط الاستخدام وسياسة الخصوصية',
+                      subtitle: 'ميثاق حماية البيانات وسرية الاستشارات القانونية',
+                      iconColor: const Color(0xFF8B5CF6),
+                      onTap: _showTermsDialog,
+                    ),
+                    const SizedBox(height: 10),
+
+                    _buildActionCard(
+                      icon: Icons.info_outline_rounded,
+                      title: 'عن منصة محاميك',
+                      subtitle: 'معلومات التطبيق، الإصدار، ورسالة المنصة',
+                      iconColor: const Color(0xFF0B2A5B),
+                      onTap: _showAboutAppDialog,
+                    ),
+                    const SizedBox(height: 26),
+
+                    // 5. Logout & Delete Account Buttons
+                    _buildLogoutButton(),
+                    const SizedBox(height: 6),
+                    _buildDeleteAccountButton(),
+                    const SizedBox(height: 10),
+                  ],
                 ),
-                const SizedBox(height: 22),
-
-                // 3. Support & Assistance Section
-                _buildSectionTitle('الدعم والتواصل المباشر', const Color(0xFF3B82F6)),
-                const SizedBox(height: 12),
-
-                _buildActionCard(
-                  icon: Icons.support_agent_rounded,
-                  title: 'معلومات الاتصال بالإدارة',
-                  subtitle: 'قنوات الدعم الفني، الواتساب، ونموذج المراسلة الفورية',
-                  iconColor: const Color(0xFF3B82F6),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const ContactAdminScreen()),
-                    );
-                  },
-                ),
-                const SizedBox(height: 22),
-
-                // 4. Legal & App Info Section
-                _buildSectionTitle('المعلومات والخصوصية', const Color(0xFF8B5CF6)),
-                const SizedBox(height: 12),
-
-                _buildActionCard(
-                  icon: Icons.verified_user_outlined,
-                  title: 'شروط الاستخدام وسياسة الخصوصية',
-                  subtitle: 'ميثاق حماية البيانات وسرية الاستشارات القانونية',
-                  iconColor: const Color(0xFF8B5CF6),
-                  onTap: _showTermsDialog,
-                ),
-                const SizedBox(height: 10),
-
-                _buildActionCard(
-                  icon: Icons.info_outline_rounded,
-                  title: 'عن منصة محاميك',
-                  subtitle: 'معلومات التطبيق، الإصدار، ورسالة المنصة',
-                  iconColor: const Color(0xFF0B2A5B),
-                  onTap: _showAboutAppDialog,
-                ),
-                const SizedBox(height: 26),
-
-                // 5. Logout & Delete Account Buttons
-                _buildLogoutButton(),
-                const SizedBox(height: 6),
-                _buildDeleteAccountButton(),
-              ] else ...[
-                // GUEST / LOGGED-OUT VIEW (No fake cards, no change password clash)
-                _buildGuestHeaderCard(),
-                const SizedBox(height: 20),
-
-                _buildGuestBenefitsCard(),
-                const SizedBox(height: 22),
-
-                // Support & Assistance Section (Available for guests)
-                _buildSectionTitle('الدعم والتواصل المباشر', const Color(0xFF3B82F6)),
-                const SizedBox(height: 12),
-
-                _buildActionCard(
-                  icon: Icons.support_agent_rounded,
-                  title: 'معلومات الاتصال بالإدارة',
-                  subtitle: 'قنوات الدعم الفني، الواتساب، ونموذج المراسلة الفورية',
-                  iconColor: const Color(0xFF3B82F6),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const ContactAdminScreen()),
-                    );
-                  },
-                ),
-                const SizedBox(height: 22),
-
-                // Legal & App Info Section
-                _buildSectionTitle('المعلومات والخصوصية', const Color(0xFF8B5CF6)),
-                const SizedBox(height: 12),
-
-                _buildActionCard(
-                  icon: Icons.verified_user_outlined,
-                  title: 'شروط الاستخدام وسياسة الخصوصية',
-                  subtitle: 'ميثاق حماية البيانات وسرية الاستشارات القانونية',
-                  iconColor: const Color(0xFF8B5CF6),
-                  onTap: _showTermsDialog,
-                ),
-                const SizedBox(height: 10),
-
-                _buildActionCard(
-                  icon: Icons.info_outline_rounded,
-                  title: 'عن منصة محاميك',
-                  subtitle: 'معلومات التطبيق، الإصدار، ورسالة المنصة',
-                  iconColor: const Color(0xFF0B2A5B),
-                  onTap: _showAboutAppDialog,
-                ),
-                const SizedBox(height: 26),
-
-                // Login Prompt
-                _buildLoginPromptButton(),
-              ],
-
-              const SizedBox(height: 10),
-            ],
-          ),
-        ),
-      ),
+              ),
+            ),
     );
   }
 
@@ -2200,351 +2153,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   );
   }
 
-  Widget _buildGuestHeaderCard() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(
-          color: const Color(0xFFEDE8DF),
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF0B2A5B).withValues(alpha: 0.06),
-            blurRadius: 20,
-            offset: const Offset(0, 6),
-          ),
-          BoxShadow(
-            color: const Color(0xFFD49B1A).withValues(alpha: 0.04),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(28),
-        child: Stack(
-          children: [
-            // Top Accent Ribbon
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              height: 4.5,
-              child: Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Color(0xFF0B2A5B), Color(0xFFD49B1A), Color(0xFF0B2A5B)],
-                  ),
-                ),
-              ),
-            ),
-
-            // Card Body Content
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // Top Micro Badges Row
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    textDirection: TextDirection.rtl,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF0B2A5B).withValues(alpha: 0.06),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: const Color(0xFF0B2A5B).withValues(alpha: 0.10)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          textDirection: TextDirection.rtl,
-                          children: [
-                            const Icon(Icons.explore_rounded, color: Color(0xFFD49B1A), size: 14),
-                            const SizedBox(width: 5),
-                            Text(
-                              'وضع الزائر والضيف',
-                              style: GoogleFonts.cairo(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: const Color(0xFF0B2A5B),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.3)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          textDirection: TextDirection.rtl,
-                          children: [
-                            const Icon(Icons.lock_open_rounded, size: 12, color: Color(0xFFD97706)),
-                            const SizedBox(width: 4),
-                            Text(
-                              'غير مسجل',
-                              style: GoogleFonts.cairo(
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.w700,
-                                color: const Color(0xFFB45309),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 18),
-
-                  // Guest Avatar (No Camera badge, Pure VIP Guest)
-                  Center(
-                    child: Container(
-                      width: 92,
-                      height: 92,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: const Color(0xFFF8FAFC),
-                        border: Border.all(
-                          color: const Color(0xFF0B2A5B).withValues(alpha: 0.2),
-                          width: 2.5,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFF0B2A5B).withValues(alpha: 0.10),
-                            blurRadius: 14,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: const Center(
-                        child: Icon(
-                          Icons.person_outline_rounded,
-                          color: Color(0xFF0B2A5B),
-                          size: 46,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-
-                  // Welcoming Title
-                  Text(
-                    'أهلاً بك في منصة محاميك',
-                    style: GoogleFonts.cairo(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
-                      color: const Color(0xFF0B2A5B),
-                      height: 1.2,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 6),
-
-                  // Friendly Subtitle
-                  Text(
-                    'سجّل دخولك أو أنشئ حساباً جديداً للوصول إلى كافة الخدمات القانونية، وتوكيل المحامين، ومتابعة استشاراتك بأمان.',
-                    style: GoogleFonts.cairo(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                      color: const Color(0xFF64748B),
-                      height: 1.5,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 18),
-
-                  // In-Card Action Button
-                  InkWell(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const AuthGatewayScreen()),
-                      );
-                    },
-                    borderRadius: BorderRadius.circular(16),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0B2A5B),
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFF0B2A5B).withValues(alpha: 0.25),
-                            blurRadius: 8,
-                            offset: const Offset(0, 3),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        textDirection: TextDirection.rtl,
-                        children: [
-                          const Icon(Icons.login_rounded, color: Color(0xFFD49B1A), size: 19),
-                          const SizedBox(width: 8),
-                          Text(
-                            'تسجيل الدخول أو إنشاء حساب',
-                            style: GoogleFonts.cairo(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    ).animate().fadeIn(duration: 400.ms).slideY(begin: -0.05, end: 0);
-  }
-
-  Widget _buildGuestBenefitsCard() {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFF1F5F9), width: 1.2),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            textDirection: TextDirection.rtl,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(7),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFD49B1A).withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.stars_rounded, color: Color(0xFFD49B1A), size: 18),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                'مميزات امتلاك حساب في محاميك',
-                style: GoogleFonts.cairo(
-                  fontSize: 14.5,
-                  fontWeight: FontWeight.w800,
-                  color: const Color(0xFF0B2A5B),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          _buildBenefitItem(
-            icon: Icons.gavel_rounded,
-            color: const Color(0xFFD49B1A),
-            title: 'استشارات قانونية موثقة',
-            desc: 'تواصل مباشر مع نخبة المحامين وموثقي العقود المعتمدين في كافة مدن السودان.',
-          ),
-          const SizedBox(height: 10),
-          _buildBenefitItem(
-            icon: Icons.lock_outline_rounded,
-            color: const Color(0xFF10B981),
-            title: 'سرية وأمان تام',
-            desc: 'محادثات مشفرة تضمن حماية خصوصية ملفاتك واستشاراتك القانونية.',
-          ),
-          const SizedBox(height: 10),
-          _buildBenefitItem(
-            icon: Icons.badge_rounded,
-            color: const Color(0xFF3B82F6),
-            title: 'بطاقة عضوية وهوية موحدة',
-            desc: 'معرف رقمي موحد (ID) لمتابعة قضاياك واستشاراتك بسهولة ودقة.',
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBenefitItem({
-    required IconData icon,
-    required Color color,
-    required String title,
-    required String desc,
-  }) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      textDirection: TextDirection.rtl,
-      children: [
-        Container(
-          margin: const EdgeInsets.only(top: 2),
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(icon, color: color, size: 16),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: GoogleFonts.cairo(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFF0B2A5B),
-                ),
-              ),
-              Text(
-                desc,
-                style: GoogleFonts.cairo(
-                  fontSize: 11.5,
-                  color: const Color(0xFF64748B),
-                  height: 1.4,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildLoginPromptButton() {
-    return ElevatedButton.icon(
-      onPressed: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const AuthGatewayScreen()),
-        );
-      },
-      icon: const Icon(Icons.login_rounded, color: Color(0xFFD49B1A), size: 20),
-      label: Text(
-        'تسجيل الدخول / إنشاء حساب جديد',
-        style: GoogleFonts.cairo(fontSize: 15, fontWeight: FontWeight.w800),
-      ),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: const Color(0xFF0B2A5B),
-        foregroundColor: Colors.white,
-        elevation: 3,
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      ),
-    );
-  }
 
   Widget _buildInputField({
     required TextEditingController controller,

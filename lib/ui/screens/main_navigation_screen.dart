@@ -17,6 +17,7 @@ import 'chat/chat_list_screen.dart';
 import 'onboarding/onboarding_screen.dart';
 import 'admin/admin_dashboard.dart';
 import 'auth/lawyer_pending_screen.dart';
+import 'auth/auth_gateway_screen.dart';
 
 // ============================================================================
 // MainNavigationScreen
@@ -87,6 +88,20 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   @override
   void initState() {
     super.initState();
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (_) => const AuthGatewayScreen()),
+            (route) => false,
+          );
+        }
+      });
+      return;
+    }
+
     final initialRole = widget.role;
     if (initialRole == 'admin' || initialRole == 'subadmin') {
       WidgetsBinding.instance.addPostFrameCallback((_) {

@@ -7,8 +7,10 @@
 // ==============================================================================
 
 import 'dart:async';
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/models/chat_model.dart';
 import '../data/models/chat_message_model.dart';
@@ -22,6 +24,87 @@ class ChatService {
 
   ChatService({FirebaseFirestore? firestore})
       : _db = firestore ?? FirebaseFirestore.instance;
+
+  // ---------------------------------------------------------------------------
+  // ⚡ LOCAL CACHING & FAST 0MS RETRIEVAL
+  // ---------------------------------------------------------------------------
+  static final Map<String, List<ChatModel>> _cachedChatsByUser = {};
+  static final Map<String, List<ChatMessageModel>> _cachedMessagesByChat = {};
+  static const String _kChatsCachePrefix = 'cached_user_chats_v1_';
+  static const String _kMessagesCachePrefix = 'cached_messages_v1_';
+
+  /// Synchronous in-memory lookup for instant 0ms screen rendering
+  List<ChatModel> getCachedChats(String uid) {
+    if (uid.isEmpty) return const [];
+    return _cachedChatsByUser[uid] ?? const [];
+  }
+
+  /// Synchronous in-memory lookup for instant 0ms messages rendering
+  List<ChatMessageModel> getCachedMessages(String chatId) {
+    if (chatId.isEmpty) return const [];
+    return _cachedMessagesByChat[chatId] ?? const [];
+  }
+
+  /// Preloads cached chats from SharedPreferences into fast memory
+  Future<void> preloadCachedChats(String uid) async {
+    if (uid.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonStr = prefs.getString('$_kChatsCachePrefix$uid');
+      if (jsonStr != null && jsonStr.isNotEmpty) {
+        final decoded = jsonDecode(jsonStr);
+        if (decoded is List) {
+          final list = decoded
+              .map((item) => ChatModel.fromMap(Map<String, dynamic>.from(item), item['id']?.toString() ?? ''))
+              .where((c) => !c.isDeletedBy(uid))
+              .toList();
+          if (list.isNotEmpty) {
+            _cachedChatsByUser[uid] = list;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[ChatService] preloadCachedChats error: $e');
+    }
+  }
+
+  /// Preloads cached messages from SharedPreferences into fast memory
+  Future<void> preloadCachedMessages(String chatId) async {
+    if (chatId.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonStr = prefs.getString('$_kMessagesCachePrefix$chatId');
+      if (jsonStr != null && jsonStr.isNotEmpty) {
+        final decoded = jsonDecode(jsonStr);
+        if (decoded is List) {
+          final list = decoded
+              .map((item) => ChatMessageModel.fromMap(Map<String, dynamic>.from(item), item['id']?.toString() ?? ''))
+              .toList();
+          if (list.isNotEmpty) {
+            _cachedMessagesByChat[chatId] = list;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[ChatService] preloadCachedMessages error: $e');
+    }
+  }
+
+  void _persistChatsCache(String uid, List<ChatModel> chats) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final listData = chats.map((c) => c.toJsonMap()).toList();
+      await prefs.setString('$_kChatsCachePrefix$uid', jsonEncode(listData));
+    } catch (_) {}
+  }
+
+  void _persistMessagesCache(String chatId, List<ChatMessageModel> messages) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final toSave = messages.take(50).map((m) => m.toJsonMap()).toList();
+      await prefs.setString('$_kMessagesCachePrefix$chatId', jsonEncode(toSave));
+    } catch (_) {}
+  }
 
   /// Deterministic ID generator for client-lawyer chat threads
   static String generateChatId(String clientUid, String lawyerUid) {
@@ -53,10 +136,12 @@ class ChatService {
           if (!aPinned && bPinned) return 1;
           return b.updatedAt.compareTo(a.updatedAt);
         });
+        _cachedChatsByUser[uid] = list;
+        _persistChatsCache(uid, list);
         return list;
       }).handleError((err) {
         debugPrint('[ChatService] admin getChatsForUser error: $err');
-        return <ChatModel>[];
+        return _cachedChatsByUser[uid] ?? <ChatModel>[];
       });
     }
 
@@ -77,15 +162,17 @@ class ChatService {
         if (!aPinned && bPinned) return 1;
         return b.updatedAt.compareTo(a.updatedAt);
       });
+      _cachedChatsByUser[uid] = list;
+      _persistChatsCache(uid, list);
       return list;
     }).handleError((err) {
       debugPrint('[ChatService] getChatsForUser error: $err');
-      return <ChatModel>[];
+      return _cachedChatsByUser[uid] ?? <ChatModel>[];
     });
   }
 
   /// Stream messages for a specific conversation thread (newest first for reverse ListView)
-  /// Optionally filters out messages deleted locally for the current user.
+  /// Uses includeMetadataChanges: true so offline sent messages are immediately rendered with isPending: true
   Stream<List<ChatMessageModel>> getMessagesStream(String chatId, {String? currentUserId}) {
     if (chatId.trim().isEmpty) {
       return Stream.value(<ChatMessageModel>[]);
@@ -94,10 +181,14 @@ class ChatService {
         .collection('chats')
         .doc(chatId)
         .collection('messages')
-        .snapshots()
+        .snapshots(includeMetadataChanges: true)
         .map((snap) {
       final list = snap.docs
-          .map((doc) => ChatMessageModel.fromMap(doc.data(), doc.id))
+          .map((doc) => ChatMessageModel.fromMap(
+                doc.data(),
+                doc.id,
+                isPending: doc.metadata.hasPendingWrites,
+              ))
           .where((msg) {
             if (currentUserId != null && currentUserId.isNotEmpty) {
               return !msg.deletedFor.contains(currentUserId);
@@ -106,7 +197,12 @@ class ChatService {
           })
           .toList();
       list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      _cachedMessagesByChat[chatId] = list;
+      _persistMessagesCache(chatId, list);
       return list;
+    }).handleError((err) {
+      debugPrint('[ChatService] getMessagesStream error: $err');
+      return _cachedMessagesByChat[chatId] ?? <ChatMessageModel>[];
     });
   }
 
@@ -349,8 +445,9 @@ class ChatService {
     // Check if recipient has stopped or muted this chat
     bool isStoppedByRecipient = false;
     bool isMutedByRecipient = false;
+    DocumentSnapshot<Map<String, dynamic>>? chatDoc;
     try {
-      final chatDoc = await _db.collection('chats').doc(chatId).get();
+      chatDoc = await _db.collection('chats').doc(chatId).get().timeout(const Duration(milliseconds: 700));
       if (chatDoc.exists && chatDoc.data() != null) {
         final data = chatDoc.data()!;
         final rawStopped = data['stoppedBy'];
@@ -364,19 +461,18 @@ class ChatService {
       }
     } catch (_) {}
 
-    final chatDoc = await _db.collection('chats').doc(chatId).get();
-    final bool chatExists = chatDoc.exists && chatDoc.data() != null;
-    final chatData = chatDoc.data() ?? {};
+    final bool chatExists = chatDoc != null && chatDoc.exists && chatDoc.data() != null;
+    final chatData = chatDoc?.data() ?? {};
 
     // Resolve sender profile info from Firestore if not provided explicitly
     Map<String, dynamic>? senderData;
     try {
       final sCol = senderRole == 'lawyer' ? 'lawyers' : 'users';
-      final sDoc = await _db.collection(sCol).doc(senderId).get();
+      final sDoc = await _db.collection(sCol).doc(senderId).get().timeout(const Duration(milliseconds: 700));
       if (sDoc.exists && sDoc.data() != null) {
         senderData = sDoc.data();
       } else {
-        final altDoc = await _db.collection(senderRole == 'lawyer' ? 'users' : 'lawyers').doc(senderId).get();
+        final altDoc = await _db.collection(senderRole == 'lawyer' ? 'users' : 'lawyers').doc(senderId).get().timeout(const Duration(milliseconds: 700));
         if (altDoc.exists && altDoc.data() != null) senderData = altDoc.data();
       }
     } catch (_) {}
@@ -469,13 +565,13 @@ class ChatService {
         bool isRecipientLawyer = false;
 
         // 1. Check lawyers collection first
-        final lDoc = await _db.collection('lawyers').doc(recipientId).get();
+        final lDoc = await _db.collection('lawyers').doc(recipientId).get().timeout(const Duration(milliseconds: 700));
         if (lDoc.exists && lDoc.data() != null) {
           recipientData = lDoc.data();
           isRecipientLawyer = true;
         } else {
           // 2. Check users collection
-          final uDoc = await _db.collection('users').doc(recipientId).get();
+          final uDoc = await _db.collection('users').doc(recipientId).get().timeout(const Duration(milliseconds: 700));
           if (uDoc.exists && uDoc.data() != null) {
             recipientData = uDoc.data();
             final rRole = recipientData?['role']?.toString().toLowerCase() ?? '';
@@ -828,6 +924,106 @@ class ChatService {
       } catch (_) {}
     } catch (e) {
       debugPrint('[ChatService] markChatAsRead notice: $e');
+    }
+  }
+
+  /// Completely and permanently purges all chats and messages for a user (Client or Lawyer).
+  /// Used upon account deletion and new account registration with the same phone number
+  /// to ensure a clean slate with zero remnant/ghost chats.
+  Future<void> purgeAllChatsForUser({
+    required String uid,
+    String? phone,
+  }) async {
+    try {
+      final List<Future<QuerySnapshot<Map<String, dynamic>>>> queries = [];
+
+      if (uid.isNotEmpty) {
+        queries.add(_db.collection('chats').where('participants', arrayContains: uid).get());
+        queries.add(_db.collection('chats').where('clientId', isEqualTo: uid).get());
+        queries.add(_db.collection('chats').where('lawyerId', isEqualTo: uid).get());
+      }
+
+      if (phone != null && phone.trim().isNotEmpty) {
+        final rawPhone = phone.trim();
+        String normPhone = '';
+        try {
+          normPhone = PhoneUtils.normalize(rawPhone);
+        } catch (_) {
+          normPhone = rawPhone;
+        }
+        final cleanDigits = normPhone.replaceAll(RegExp(r'[^0-9]'), '');
+        final localPhone = PhoneUtils.toLocalDisplay(normPhone);
+        final raw9 = cleanDigits.length >= 9 ? cleanDigits.substring(cleanDigits.length - 9) : cleanDigits;
+
+        final Set<String> phoneCandidates = {
+          rawPhone,
+          if (normPhone.isNotEmpty) normPhone,
+          if (cleanDigits.isNotEmpty) cleanDigits,
+          if (localPhone.isNotEmpty) localPhone,
+          if (raw9.isNotEmpty) ...[
+            raw9,
+            '0$raw9',
+            '249$raw9',
+            '+249$raw9',
+          ],
+        };
+
+        for (final p in phoneCandidates) {
+          queries.add(_db.collection('chats').where('clientPhone', isEqualTo: p).get());
+          queries.add(_db.collection('chats').where('lawyerPhone', isEqualTo: p).get());
+        }
+      }
+
+      if (queries.isEmpty) return;
+
+      final snapshots = await Future.wait(queries);
+      final Set<String> chatDocIds = {};
+      final List<DocumentReference<Map<String, dynamic>>> chatDocRefs = [];
+
+      for (final snap in snapshots) {
+        for (final doc in snap.docs) {
+          if (!chatDocIds.contains(doc.id)) {
+            chatDocIds.add(doc.id);
+            chatDocRefs.add(doc.reference);
+          }
+        }
+      }
+
+      if (chatDocRefs.isEmpty) {
+        debugPrint('[ChatService] purgeAllChatsForUser: No chats found for uid=$uid, phone=$phone');
+        return;
+      }
+
+      debugPrint('[ChatService] purgeAllChatsForUser: Purging ${chatDocRefs.length} chats for uid=$uid, phone=$phone');
+
+      for (final chatRef in chatDocRefs) {
+        try {
+          // 1. Fetch and batch delete all messages in subcollection
+          final messagesSnap = await chatRef.collection('messages').get();
+          if (messagesSnap.docs.isNotEmpty) {
+            for (var i = 0; i < messagesSnap.docs.length; i += 400) {
+              final end = (i + 400 < messagesSnap.docs.length) ? i + 400 : messagesSnap.docs.length;
+              final batch = _db.batch();
+              for (var j = i; j < end; j++) {
+                batch.delete(messagesSnap.docs[j].reference);
+              }
+              await batch.commit().catchError((err) {
+                debugPrint('[ChatService] Error committing message batch delete: $err');
+              });
+            }
+          }
+
+          // 2. Delete the parent chat document
+          await chatRef.delete().catchError((err) {
+            debugPrint('[ChatService] Error deleting chat doc ${chatRef.id}: $err');
+          });
+        } catch (chatErr) {
+          debugPrint('[ChatService] Error purging single chat ${chatRef.id}: $chatErr');
+        }
+      }
+      debugPrint('✅ [ChatService] Successfully purged ${chatDocRefs.length} chats for uid=$uid, phone=$phone');
+    } catch (e) {
+      debugPrint('[ChatService] purgeAllChatsForUser general error: $e');
     }
   }
 }

@@ -167,12 +167,14 @@ class FcmDispatcherService {
               'color': '#0B2A5B',
               'default_sound': true,
               'default_vibrate_timings': true,
+              'tag': 'admin_${data['type'] ?? 'alert'}',
             },
           },
           'apns': {
             'headers': {
               'apns-priority': '10',
               'apns-push-type': 'alert',
+              'apns-collapse-id': 'admin_${data['type'] ?? 'alert'}',
             },
             'payload': {
               'aps': {
@@ -201,11 +203,12 @@ class FcmDispatcherService {
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         debugPrint('FCM HTTP v1 Topic Push sent successfully: ${response.body}');
+        return; // Success: Admin topic broadcast delivered. Do NOT send to admin_tokens to avoid duplicate notifications.
       } else {
         debugPrint('FCM HTTP v1 Topic Push returned status ${response.statusCode}: ${response.body}');
       }
 
-      // Also deliver directly to registered admin device tokens (ensures immediate APNs alert on iPhones)
+      // Fallback: only if topic broadcast failed, deliver to individual admin device tokens
       try {
         final adminTokensSnap = await _db.collection('admin_tokens').get();
         if (adminTokensSnap.docs.isNotEmpty) {
@@ -314,113 +317,136 @@ class FcmDispatcherService {
       };
 
       // Payload targeted to user personal topic (user_{uid})
-      final topicPayload = {
-        'message': {
-          'topic': 'user_$cleanRecipient',
-          'notification': {
-            'title': pushTitle,
-            'body': messageText,
-          },
-          'data': stringPayload,
-          'android': {
-            'priority': 'HIGH',
-            'notification': {
-              'channel_id': NotificationService.chatChannelId,
-              'sound': 'default',
-              'notification_priority': 'PRIORITY_MAX',
-              'visibility': 'PUBLIC',
-              'icon': 'ic_stat_mahameek',
-              'color': '#0B2A5B',
-              'default_sound': true,
-              'default_vibrate_timings': true,
+      final androidConfig = {
+        'priority': 'HIGH',
+        'notification': {
+          'channel_id': NotificationService.chatChannelId,
+          'sound': 'default',
+          'notification_priority': 'PRIORITY_MAX',
+          'visibility': 'PUBLIC',
+          'icon': 'ic_stat_mahameek',
+          'color': '#0B2A5B',
+          'default_sound': true,
+          'default_vibrate_timings': true,
+          'tag': 'chat_$chatId',
+        },
+      };
+
+      final apnsConfig = {
+        'headers': {
+          'apns-priority': '10',
+          'apns-push-type': 'alert',
+          'apns-collapse-id': 'chat_$chatId',
+        },
+        'payload': {
+          'aps': {
+            'alert': {
+              'title': pushTitle,
+              'body': messageText,
             },
-          },
-          'apns': {
-            'headers': {
-              'apns-priority': '10',
-              'apns-push-type': 'alert',
-            },
-            'payload': {
-              'aps': {
-                'alert': {
-                  'title': pushTitle,
-                  'body': messageText,
-                },
-                'sound': 'default',
-                'badge': 1,
-                'content-available': 1,
-                'category': 'FLUTTER_NOTIFICATION_CLICK',
-                'mutable-content': 1,
-              },
-            },
+            'sound': 'default',
+            'badge': 1,
+            'content-available': 1,
+            'category': 'FLUTTER_NOTIFICATION_CLICK',
+            'mutable-content': 1,
           },
         },
       };
 
-      // 1. Post to user topic
+      // 1. Look up primary registered device token for recipient
+      String? primaryToken;
       try {
-        final topicRes = await http
-            .post(
-              Uri.parse(endpoint),
-              headers: headers,
-              body: jsonEncode(topicPayload),
-            )
-            .timeout(const Duration(seconds: 8));
-        if (topicRes.statusCode >= 200 && topicRes.statusCode < 300) {
-          debugPrint('[FcmDispatcher] Chat Push sent to user_$cleanRecipient successfully');
+        final tokenDoc = await _db.collection('user_tokens').doc(cleanRecipient).get();
+        if (tokenDoc.exists) {
+          final t = tokenDoc.data()?['token']?.toString();
+          if (t != null && t.trim().isNotEmpty) primaryToken = t.trim();
         }
       } catch (_) {}
 
-      // 2. Also send directly to recipient device token(s) (guarantees instant APNs delivery on iPhone & Android)
-      final Set<String> targetTokens = {};
-      try {
-        try {
-          final tokenDoc = await _db.collection('user_tokens').doc(cleanRecipient).get();
-          if (tokenDoc.exists) {
-            final t = tokenDoc.data()?['token']?.toString();
-            if (t != null && t.trim().isNotEmpty) targetTokens.add(t.trim());
-          }
-        } catch (_) {}
-
+      if (primaryToken == null || primaryToken.isEmpty) {
         try {
           final userDoc = await _db.collection('users').doc(cleanRecipient).get();
           final t = userDoc.data()?['fcmToken']?.toString();
-          if (t != null && t.trim().isNotEmpty) targetTokens.add(t.trim());
+          if (t != null && t.trim().isNotEmpty) primaryToken = t.trim();
         } catch (_) {}
+      }
 
+      if (primaryToken == null || primaryToken.isEmpty) {
         try {
           final lawyerDoc = await _db.collection('lawyers').doc(cleanRecipient).get();
           final t = lawyerDoc.data()?['fcmToken']?.toString();
-          if (t != null && t.trim().isNotEmpty) targetTokens.add(t.trim());
+          if (t != null && t.trim().isNotEmpty) primaryToken = t.trim();
         } catch (_) {}
+      }
 
-        for (final directToken in targetTokens) {
-          final directPayload = {
-            'message': {
-              'token': directToken,
-              'notification': {
-                'title': pushTitle,
-                'body': messageText,
-              },
-              'data': stringPayload,
-              'android': (topicPayload['message'] as Map)['android'],
-              'apns': (topicPayload['message'] as Map)['apns'],
+      bool directSuccess = false;
+
+      // 2. Direct Token Delivery: Send directly to recipient device token (fastest, unicast, never duplicates)
+      if (primaryToken != null && primaryToken.isNotEmpty) {
+        final directPayload = {
+          'message': {
+            'token': primaryToken,
+            'notification': {
+              'title': pushTitle,
+              'body': messageText,
             },
-          };
-          try {
-            final directRes = await http
-                .post(
-                  Uri.parse(endpoint),
-                  headers: headers,
-                  body: jsonEncode(directPayload),
-                )
-                .timeout(const Duration(seconds: 8));
-            if (directRes.statusCode >= 200 && directRes.statusCode < 300) {
-              debugPrint('[FcmDispatcher] Direct Token Push sent to $cleanRecipient ($directToken) successfully');
-            }
-          } catch (_) {}
+            'data': stringPayload,
+            'android': androidConfig,
+            'apns': apnsConfig,
+          },
+        };
+
+        try {
+          final directRes = await http
+              .post(
+                Uri.parse(endpoint),
+                headers: headers,
+                body: jsonEncode(directPayload),
+              )
+              .timeout(const Duration(seconds: 8));
+
+          if (directRes.statusCode >= 200 && directRes.statusCode < 300) {
+            directSuccess = true;
+            debugPrint('[FcmDispatcher] Direct Token Push sent to $cleanRecipient successfully');
+          } else {
+            debugPrint('[FcmDispatcher] Direct Token Push returned ${directRes.statusCode}: ${directRes.body}');
+          }
+        } catch (tokenErr) {
+          debugPrint('[FcmDispatcher] Direct Token Push network error: $tokenErr');
         }
-      } catch (_) {}
+      }
+
+      // 3. Fallback: ONLY send to topic if NO direct token was registered or direct token dispatch failed!
+      if (!directSuccess) {
+        final topicPayload = {
+          'message': {
+            'topic': 'user_$cleanRecipient',
+            'notification': {
+              'title': pushTitle,
+              'body': messageText,
+            },
+            'data': stringPayload,
+            'android': androidConfig,
+            'apns': apnsConfig,
+          },
+        };
+
+        try {
+          final topicRes = await http
+              .post(
+                Uri.parse(endpoint),
+                headers: headers,
+                body: jsonEncode(topicPayload),
+              )
+              .timeout(const Duration(seconds: 8));
+
+          if (topicRes.statusCode >= 200 && topicRes.statusCode < 300) {
+            debugPrint('[FcmDispatcher] Fallback Chat Push sent to user_$cleanRecipient topic successfully');
+          }
+        } catch (topicErr) {
+          debugPrint('[FcmDispatcher] Fallback Topic Push network error: $topicErr');
+        }
+      }
     } catch (e) {
       debugPrint('[FcmDispatcher] dispatchChatNotification notice: $e');
     }

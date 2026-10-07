@@ -17,6 +17,7 @@ class ChatMessageModel {
   final String text;
   final DateTime createdAt;
   final bool isRead;
+  final bool isPending;
 
   // Deletion & Reply fields
   final bool isDeletedForEveryone;
@@ -35,6 +36,7 @@ class ChatMessageModel {
     required this.text,
     DateTime? createdAt,
     this.isRead = false,
+    this.isPending = false,
     this.isDeletedForEveryone = false,
     this.deletedFor = const [],
     this.replyToMessageId,
@@ -44,7 +46,7 @@ class ChatMessageModel {
 
   bool get isAdminSender => senderRole == 'admin';
 
-  factory ChatMessageModel.fromMap(Map<String, dynamic> map, String id) {
+  factory ChatMessageModel.fromMap(Map<String, dynamic> map, String id, {bool isPending = false}) {
     DateTime parseDate(dynamic val) {
       if (val is Timestamp) return val.toDate();
       if (val is String) return DateTime.tryParse(val) ?? DateTime.now();
@@ -66,6 +68,7 @@ class ChatMessageModel {
       text: map['text']?.toString() ?? '',
       createdAt: parseDate(map['createdAt']),
       isRead: map['isRead'] == true,
+      isPending: isPending || map['isPending'] == true,
       isDeletedForEveryone: map['isDeletedForEveryone'] == true || map['isDeleted'] == true,
       deletedFor: parsedDeletedFor,
       replyToMessageId: map['replyToMessageId']?.toString(),
@@ -85,11 +88,18 @@ class ChatMessageModel {
       'text': text,
       'createdAt': Timestamp.fromDate(createdAt),
       'isRead': isRead,
+      'isPending': isPending,
       'isDeletedForEveryone': isDeletedForEveryone,
       'deletedFor': deletedFor,
       if (replyToMessageId != null) 'replyToMessageId': replyToMessageId,
       if (replyToText != null) 'replyToText': replyToText,
       if (replyToSenderName != null) 'replyToSenderName': replyToSenderName,
     };
+  }
+
+  Map<String, dynamic> toJsonMap() {
+    final map = toMap();
+    map['createdAt'] = createdAt.toIso8601String();
+    return map;
   }
 }

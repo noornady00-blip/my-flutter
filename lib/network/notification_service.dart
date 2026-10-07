@@ -24,6 +24,7 @@ import '../ui/screens/admin/admin_password_resets_screen.dart';
 import '../ui/screens/admin/admin_support_messages_screen.dart';
 import '../ui/screens/admin/admin_pending_lawyers_screen.dart';
 import '../ui/screens/chat/chat_screen.dart';
+import '../ui/screens/auth/auth_gateway_screen.dart';
 import '../ui/screens/main_navigation_screen.dart';
 import '../ui/custom_widgets/in_app_notification_banner.dart';
 import '../core/services/keep_alive_service.dart';
@@ -304,6 +305,21 @@ class NotificationService {
     clearLaunchIntent();
     debugPrint('Notification clicked with payload: $type');
 
+    // Authentication Guard: strictly verify user is authenticated
+    final prefs = await SharedPreferences.getInstance();
+    final savedUid = prefs.getString('uid') ?? FirebaseAuth.instance.currentUser?.uid;
+    if (savedUid == null || savedUid.trim().isEmpty) {
+      debugPrint('Notification tapped while logged out -> Redirecting to AuthGatewayScreen');
+      final nav = navigatorKey.currentState;
+      if (nav != null) {
+        nav.pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const AuthGatewayScreen()),
+          (route) => false,
+        );
+      }
+      return;
+    }
+
     // 1. Direct handling for Chat Notifications (Clients, Lawyers & Admins)
     if (type.startsWith('chat_') || type == 'chat') {
       final chatId = type.startsWith('chat_') ? type.substring('chat_'.length).trim() : '';
@@ -311,19 +327,27 @@ class NotificationService {
         final nav = navigatorKey.currentState;
         if (nav == null) return;
 
+        final currentPrefs = await SharedPreferences.getInstance();
+        final currentUid = currentPrefs.getString('uid') ?? FirebaseAuth.instance.currentUser?.uid;
+        if (currentUid == null || currentUid.trim().isEmpty) {
+          nav.pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const AuthGatewayScreen()),
+            (route) => false,
+          );
+          return;
+        }
+
         if (chatId.isNotEmpty) {
           try {
             final chatDoc = await FirebaseFirestore.instance.collection('chats').doc(chatId).get();
             if (chatDoc.exists && chatDoc.data() != null) {
               final chat = ChatModel.fromMap(chatDoc.data()!, chatDoc.id);
-              final prefs = await SharedPreferences.getInstance();
-              final savedUid = prefs.getString('uid');
-              final savedRole = prefs.getString('role');
-              final savedName = prefs.getString('name');
+              final savedRole = currentPrefs.getString('role');
+              final savedName = currentPrefs.getString('name');
               nav.push(MaterialPageRoute(
                 builder: (_) => ChatScreen(
                   chat: chat,
-                  currentUserId: savedUid,
+                  currentUserId: currentUid,
                   currentUserRole: savedRole,
                   currentUserName: savedName,
                 ),
@@ -335,8 +359,7 @@ class NotificationService {
           }
         }
         // Fallback to chats tab
-        final prefs = await SharedPreferences.getInstance();
-        final role = prefs.getString('role');
+        final role = currentPrefs.getString('role');
         nav.push(MaterialPageRoute(
           builder: (_) => MainNavigationScreen(initialIndex: 1, role: role),
         ));
@@ -345,7 +368,6 @@ class NotificationService {
     }
 
     // 2. Admin notification checks
-    final prefs = await SharedPreferences.getInstance();
     final role = prefs.getString('role');
     if (role != 'admin') {
       debugPrint('Ignoring notification tap: device role is $role, not admin');
@@ -730,24 +752,45 @@ class NotificationService {
     }
   }
 
-  /// Unsubscribes user from their topic on logout
+  /// Unsubscribes user from their topic on logout, deletes token and stops live listeners
   Future<void> unregisterUserDevice({String? uid}) async {
     if (kIsWeb) return;
     try {
       stopGlobalUserChatListener();
       final messaging = FirebaseMessaging.instance;
       final prefs = await SharedPreferences.getInstance();
-      final targetUid = uid ?? prefs.getString('uid');
+      final targetUid = uid ?? prefs.getString('uid') ?? FirebaseAuth.instance.currentUser?.uid;
+      final role = prefs.getString('role');
       if (targetUid != null && targetUid.isNotEmpty) {
         final userTopicName = userTopic(targetUid);
-        await messaging.unsubscribeFromTopic(userTopicName).catchError((_) {});
-        await _db.collection('user_tokens').doc(targetUid).delete().catchError((_) {});
-        debugPrint('Unsubscribed user device from: $userTopicName');
+        await messaging
+            .unsubscribeFromTopic(userTopicName)
+            .timeout(const Duration(seconds: 2))
+            .catchError((_) {});
+        await _db
+            .collection('user_tokens')
+            .doc(targetUid)
+            .delete()
+            .timeout(const Duration(seconds: 2))
+            .catchError((_) {});
+        final col = role == 'lawyer' ? 'lawyers' : 'users';
+        await _db
+            .collection(col)
+            .doc(targetUid)
+            .update({
+              'fcmToken': FieldValue.delete(),
+            })
+            .timeout(const Duration(seconds: 2))
+            .catchError((_) {});
+        debugPrint('Unsubscribed user device from: $userTopicName (uid: $targetUid)');
       }
-      final role = prefs.getString('role');
       if (role == 'admin') {
-        await unregisterAdminDevice();
+        await unregisterAdminDevice().timeout(const Duration(seconds: 2)).catchError((_) {});
       }
+      try {
+        await messaging.deleteToken().timeout(const Duration(seconds: 2));
+      } catch (_) {}
+      await clearAllSystemNotifications();
     } catch (e) {
       debugPrint('unregisterUserDevice error: $e');
     }
@@ -875,13 +918,27 @@ class NotificationService {
     try {
       stopAdminLiveAlertsListener();
       final messaging = FirebaseMessaging.instance;
-      await messaging.unsubscribeFromTopic(adminTopic).catchError((_) {});
-      await messaging.unsubscribeFromTopic(adminAlertsTopic).catchError((_) {});
+      await messaging
+          .unsubscribeFromTopic(adminTopic)
+          .timeout(const Duration(seconds: 2))
+          .catchError((_) {});
+      await messaging
+          .unsubscribeFromTopic(adminAlertsTopic)
+          .timeout(const Duration(seconds: 2))
+          .catchError((_) {});
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('is_admin_device');
-      final token = await messaging.getToken().catchError((_) => null);
+      final token = await messaging
+          .getToken()
+          .timeout(const Duration(seconds: 2))
+          .catchError((_) => null);
       if (token != null) {
-        await _db.collection('admin_tokens').doc(token).delete().catchError((_) {});
+        await _db
+            .collection('admin_tokens')
+            .doc(token)
+            .delete()
+            .timeout(const Duration(seconds: 2))
+            .catchError((_) {});
       }
     } catch (e) {
       debugPrint('unregisterAdminDevice error: $e');
@@ -927,6 +984,12 @@ class NotificationService {
           (payload != null && (payload.startsWith('chat_') || payload == 'chat'));
 
       final prefs = await SharedPreferences.getInstance();
+      final currentUid = prefs.getString('uid') ?? FirebaseAuth.instance.currentUser?.uid;
+      if (currentUid == null || currentUid.trim().isEmpty) {
+        debugPrint('showNotificationDirect blocked: recipient user is logged out');
+        return;
+      }
+
       final currentRole = prefs.getString('role');
       final isAdminDevice = prefs.getBool('is_admin_device') ?? false;
       final isAdminPayload = payload == 'password_reset' ||
