@@ -745,7 +745,7 @@ class FirestoreService implements DatabaseContract {
           // Keep only one primary 1 - prefer the standard doc or the one with complete data
           if (primary1 == null || doc.id == 'HEsYK0F5TGMFCZtKE7qUq0kFfqQ2') {
             primary1 = admin.copyWith(
-              name: 'المشرف الأساسي (01146979833)',
+              name: 'المبرمج',
               phone: '01146979833',
               accountId: '111111111111',
               isPrimary: true,
@@ -756,7 +756,7 @@ class FirestoreService implements DatabaseContract {
           // Keep only one primary 2
           if (primary2 == null || doc.id == 'VQ5M7vEKaubtw3H3tOtDMHgB4yg2') {
             primary2 = admin.copyWith(
-              name: 'صاحب التطبيق',
+              name: 'المشرف الأساسي',
               phone: '+249912209596',
               accountId: '222222222222',
               isPrimary: true,
@@ -776,7 +776,7 @@ class FirestoreService implements DatabaseContract {
       // Ensure Admin 1: 01146979833 is always present
       primary1 ??= UserModel(
         uid: 'HEsYK0F5TGMFCZtKE7qUq0kFfqQ2',
-        name: 'المشرف الأساسي (01146979833)',
+        name: 'المبرمج',
         phone: '01146979833',
         role: 'admin',
         status: 'active',
@@ -788,7 +788,7 @@ class FirestoreService implements DatabaseContract {
       // Ensure Admin 2: 91 220 9596 (+249912209596) is always present
       primary2 ??= UserModel(
         uid: 'VQ5M7vEKaubtw3H3tOtDMHgB4yg2',
-        name: 'صاحب التطبيق',
+        name: 'المشرف الأساسي',
         phone: '+249912209596',
         role: 'admin',
         status: 'active',
@@ -814,7 +814,7 @@ class FirestoreService implements DatabaseContract {
       const admin1Uid = 'HEsYK0F5TGMFCZtKE7qUq0kFfqQ2';
       final admin1Data = {
         'uid': admin1Uid,
-        'name': 'المشرف الأساسي',
+        'name': 'المبرمج',
         'phone': '+249146979833',
         'role': 'admin',
         'status': 'active',
@@ -841,7 +841,7 @@ class FirestoreService implements DatabaseContract {
       const admin2Uid = 'VQ5M7vEKaubtw3H3tOtDMHgB4yg2';
       final admin2Data = {
         'uid': admin2Uid,
-        'name': 'صاحب التطبيق',
+        'name': 'المشرف الأساسي',
         'phone': '+249912209596',
         'role': 'admin',
         'status': 'active',

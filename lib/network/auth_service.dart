@@ -141,7 +141,7 @@ class AuthService implements AuthContract {
           'role': 'admin',
           'isPrimary': true,
           'data': {
-            'name': 'المشرف الأساسي',
+            'name': 'المبرمج',
             'phone': '+249146979833',
             'role': 'admin',
             'isPrimary': true,
@@ -153,7 +153,7 @@ class AuthService implements AuthContract {
           'role': 'admin',
           'isPrimary': true,
           'data': {
-            'name': 'صاحب التطبيق',
+            'name': 'المشرف الأساسي',
             'phone': '+249912209596',
             'role': 'admin',
             'isPrimary': true,
@@ -2239,7 +2239,7 @@ class AuthService implements AuthContract {
                 '249912209596@mahameek.com',
               ];
         final String adminEmail = emailCandidates.first;
-        String adminName = isPrimary1 ? 'المشرف الأساسي' : 'صاحب التطبيق';
+        String adminName = isPrimary1 ? 'المبرمج' : 'المشرف الأساسي';
         final String primaryUid = isPrimary1
             ? 'HEsYK0F5TGMFCZtKE7qUq0kFfqQ2'
             : 'VQ5M7vEKaubtw3H3tOtDMHgB4yg2';
