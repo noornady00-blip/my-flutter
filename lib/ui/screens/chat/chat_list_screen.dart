@@ -16,6 +16,7 @@ import '../../../data/models/chat_model.dart';
 import '../../../network/chat_service.dart';
 import '../../../network/auth_service.dart';
 import '../../../core/utils/account_id_utils.dart';
+import '../../../core/utils/phone_utils.dart';
 import '../../../core/utils/image_utils.dart';
 import '../../custom_widgets/app_logo_badge.dart';
 import '../../custom_widgets/awake_badge.dart';
@@ -1612,7 +1613,8 @@ class _ChatTileAvatarState extends State<_ChatTileAvatar> {
       if ((foundBase64 == null || foundBase64.isEmpty) &&
           (foundUrl == null || foundUrl.isEmpty) &&
           cleanDigits.isNotEmpty) {
-        final pdDoc = await FirebaseFirestore.instance.collection('phone_directory').doc(cleanDigits).get();
+        final normDigits = PhoneUtils.tryNormalize(cleanDigits) ?? cleanDigits;
+        final pdDoc = await FirebaseFirestore.instance.collection('phone_directory').doc(normDigits).get();
         if (pdDoc.exists && pdDoc.data() != null) {
           final data = pdDoc.data()!;
           foundBase64 = (data['photoBase64'] ??

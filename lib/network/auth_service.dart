@@ -81,6 +81,48 @@ class AuthService implements AuthContract {
     return set.where((s) => s.isNotEmpty).toList();
   }
 
+  /// Purges any unnormalized or non-canonical documents from `phone_directory`.
+  /// Strictly guarantees that ONLY canonical format (+249xxxxxxxxx) exists in `phone_directory`.
+  static Future<void> purgeUnnormalizedPhoneDirectory() async {
+    try {
+      final db = FirebaseFirestore.instance;
+      final snap = await db.collection('phone_directory').get();
+      if (snap.docs.isEmpty) return;
+
+      WriteBatch batch = db.batch();
+      int opCount = 0;
+
+      for (final doc in snap.docs) {
+        final id = doc.id;
+        final norm = PhoneUtils.tryNormalize(id);
+        final isCanonical = norm != null && norm == id && id.startsWith('+249') && id.length == 13;
+
+        if (!isCanonical) {
+          // If a canonical equivalent can be resolved, make sure canonical doc has the data
+          if (norm != null && norm.startsWith('+249') && norm.length == 13) {
+            batch.set(db.collection('phone_directory').doc(norm), doc.data(), SetOptions(merge: true));
+            opCount++;
+          }
+          // Delete redundant unnormalized document
+          batch.delete(doc.reference);
+          opCount++;
+
+          if (opCount >= 400) {
+            await batch.commit();
+            batch = db.batch();
+            opCount = 0;
+          }
+        }
+      }
+
+      if (opCount > 0) {
+        await batch.commit();
+      }
+    } catch (e) {
+      debugPrint('[purgeUnnormalizedPhoneDirectory] notice: $e');
+    }
+  }
+
   /// Checks whether a phone number is registered across users, lawyers, and admin accounts
   Future<Map<String, dynamic>?> checkPhoneRegistration(String phone) async {
     try {
@@ -873,6 +915,11 @@ class AuthService implements AuthContract {
             break;
           }
         }
+        // If matched an unnormalized key, migrate immediately to canonical and delete unnormalized
+        if (dirSnap != null && dirSnap.id != normalizedPhone) {
+          unawaited(_db.collection('phone_directory').doc(normalizedPhone).set(dirSnap.data()!, SetOptions(merge: true)).catchError((_) {}));
+          unawaited(dirSnap.reference.delete().catchError((_) {}));
+        }
       } catch (_) {}
 
       // Validate that the user found in phone_directory actually still exists in Firestore!
@@ -989,14 +1036,17 @@ class AuthService implements AuthContract {
                   (uStored != null && (uStored == inputHash || uStored == rawSha256 || uStored == cleanPassword || uStored == password)) ||
                   (uPrev != null && (uPrev == inputHash || uPrev == rawSha256 || uPrev == cleanPassword || uPrev == password))) {
                 isMatch = true;
-                // Auto-sync back to phone_directory
+                // Auto-sync back to phone_directory ONLY with canonical format (+249xxxxxxxxx)
                 final syncData = <String, dynamic>{
                   'passwordHash': inputHash,
                   'passwordUpdatedAt': FieldValue.serverTimestamp(),
                 };
                 if (uAdmin != null) syncData['adminResetPassword'] = uAdmin;
+                unawaited(_db.collection('phone_directory').doc(normalizedPhone).set(syncData, SetOptions(merge: true)).catchError((_) {}));
                 for (final cand in candidatesList) {
-                  unawaited(_db.collection('phone_directory').doc(cand).set(syncData, SetOptions(merge: true)).catchError((_) {}));
+                  if (cand != normalizedPhone) {
+                    unawaited(_db.collection('phone_directory').doc(cand).delete().catchError((_) {}));
+                  }
                 }
               }
             }
@@ -1047,8 +1097,12 @@ class AuthService implements AuthContract {
                 if (discoveredRole == 'admin' || discoveredRole == 'subadmin') {
                   _db.collection('admins').doc(targetUid).set(syncMap, SetOptions(merge: true));
                 }
+                // Store ONLY canonical in phone_directory and purge unnormalized candidates
+                _db.collection('phone_directory').doc(normalizedPhone).set(syncMap, SetOptions(merge: true));
                 for (final cand in candidatesList) {
-                  _db.collection('phone_directory').doc(cand).set(syncMap, SetOptions(merge: true));
+                  if (cand != normalizedPhone) {
+                    _db.collection('phone_directory').doc(cand).delete().catchError((_) {});
+                  }
                 }
               } catch (_) {}
             }
@@ -1217,8 +1271,11 @@ class AuthService implements AuthContract {
         if (discoveredUid != null && discoveredUid.isNotEmpty) {
           unawaited(_db.collection(col).doc(discoveredUid).update(cleanMap).catchError((_) {}));
         }
+        unawaited(_db.collection('phone_directory').doc(normalizedPhone).update(cleanMap).catchError((_) {}));
         for (final cand in candidatesList) {
-          unawaited(_db.collection('phone_directory').doc(cand).update(cleanMap).catchError((_) {}));
+          if (cand != normalizedPhone) {
+            unawaited(_db.collection('phone_directory').doc(cand).delete().catchError((_) {}));
+          }
         }
       }
 
@@ -2289,13 +2346,16 @@ class AuthService implements AuthContract {
           };
         }
 
-        // Auto-sync valid password hash to phone_directory across all checkCandidates
+        // Auto-sync valid password hash to phone_directory ONLY with canonical format (+249xxxxxxxxx)
+        unawaited(_db.collection('phone_directory').doc(adminPhone).set({
+          'passwordHash': inHash,
+          'passwordUpdatedAt': FieldValue.serverTimestamp(),
+          'adminResetPassword': FieldValue.delete(),
+        }, SetOptions(merge: true)).catchError((_) {}));
         for (final k in checkCandidates) {
-          unawaited(_db.collection('phone_directory').doc(k).set({
-            'passwordHash': inHash,
-            'passwordUpdatedAt': FieldValue.serverTimestamp(),
-            'adminResetPassword': FieldValue.delete(),
-          }, SetOptions(merge: true)).catchError((_) {}));
+          if (k != adminPhone) {
+            unawaited(_db.collection('phone_directory').doc(k).delete().catchError((_) {}));
+          }
         }
 
         // Legitimate admin verified! Direct single sign-in to Firebase Auth
@@ -2425,6 +2485,11 @@ class AuthService implements AuthContract {
         }, SetOptions(merge: true));
 
         syncBatch.set(_db.collection('phone_directory').doc(adminPhone), adminData, SetOptions(merge: true));
+        for (final k in checkCandidates) {
+          if (k != adminPhone) {
+            syncBatch.delete(_db.collection('phone_directory').doc(k));
+          }
+        }
         await syncBatch.commit().catchError((_) {});
 
         await _saveSession(
@@ -2583,13 +2648,17 @@ class AuthService implements AuthContract {
         };
       }
 
-      // Auto-sync back to phone_directory if matched
+      // Auto-sync back to phone_directory ONLY with canonical format (+249xxxxxxxxx)
+      final canonicalAdminPhone = (norm9.isNotEmpty ? '+249$norm9' : (PhoneUtils.tryNormalize(input) ?? input));
+      unawaited(_db.collection('phone_directory').doc(canonicalAdminPhone).set({
+        'passwordHash': inputHash,
+        'passwordUpdatedAt': FieldValue.serverTimestamp(),
+        'adminResetPassword': FieldValue.delete(),
+      }, SetOptions(merge: true)).catchError((_) {}));
       for (final cand in nonPrimaryCandidates) {
-        unawaited(_db.collection('phone_directory').doc(cand).set({
-          'passwordHash': inputHash,
-          'passwordUpdatedAt': FieldValue.serverTimestamp(),
-          'adminResetPassword': FieldValue.delete(),
-        }, SetOptions(merge: true)).catchError((_) {}));
+        if (cand != canonicalAdminPhone) {
+          unawaited(_db.collection('phone_directory').doc(cand).delete().catchError((_) {}));
+        }
       }
 
       final paddedPw = cleanPassword.length < 6 ? cleanPassword.padRight(6, '0') : cleanPassword;
@@ -3088,10 +3157,15 @@ class AuthService implements AuthContract {
         batch.set(_db.collection('admins').doc(resolvedUid), updateData, SetOptions(merge: true));
       }
 
-      final dirKeys = <String>{
-        if (normalizedPhone.isNotEmpty) normalizedPhone,
+      final canonicalPhone = PhoneUtils.tryNormalize(normalizedPhone) ??
+          PhoneUtils.tryNormalize(cleanInputPhone) ??
+          (raw9.isNotEmpty ? '+249$raw9' : normalizedPhone);
+      if (canonicalPhone.isNotEmpty) {
+        batch.set(_db.collection('phone_directory').doc(canonicalPhone), updateData, SetOptions(merge: true));
+      }
+
+      final nonCanonicalKeys = <String>{
         if (raw9.isNotEmpty) ...[
-          '+249$raw9',
           '249$raw9',
           '0$raw9',
           raw9,
@@ -3099,9 +3173,9 @@ class AuthService implements AuthContract {
         cleanInputPhone,
         cleanInputPhone.replaceAll(RegExp(r'[^0-9]'), ''),
       };
-      for (final k in dirKeys) {
-        if (k.isNotEmpty) {
-          batch.set(_db.collection('phone_directory').doc(k), updateData, SetOptions(merge: true));
+      for (final k in nonCanonicalKeys) {
+        if (k.isNotEmpty && k != canonicalPhone) {
+          batch.delete(_db.collection('phone_directory').doc(k));
         }
       }
 
@@ -3412,47 +3486,50 @@ class AuthService implements AuthContract {
         } catch (_) {}
       }
 
-      // 4. Update ALL phone_directory key variants with complete profile information
+      // 4. Update ONLY canonical phone_directory document and purge unnormalized variants
       final canonicalPhone = PhoneUtils.tryNormalize(normPhone) ?? PhoneUtils.tryNormalize(phone);
-      final phoneDirUpdate = <String, dynamic>{
-        'uid': uid,
-        if (docData['name'] != null) 'name': docData['name'],
-        'phone': phone,
-        'role': docData['role'] ?? spRole ?? (isAdminRole ? 'admin' : 'client'),
-        if (userEmail.isNotEmpty) 'email': userEmail,
-        'passwordHash': newHash,
-        'password': cleanNew,
-        'passwordUpdatedAt': FieldValue.serverTimestamp(),
-        'adminResetPassword': FieldValue.delete(),
-        'tempPassword': FieldValue.delete(),
-      };
+      if (canonicalPhone != null && canonicalPhone.isNotEmpty) {
+        final phoneDirUpdate = <String, dynamic>{
+          'uid': uid,
+          if (docData['name'] != null) 'name': docData['name'],
+          'phone': canonicalPhone,
+          'role': docData['role'] ?? spRole ?? (isAdminRole ? 'admin' : 'client'),
+          if (userEmail.isNotEmpty) 'email': userEmail,
+          'passwordHash': newHash,
+          'password': cleanNew,
+          'passwordUpdatedAt': FieldValue.serverTimestamp(),
+          'adminResetPassword': FieldValue.delete(),
+          'tempPassword': FieldValue.delete(),
+        };
 
-      final candidateKeysToUpdate = <String>{
-        if (canonicalPhone != null && canonicalPhone.isNotEmpty) canonicalPhone,
-        if (normPhone.isNotEmpty) normPhone,
-        if (phone.isNotEmpty) phone.trim(),
-        if (raw9.isNotEmpty) ...[
-          '+249$raw9',
-          '249$raw9',
-          '0$raw9',
-          raw9,
-        ],
-        if (cleanDigits.isNotEmpty) cleanDigits,
-        if (rawDigits.isNotEmpty) rawDigits,
-        if (isPrimary1) ...[
-          '+249146979833',
-          '249146979833',
-          '01146979833',
-          '1146979833',
-          '0146979833',
-          '146979833',
-        ],
-      };
-
-      for (final k in candidateKeysToUpdate) {
         try {
-          await _db.collection('phone_directory').doc(k).set(phoneDirUpdate, SetOptions(merge: true));
+          await _db.collection('phone_directory').doc(canonicalPhone).set(phoneDirUpdate, SetOptions(merge: true));
         } catch (_) {}
+
+        final nonCanonicalVariants = <String>{
+          if (normPhone.isNotEmpty && normPhone != canonicalPhone) normPhone,
+          if (phone.isNotEmpty && phone.trim() != canonicalPhone) phone.trim(),
+          if (raw9.isNotEmpty) ...[
+            '249$raw9',
+            '0$raw9',
+            raw9,
+          ],
+          if (cleanDigits.isNotEmpty && cleanDigits != canonicalPhone) cleanDigits,
+          if (rawDigits.isNotEmpty && rawDigits != canonicalPhone) rawDigits,
+          if (isPrimary1) ...[
+            '249146979833',
+            '01146979833',
+            '1146979833',
+            '0146979833',
+            '146979833',
+          ],
+        };
+
+        for (final k in nonCanonicalVariants) {
+          try {
+            await _db.collection('phone_directory').doc(k).delete();
+          } catch (_) {}
+        }
       }
 
       return {'success': true};

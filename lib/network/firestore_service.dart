@@ -235,8 +235,17 @@ class FirestoreService implements DatabaseContract {
           lDoc.data()?['phone']?.toString() ??
           aDoc.data()?['phone']?.toString();
       if (phone != null && phone.isNotEmpty) {
-        final norm = PhoneUtils.isValid(phone) ? PhoneUtils.normalize(phone) : (phone.startsWith('+') ? phone : '+249$phone');
+        final norm = PhoneUtils.tryNormalize(phone) ?? (phone.startsWith('+') ? phone : '+249$phone');
         await _db.collection('phone_directory').doc(norm).set({'status': status}, SetOptions(merge: true));
+        final raw9 = phone.replaceAll(RegExp(r'[^0-9]'), '');
+        final clean9 = raw9.length >= 9 ? raw9.substring(raw9.length - 9) : raw9;
+        if (clean9.isNotEmpty) {
+          for (final variant in [clean9, '0$clean9', '249$clean9']) {
+            if (variant != norm) {
+              _db.collection('phone_directory').doc(variant).delete().catchError((_) {});
+            }
+          }
+        }
       }
     } catch (_) {}
   }
@@ -884,18 +893,27 @@ class FirestoreService implements DatabaseContract {
             ...adminsSnap.docs.map((d) => d.id),
           };
 
-          final batch = _db.batch();
+          WriteBatch batch = _db.batch();
           int deleteCount = 0;
           for (final doc in dirSnap.docs) {
             final docId = doc.id;
             final norm = PhoneUtils.tryNormalize(docId);
             final uid = (doc.data()['uid'] ?? '').toString();
 
-            // Delete if not strictly canonical format (+249xxxxxxxxx) or if the referenced user was deleted
+            final isCanonical = norm != null && norm == docId && docId.startsWith('+249') && docId.length == 13;
             final isOrphan = uid.isNotEmpty && !existingUids.contains(uid);
-            if (norm != docId || isOrphan) {
+            if (!isCanonical || isOrphan) {
+              if (!isCanonical && norm != null && norm.startsWith('+249') && norm.length == 13 && !isOrphan) {
+                batch.set(_db.collection('phone_directory').doc(norm), doc.data(), SetOptions(merge: true));
+                deleteCount++;
+              }
               batch.delete(doc.reference);
               deleteCount++;
+              if (deleteCount >= 400) {
+                await batch.commit();
+                batch = _db.batch();
+                deleteCount = 0;
+              }
             }
           }
           if (deleteCount > 0) {

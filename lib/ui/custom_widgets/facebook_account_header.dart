@@ -140,9 +140,10 @@ class _FacebookAccountHeaderState extends State<FacebookAccountHeader> {
       }
 
       // Check phone_directory directly if AuthService didn't find it
-      if (res == null && phoneDigits.isNotEmpty) {
+      final directLookupPhone = normalizedPhone.isNotEmpty ? normalizedPhone : (PhoneUtils.tryNormalize(phoneDigits) ?? phoneDigits);
+      if (res == null && directLookupPhone.isNotEmpty) {
         try {
-          final pdDoc = await FirebaseFirestore.instance.collection('phone_directory').doc(phoneDigits).get();
+          final pdDoc = await FirebaseFirestore.instance.collection('phone_directory').doc(directLookupPhone).get();
           if (pdDoc.exists && pdDoc.data() != null) {
             final pData = pdDoc.data()!;
             final pUid = pData['uid']?.toString() ?? '';

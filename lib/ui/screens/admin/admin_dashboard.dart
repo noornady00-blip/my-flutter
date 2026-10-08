@@ -293,9 +293,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
           if (q.docs.isNotEmpty && q.docs.first.data()['accountId'] != null) {
             detectedAccountId = q.docs.first.data()['accountId'].toString();
           } else {
+            final normDetectedPhone = PhoneUtils.tryNormalize(detectedPhone) ?? detectedPhone;
             final pSnap = await FirebaseFirestore.instance
                 .collection('phone_directory')
-                .doc(detectedPhone)
+                .doc(normDetectedPhone)
                 .get();
             if (pSnap.exists && pSnap.data()?['accountId'] != null) {
               detectedAccountId = pSnap.data()!['accountId'].toString();
