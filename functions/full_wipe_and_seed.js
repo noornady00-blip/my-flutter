@@ -109,14 +109,14 @@ async function fullWipeAndSeed() {
   const admin1Phone = '+249146979833';
   const admin1Email = 'admin_01146979833@mahameek.admin.com';
   const admin1Pass = '123456';
-  const admin1AccountId = '111111111111';
+  const admin1AccountId = '111111';
 
   // Admin 2 (+249912209596)
   const admin2Uid = 'VQ5M7vEKaubtw3H3tOtDMHgB4yg2';
   const admin2Phone = '+249912209596';
   const admin2Email = 'admin_912209596@mahameek.admin.com';
   const admin2Pass = '123456';
-  const admin2AccountId = '222222222222';
+  const admin2AccountId = '222222';
 
   console.log(`إنشاء المشرف 1: ${admin1Email} (${admin1Phone})...`);
   await auth.createUser({
@@ -181,15 +181,14 @@ async function fullWipeAndSeed() {
 
   // Set account_ids entries
   const batch = db.batch();
-  batch.set(db.collection('account_ids').doc('11111111111'), { uid: admin1Uid, role: 'admin', createdAt: admin.firestore.FieldValue.serverTimestamp() });
-  batch.set(db.collection('account_ids').doc('111111111111'), { uid: admin1Uid, role: 'admin', createdAt: admin.firestore.FieldValue.serverTimestamp() });
-  batch.set(db.collection('account_ids').doc('222222222222'), { uid: admin2Uid, role: 'admin', createdAt: admin.firestore.FieldValue.serverTimestamp() });
+  batch.set(db.collection('account_ids').doc('111111'), { uid: admin1Uid, role: 'admin', createdAt: admin.firestore.FieldValue.serverTimestamp() });
+  batch.set(db.collection('account_ids').doc('222222'), { uid: admin2Uid, role: 'admin', createdAt: admin.firestore.FieldValue.serverTimestamp() });
   await batch.commit();
 
   console.log('\n========================================================');
   console.log('🎉 تم بنجاح تام! الحسابان الأساسيان فقط موجودان الآن:');
-  console.log(`1. المشرف 1: هاتف: ${admin1Phone} | باسورد: ${admin1Pass} | AccountID: 111111111111`);
-  console.log(`2. المشرف 2: هاتف: ${admin2Phone} | باسورد: ${admin2Pass} | AccountID: 222222222222`);
+  console.log(`1. المشرف 1: هاتف: ${admin1Phone} | باسورد: ${admin1Pass} | AccountID: 111111`);
+  console.log(`2. المشرف 2: هاتف: ${admin2Phone} | باسورد: ${admin2Pass} | AccountID: 222222`);
   console.log('وفي phone_directory يوجد فقط المستندان المحددان بالضبط!');
   console.log('========================================================');
 }

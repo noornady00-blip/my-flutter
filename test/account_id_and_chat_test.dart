@@ -7,36 +7,40 @@ import 'package:mahameek/data/models/lawyer.dart';
 
 void main() {
   group('AccountIdUtils Tests', () {
-    test('generateCandidate12DigitId produces valid 12-digit numeric string', () {
+    test('generateCandidate6DigitId produces valid 6-digit numeric string', () {
       for (int i = 0; i < 50; i++) {
-        final id = AccountIdUtils.generateCandidate12DigitId();
-        expect(id.length, 12);
-        expect(AccountIdUtils.isValid12DigitId(id), isTrue);
-        expect(RegExp(r'^\d{12}$').hasMatch(id), isTrue);
+        final id = AccountIdUtils.generateCandidate6DigitId();
+        expect(id.length, 6);
+        expect(AccountIdUtils.isValid6DigitId(id), isTrue);
+        expect(AccountIdUtils.isValidAccountId(id), isTrue);
+        expect(RegExp(r'^\d{6}$').hasMatch(id), isTrue);
         // Ensure leading digit is never zero
         expect(id.startsWith('0'), isFalse);
       }
     });
 
-    test('format and formatForDisplay format 12 digits in 4-digit groups', () {
-      const raw = '123456789012';
+    test('format and formatForDisplay format 6 digits in 3-digit groups', () {
+      const raw = '123456';
       final formatted = AccountIdUtils.formatForDisplay(raw);
-      expect(formatted, '1234 5678 9012');
-      expect(AccountIdUtils.format(raw), '1234 5678 9012');
-      expect(AccountIdUtils.format12Digits(raw), '1234 5678 9012');
+      expect(formatted, '123 456');
+      expect(AccountIdUtils.format(raw), '123 456');
+      expect(AccountIdUtils.format6Digits(raw), '123 456');
+      expect(AccountIdUtils.format12Digits(raw), '123 456');
     });
 
-    test('format handles non-12-digit fallbacks safely', () {
+    test('format handles non-6-digit fallbacks safely', () {
       expect(AccountIdUtils.format(''), '');
       expect(AccountIdUtils.format('12345'), '12345');
     });
 
-    test('isValid12DigitId validates strictly', () {
-      expect(AccountIdUtils.isValid12DigitId('123456789012'), isTrue);
-      expect(AccountIdUtils.isValid12DigitId('12345678901'), isFalse);
-      expect(AccountIdUtils.isValid12DigitId('1234567890123'), isFalse);
-      expect(AccountIdUtils.isValid12DigitId('12345678901a'), isFalse);
-      expect(AccountIdUtils.isValid12DigitId(null), isFalse);
+    test('isValid6DigitId and isValidAccountId validate strictly', () {
+      expect(AccountIdUtils.isValid6DigitId('123456'), isTrue);
+      expect(AccountIdUtils.isValidAccountId('123456'), isTrue);
+      expect(AccountIdUtils.isValid6DigitId('12345'), isFalse);
+      expect(AccountIdUtils.isValid6DigitId('1234567'), isFalse);
+      expect(AccountIdUtils.isValid6DigitId('012345'), isFalse);
+      expect(AccountIdUtils.isValid6DigitId('12345a'), isFalse);
+      expect(AccountIdUtils.isValid6DigitId(null), isFalse);
     });
   });
 
@@ -47,14 +51,14 @@ void main() {
         name: 'مستخدم تجريبي',
         phone: '0912345678',
         role: 'client',
-        accountId: '123456789012',
+        accountId: '123456',
       );
 
       final map = user.toMap();
-      expect(map['accountId'], '123456789012');
+      expect(map['accountId'], '123456');
 
       final deserialized = UserModel.fromMap(map, 'user_u1');
-      expect(deserialized.accountId, '123456789012');
+      expect(deserialized.accountId, '123456');
     });
 
     test('Admin role recognized correctly', () {
@@ -63,7 +67,7 @@ void main() {
         name: 'المشرف',
         phone: '01146979833',
         role: 'admin',
-        accountId: '999888777666',
+        accountId: '111111',
       );
 
       expect(admin.isAdmin, isTrue);

@@ -414,7 +414,7 @@ class AuthService implements AuthContract {
         debugPrint('[registerClient] purgeAllChatsForUser notice: $chatErr');
       }
 
-      final accountId = await AccountIdUtils.generateUnique12DigitId(_db);
+      final accountId = await AccountIdUtils.generateUnique6DigitId(_db, uid, 'client');
 
       final user = UserModel(
         uid: uid,
@@ -662,7 +662,7 @@ class AuthService implements AuthContract {
         debugPrint('[registerLawyer] purgeAllChatsForUser notice: $chatErr');
       }
 
-      final accountId = await AccountIdUtils.generateUnique12DigitId(_db);
+      final accountId = await AccountIdUtils.generateUnique6DigitId(_db, uid, 'lawyer');
 
       final user = UserModel(
         uid: uid,
@@ -2136,8 +2136,8 @@ class AuthService implements AuthContract {
         }
       }
 
-      // 2. Generate unique 12-digit account ID
-      final accountId = await AccountIdUtils.generateUnique12DigitId(_db);
+      // 2. Generate unique 6-digit account ID
+      final accountId = await AccountIdUtils.generateUnique6DigitId(_db, uid, 'admin');
 
       // 3. Atomically write subadmin profile to users, admins, phone_directory, and account_ids
       final adminData = {
@@ -2452,7 +2452,7 @@ class AuthService implements AuthContract {
 
         await _resetFailedLogin();
         final uid = cred.user!.uid;
-        final defaultAccountId = isPrimary1 ? '111111111111' : '222222222222';
+        final defaultAccountId = isPrimary1 ? '111111' : '222222';
         final adminAccountId = defaultAccountId;
 
         final newHash = hashPassword(cleanPassword);
@@ -3920,7 +3920,7 @@ class AuthService implements AuthContract {
         }
       }
       if (accountId != null && accountId.isNotEmpty) {
-        final cleanAcc = AccountIdUtils.clean12Digits(accountId);
+        final cleanAcc = AccountIdUtils.clean6Digits(accountId);
         batch.delete(db.collection('account_ids').doc(cleanAcc));
       }
 
@@ -3935,7 +3935,7 @@ class AuthService implements AuthContract {
           try { await db.collection('phone_directory').doc(normPhone).delete(); } catch (_) {}
         }
         if (accountId != null && accountId.isNotEmpty) {
-          try { await db.collection('account_ids').doc(AccountIdUtils.clean12Digits(accountId)).delete(); } catch (_) {}
+          try { await db.collection('account_ids').doc(AccountIdUtils.clean6Digits(accountId)).delete(); } catch (_) {}
         }
       }
 

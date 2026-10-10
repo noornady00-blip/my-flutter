@@ -32,7 +32,7 @@ async function cleanupAndUnify() {
     phone: '+249146979833',
     role: 'admin',
     status: 'active',
-    accountId: '111111111111',
+    accountId: '111111',
     email: 'admin_01146979833@mahameek.admin.com',
     isPrimary: true,
     passwordHash: '14756e3e38ec020dc701f8c86784e7c120b56c51c295dd7bd26090018f7b8f7f',
@@ -46,7 +46,7 @@ async function cleanupAndUnify() {
     phone: '+249912209596',
     role: 'admin',
     status: 'active',
-    accountId: '222222222222',
+    accountId: '222222',
     email: 'admin_912209596@mahameek.admin.com',
     isPrimary: true,
     passwordHash: '14756e3e38ec020dc701f8c86784e7c120b56c51c295dd7bd26090018f7b8f7f',
@@ -60,7 +60,7 @@ async function cleanupAndUnify() {
     phone: '+249123456789',
     role: 'client',
     status: 'active',
-    accountId: '352083813367',
+    accountId: '352083',
     email: '249123456789@mahameek.client.com',
     isPrimary: false,
     passwordHash: '14756e3e38ec020dc701f8c86784e7c120b56c51c295dd7bd26090018f7b8f7f',
@@ -75,32 +75,28 @@ async function cleanupAndUnify() {
 
   // Admin 1 (HEsYK0F5TGMFCZtKE7qUq0kFfqQ2)
   syncBatch.set(db.collection('admins').doc('HEsYK0F5TGMFCZtKE7qUq0kFfqQ2'), {
-    accountId: '111111111111',
+    accountId: '111111',
     phone: '+249146979833',
   }, { merge: true });
   syncBatch.set(db.collection('users').doc('HEsYK0F5TGMFCZtKE7qUq0kFfqQ2'), {
-    accountId: '111111111111',
+    accountId: '111111',
     phone: '+249146979833',
   }, { merge: true });
-  syncBatch.set(db.collection('account_ids').doc('111111111111'), {
-    uid: 'HEsYK0F5TGMFCZtKE7qUq0kFfqQ2',
-    role: 'admin',
-  }, { merge: true });
-  syncBatch.set(db.collection('account_ids').doc('11111111111'), {
+  syncBatch.set(db.collection('account_ids').doc('111111'), {
     uid: 'HEsYK0F5TGMFCZtKE7qUq0kFfqQ2',
     role: 'admin',
   }, { merge: true });
 
   // Admin 2 (VQ5M7vEKaubtw3H3tOtDMHgB4yg2)
   syncBatch.set(db.collection('admins').doc('VQ5M7vEKaubtw3H3tOtDMHgB4yg2'), {
-    accountId: '222222222222',
+    accountId: '222222',
     phone: '+249912209596',
   }, { merge: true });
   syncBatch.set(db.collection('users').doc('VQ5M7vEKaubtw3H3tOtDMHgB4yg2'), {
-    accountId: '222222222222',
+    accountId: '222222',
     phone: '+249912209596',
   }, { merge: true });
-  syncBatch.set(db.collection('account_ids').doc('222222222222'), {
+  syncBatch.set(db.collection('account_ids').doc('222222'), {
     uid: 'VQ5M7vEKaubtw3H3tOtDMHgB4yg2',
     role: 'admin',
   }, { merge: true });

